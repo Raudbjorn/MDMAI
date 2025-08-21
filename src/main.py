@@ -79,7 +79,7 @@ async def search(
                 "source": result["metadata"].get("source", "Unknown"),
                 "page": result["metadata"].get("page", None),
                 "section": result["metadata"].get("section", None),
-                "relevance_score": 1.0 - result.get("distance", 0) if result.get("distance") else None,
+                "relevance_score": 1.0 - result["distance"] if result.get("distance") is not None else None,
             })
         
         return {
