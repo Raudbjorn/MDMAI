@@ -14,6 +14,8 @@ from config.settings import settings
 from src.core.database import ChromaDBManager
 from src.pdf_processing.pipeline import PDFProcessingPipeline
 from src.search.search_service import SearchService
+from src.personality.personality_manager import PersonalityManager
+from src.personality.response_generator import ResponseGenerator
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -30,6 +32,10 @@ pdf_pipeline = PDFProcessingPipeline()
 
 # Initialize search service
 search_service = SearchService()
+
+# Initialize personality system
+personality_manager = PersonalityManager()
+response_generator = ResponseGenerator(personality_manager)
 
 
 @mcp.tool()
@@ -486,6 +492,200 @@ async def server_info() -> Dict[str, Any]:
         return {
             "name": settings.app_name,
             "version": "0.1.0",
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def create_personality_profile(
+    name: str,
+    system: str,
+    source_text: Optional[str] = None,
+    base_profile: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Create a new personality profile for response generation.
+    
+    Args:
+        name: Profile name
+        system: Game system
+        source_text: Optional text to extract personality from
+        base_profile: Optional base profile name to build upon
+    
+    Returns:
+        Dictionary with profile information
+    """
+    try:
+        # Get base profile if specified
+        base = None
+        if base_profile:
+            base = personality_manager.get_profile_by_name(base_profile, system)
+            if base:
+                base_profile = base.profile_id
+        
+        # Create profile
+        profile = personality_manager.create_profile(
+            name=name,
+            system=system,
+            source_text=source_text,
+            base_profile=base_profile,
+        )
+        
+        return {
+            "status": "success",
+            "profile_id": profile.profile_id,
+            "name": profile.name,
+            "system": profile.system,
+            "characteristics": profile.characteristics,
+            "tone": profile.tone.get("dominant", "neutral"),
+            "message": f"Personality profile '{name}' created successfully",
+        }
+        
+    except Exception as e:
+        logger.error("Failed to create personality profile", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def list_personality_profiles(
+    system: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    List available personality profiles.
+    
+    Args:
+        system: Optional game system filter
+    
+    Returns:
+        List of personality profiles
+    """
+    try:
+        profiles = personality_manager.list_profiles(system)
+        
+        profile_list = []
+        for profile in profiles:
+            profile_list.append({
+                "profile_id": profile.profile_id,
+                "name": profile.name,
+                "system": profile.system,
+                "characteristics": profile.characteristics,
+                "tone": profile.tone.get("dominant", "neutral"),
+                "usage_count": profile.usage_count,
+                "is_default": profile.custom_traits.get("is_default", False),
+            })
+        
+        return {
+            "status": "success",
+            "profiles": profile_list,
+            "total": len(profile_list),
+            "active_profile": personality_manager.active_profile.name if personality_manager.active_profile else None,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list personality profiles", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def set_active_personality(
+    profile_name: str,
+    system: Optional[str] = None,
+) -> Dict[str, str]:
+    """
+    Set the active personality profile for responses.
+    
+    Args:
+        profile_name: Name of the profile to activate
+        system: Optional system to search within
+    
+    Returns:
+        Status dictionary
+    """
+    try:
+        # Find profile by name
+        profile = personality_manager.get_profile_by_name(profile_name, system)
+        
+        if not profile:
+            return {
+                "status": "error",
+                "error": f"Profile '{profile_name}' not found",
+            }
+        
+        # Set as active
+        success = personality_manager.set_active_profile(profile.profile_id)
+        
+        if success:
+            return {
+                "status": "success",
+                "profile_id": profile.profile_id,
+                "name": profile.name,
+                "message": f"Active personality set to '{profile_name}'",
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Failed to set active profile",
+            }
+        
+    except Exception as e:
+        logger.error("Failed to set active personality", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def apply_personality(
+    content: str,
+    profile_name: Optional[str] = None,
+    apply_to_search: bool = False,
+) -> Dict[str, Any]:
+    """
+    Apply personality to content or enable for search results.
+    
+    Args:
+        content: Text content to transform
+        profile_name: Optional specific profile to use (uses active if not specified)
+        apply_to_search: Whether to apply personality to search results
+    
+    Returns:
+        Transformed content or status
+    """
+    try:
+        # Get profile
+        profile = None
+        if profile_name:
+            profile = personality_manager.get_profile_by_name(profile_name)
+            if not profile:
+                return {
+                    "status": "error",
+                    "error": f"Profile '{profile_name}' not found",
+                }
+        
+        # Apply personality to content
+        transformed = response_generator.generate_response(content, profile)
+        
+        return {
+            "status": "success",
+            "original": content,
+            "transformed": transformed,
+            "profile_used": profile.name if profile else (
+                personality_manager.active_profile.name if personality_manager.active_profile else "None"
+            ),
+            "apply_to_search": apply_to_search,
+        }
+        
+    except Exception as e:
+        logger.error("Failed to apply personality", error=str(e))
+        return {
             "status": "error",
             "error": str(e),
         }
