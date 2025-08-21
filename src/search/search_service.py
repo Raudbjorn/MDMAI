@@ -721,7 +721,39 @@ class SearchService:
     async def _find_related_items(self, items: List[str]) -> List[Dict[str, Any]]:
         """Find items related to the given items."""
         # Placeholder for finding related items
-        return []
+        """Find where a rule is used in a campaign.
+        
+        NOTE: This method is not yet implemented.
+        """
+        raise NotImplementedError("The method '_find_rule_usage_in_campaign' is not yet implemented.")
+    
+    async def _find_rules_for_campaign_element(self, element: str) -> List[Dict[str, Any]]:
+        """Find rules related to a campaign element.
+        
+        NOTE: This method is not yet implemented.
+        """
+        raise NotImplementedError("The method '_find_rules_for_campaign_element' is not yet implemented.")
+    
+    async def _find_related_spells(self, spells: List[str]) -> List[Dict[str, Any]]:
+        """Find spells related to the given spells.
+        
+        NOTE: This method is not yet implemented.
+        """
+        raise NotImplementedError("The method '_find_related_spells' is not yet implemented.")
+    
+    async def _find_related_monsters(self, monsters: List[str]) -> List[Dict[str, Any]]:
+        """Find monsters related to the given monsters.
+        
+        NOTE: This method is not yet implemented.
+        """
+        raise NotImplementedError("The method '_find_related_monsters' is not yet implemented.")
+    
+    async def _find_related_items(self, items: List[str]) -> List[Dict[str, Any]]:
+        """Find items related to the given items.
+        
+        NOTE: This method is not yet implemented.
+        """
+        raise NotImplementedError("The method '_find_related_items' is not yet implemented.")
     
     def _merge_cross_references(
         self,
