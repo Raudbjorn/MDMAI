@@ -75,7 +75,7 @@
 - ✅ Build vector similarity search using ChromaDB
 - ✅ Implement BM25 keyword search
 - ✅ Create result merging algorithm with weights
-- ✅ Build query expansion and suggestion system
+- ✅ Build query expansion and suggestion system (enhanced with semantic expansion)
 - ✅ Implement search result ranking
 
 ### Task 3.2: Create Search MCP Tools ✅
@@ -85,16 +85,31 @@
 - ✅ Build search result formatting with citations
 - ✅ Create search analytics and statistics
 - ✅ Implement query clarification system
-- ✅ Build search caching mechanism
+- ✅ Build search caching mechanism (with LRU eviction)
 
 ### Task 3.3: Develop Advanced Search Features ✅
 **Requirements:** REQ-010
 **Status:** COMPLETED
 - ✅ Implement fuzzy matching for imprecise queries
 - ✅ Build query completion and suggestions
-- ✅ Create relevance explanation system
+- ✅ Create relevance explanation system (enhanced with detailed scoring)
 - ✅ Implement search filtering by source type
 - ✅ Build cross-reference search between campaigns and rules
+
+### Task 3.4: Critical Enhancements (Phase 3.5) ✅
+**Requirements:** REQ-001, REQ-010, NFR-004
+**Status:** COMPLETED
+**Implemented Enhancements:**
+- ✅ Semantic query expansion using embeddings
+- ✅ Cross-reference search between campaigns and rules
+- ✅ Memory management with proper cache eviction (LRU/TTL)
+- ✅ Enhanced result explanation system with detailed scoring
+- ✅ Comprehensive error handling and recovery
+- ✅ BM25 indices persistence to disk
+- ✅ Pagination for large document sets
+- ⚠️ Interactive query clarification workflow (basic implementation)
+- ⚠️ Detailed search analytics and metrics (partial)
+- ⚠️ ML-based query completion (pending future enhancement)
 
 ## Phase 4: Personality and Style System ✅
 
@@ -337,32 +352,39 @@
 
 ## Priority and Dependencies
 
-### Critical Path (Must Complete First):
-1. Task 1.1, 1.2, 1.3 - Core infrastructure
-2. Task 2.1, 2.2 - Basic PDF processing
-3. Task 3.1, 3.2 - Basic search functionality
-4. Task 8.1 - Source addition capability
+### ✅ Completed:
+1. Task 1.1, 1.2, 1.3 - Core infrastructure ✅
+2. Task 2.1, 2.2, 2.3, 2.4 - PDF processing and embeddings ✅
+3. Task 3.1, 3.2, 3.3, 3.4 - Search and retrieval system ✅
+4. Task 4.1, 4.2, 4.3 - Personality and style system ✅
 
-### High Priority:
-- Task 5.1, 5.2 - Campaign management
-- Task 4.1, 4.2, 4.3 - Personality system
-- Task 6.1, 6.2, 6.3 - Session management
+### 🔴 Critical Path (Next Priority):
+1. **Task 5.1, 5.2, 5.3** - Campaign management system
+2. **Task 6.1, 6.2, 6.3** - Session management features
+
+### High Priority (Following Phase):
+- Task 7.1, 7.2, 7.3 - Character/NPC generation
+- Task 8.1, 8.2, 8.3 - Source management
 
 ### Medium Priority:
-- Task 7.1, 7.2, 7.3 - Character/NPC generation
-- Task 2.3, 2.4 - Advanced PDF processing
-- Task 3.3 - Advanced search features
+- Task 9.1, 9.2, 9.3 - Performance optimization
+- Task 10.1, 10.2, 10.3 - Testing and documentation
 
 ### Enhancement Priority:
-- Task 9.1, 9.2, 9.3 - Performance optimization
 - Task 11.1, 11.2 - Error handling and logging
 - Task 12.1, 12.2 - Security enhancements
+- Task 13.1, 13.2 - Deployment and migration
 
 ## Estimated Timeline
-- Phase 1-3: 2-3 weeks (Core functionality)
-- Phase 4-6: 2-3 weeks (Campaign and personality features)
+- ✅ Phase 1-2: COMPLETED - Core infrastructure and PDF processing
+- ✅ Phase 3: COMPLETED - Search and retrieval system (enhanced)
+- ✅ Phase 4: COMPLETED - Personality and style system
+- Phase 5-6: 2-3 weeks (Campaign and session management)
 - Phase 7-8: 2 weeks (Generation and source management)
 - Phase 9-12: 2-3 weeks (Quality, performance, and security)
 - Phase 13: 1 week (Deployment preparation)
 
-Total estimated time: 9-12 weeks for full implementation
+**Revised Timeline:**
+- Completed phases: 4 of 13
+- Remaining phases: 9
+- Total estimated time to completion: 7-9 weeks

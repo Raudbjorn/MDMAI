@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # Cache
     cache_dir: Path = Field(default=Path("./data/cache"), env="CACHE_DIR")
     cache_ttl_seconds: int = Field(default=3600, env="CACHE_TTL_SECONDS")
+    search_cache_size: int = Field(default=1000, env="SEARCH_CACHE_SIZE")
+    cache_max_memory_mb: int = Field(default=100, env="CACHE_MAX_MEMORY_MB")
     
     # MCP Server
     mcp_stdio_mode: bool = Field(default=True, env="MCP_STDIO_MODE")
