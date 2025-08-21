@@ -67,31 +67,59 @@
 - ✅ Build embedding update mechanism
 - ✅ Create embedding quality validation
 
-## Phase 3: Search and Retrieval System
+## Phase 3: Search and Retrieval System (~70% Complete)
 
-### Task 3.1: Implement Hybrid Search Engine
+### Task 3.1: Implement Hybrid Search Engine ✅
 **Requirements:** REQ-001, REQ-010
-- Build vector similarity search using ChromaDB
-- Implement BM25 keyword search
-- Create result merging algorithm with weights
-- Build query expansion and suggestion system
-- Implement search result ranking
+**Status:** COMPLETED (Basic functionality)
+- ✅ Build vector similarity search using ChromaDB
+- ✅ Implement BM25 keyword search
+- ✅ Create result merging algorithm with weights
+- ⚠️ Build query expansion and suggestion system (basic synonym replacement only)
+- ✅ Implement search result ranking
 
-### Task 3.2: Create Search MCP Tools
+**Issues to Fix:**
+- 🔴 BM25 indices rebuilt on every restart (need persistence)
+- 🔴 Loading 10,000 documents without pagination
+
+### Task 3.2: Create Search MCP Tools ✅
 **Requirements:** REQ-001, REQ-004, REQ-010
-- Implement `search()` tool with all parameters
-- Build search result formatting with citations
-- Create search analytics and statistics
-- Implement query clarification system
-- Build search caching mechanism
+**Status:** PARTIALLY COMPLETED
+- ✅ Implement `search()` tool with all parameters
+- ✅ Build search result formatting with citations
+- ⚠️ Create search analytics and statistics (basic only)
+- ❌ Implement query clarification system (not implemented)
+- ✅ Build search caching mechanism (needs memory limits)
+
+**Issues to Fix:**
+- 🔴 No cache size limits (potential memory leaks)
+- 🔴 Silent failures in several places
 
 ### Task 3.3: Develop Advanced Search Features
 **Requirements:** REQ-010
-- Implement fuzzy matching for imprecise queries
-- Build query completion and suggestions
-- Create relevance explanation system
-- Implement search filtering by source type
-- Build cross-reference search between campaigns and rules
+**Status:** IN PROGRESS
+- ⚠️ Implement fuzzy matching for imprecise queries (partial)
+- ⚠️ Build query completion and suggestions (template-based only, no ML)
+- ❌ Create relevance explanation system (very basic, needs enhancement)
+- ✅ Implement search filtering by source type
+- ❌ Build cross-reference search between campaigns and rules (not implemented)
+
+### Task 3.4: Critical Fixes and Enhancements 🆕
+**Requirements:** REQ-001, REQ-010, NFR-004
+**Status:** PENDING
+**High Priority:**
+- ❌ Implement semantic query expansion using embeddings
+- ❌ Add cross-reference search between campaigns and rules
+- ❌ Fix memory management with proper cache eviction (LRU/TTL)
+- ❌ Enhance result explanation system with detailed scoring
+- ❌ Add comprehensive error handling and recovery
+
+**Medium Priority:**
+- ❌ Persist BM25 indices to disk
+- ❌ Add pagination for large document sets
+- ❌ Implement interactive query clarification workflow
+- ❌ Add detailed search analytics and metrics
+- ❌ Implement ML-based query completion
 
 ## Phase 4: Personality and Style System
 
@@ -331,21 +359,32 @@
 
 ## Priority and Dependencies
 
-### Critical Path (Must Complete First):
-1. Task 1.1, 1.2, 1.3 - Core infrastructure
-2. Task 2.1, 2.2 - Basic PDF processing
-3. Task 3.1, 3.2 - Basic search functionality
-4. Task 8.1 - Source addition capability
+### ✅ Completed:
+1. Task 1.1, 1.2, 1.3 - Core infrastructure ✅
+2. Task 2.1, 2.2, 2.3, 2.4 - PDF processing and embeddings ✅
+3. Task 3.1, 3.2 - Basic search functionality ✅ (70% complete)
 
-### High Priority:
+### 🔴 Critical Path (Must Fix Immediately):
+1. **Task 3.4 High Priority Items** - Critical search system fixes:
+   - Semantic query expansion using embeddings
+   - Cross-reference search implementation
+   - Memory management and cache eviction
+   - Result explanation enhancement
+   - Comprehensive error handling
+2. **Task 3.4 Medium Priority Items** - Performance and stability:
+   - BM25 index persistence
+   - Document pagination
+   - Query clarification workflow
+
+### High Priority (Next Phase):
+- Task 8.1 - Source addition capability
 - Task 5.1, 5.2 - Campaign management
 - Task 4.1, 4.2, 4.3 - Personality system
 - Task 6.1, 6.2, 6.3 - Session management
 
 ### Medium Priority:
 - Task 7.1, 7.2, 7.3 - Character/NPC generation
-- Task 2.3, 2.4 - Advanced PDF processing
-- Task 3.3 - Advanced search features
+- Task 3.3 remaining items - Advanced search features
 
 ### Enhancement Priority:
 - Task 9.1, 9.2, 9.3 - Performance optimization
@@ -353,10 +392,14 @@
 - Task 12.1, 12.2 - Security enhancements
 
 ## Estimated Timeline
-- Phase 1-3: 2-3 weeks (Core functionality)
+- ✅ Phase 1-2: COMPLETED - Core infrastructure and PDF processing
+- ⚠️ Phase 3: IN PROGRESS (70% complete) - Search system needs 1 week for critical fixes
 - Phase 4-6: 2-3 weeks (Campaign and personality features)
 - Phase 7-8: 2 weeks (Generation and source management)
 - Phase 9-12: 2-3 weeks (Quality, performance, and security)
 - Phase 13: 1 week (Deployment preparation)
 
-Total estimated time: 9-12 weeks for full implementation
+**Revised Timeline:**
+- Phase 3 completion: 1 week (critical fixes)
+- Remaining phases: 7-9 weeks
+- Total estimated time to completion: 8-10 weeks

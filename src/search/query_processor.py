@@ -4,8 +4,11 @@ import re
 from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import Counter
 import difflib
+import numpy as np
 
 from config.logging_config import get_logger
+from src.pdf_processing.embedding_generator import EmbeddingGenerator
+from src.core.database import ChromaDBClient
 
 logger = get_logger(__name__)
 
@@ -13,8 +16,16 @@ logger = get_logger(__name__)
 class QueryProcessor:
     """Processes and enhances search queries."""
     
-    def __init__(self):
-        """Initialize query processor."""
+    def __init__(self, embedding_generator: Optional[EmbeddingGenerator] = None,
+                 db_client: Optional[ChromaDBClient] = None):
+        """Initialize query processor with optional embedding support."""
+        # Initialize embedding generator and database client
+        self.embedding_generator = embedding_generator or EmbeddingGenerator()
+        self.db_client = db_client
+        
+        # Cache for semantic expansions to avoid repeated computations
+        self.semantic_cache = {}
+        
         # Common TTRPG terms for spell correction
         self.ttrpg_vocabulary = {
             # D&D terms
@@ -84,12 +95,13 @@ class QueryProcessor:
             "cleric": ["cleric", "priest", "healer", "divine"],
         }
     
-    def process_query(self, query: str) -> Dict[str, Any]:
+    def process_query(self, query: str, use_semantic_expansion: bool = True) -> Dict[str, Any]:
         """
         Process and enhance a search query.
         
         Args:
             query: Original search query
+            use_semantic_expansion: Whether to use semantic expansion
             
         Returns:
             Processed query information
@@ -103,17 +115,27 @@ class QueryProcessor:
         # Expand abbreviations
         expanded = self.expand_query(corrected)
         
+        # Semantic expansion (if enabled)
+        semantic_expanded = expanded
+        if use_semantic_expansion:
+            try:
+                semantic_expanded = self.expand_query_semantic(expanded)
+            except Exception as e:
+                logger.debug(f"Semantic expansion failed, using basic expansion: {str(e)}")
+                semantic_expanded = expanded
+        
         # Extract query intent
-        intent = self.extract_intent(expanded)
+        intent = self.extract_intent(semantic_expanded)
         
         # Generate suggestions
-        suggestions = self.generate_suggestions(expanded)
+        suggestions = self.generate_suggestions(semantic_expanded)
         
         return {
             "original": query,
             "cleaned": cleaned,
             "corrected": corrected,
             "expanded": expanded,
+            "semantic_expanded": semantic_expanded,
             "intent": intent,
             "suggestions": suggestions,
         }
@@ -214,6 +236,185 @@ class QueryProcessor:
                 unique_terms.append(term)
         
         return " ".join(unique_terms)
+    
+    def expand_query_semantic(self, query: str, top_k: int = 5, 
+                             similarity_threshold: float = 0.7) -> str:
+        """
+        Expand query using semantic similarity with embeddings.
+        
+        Args:
+            query: Query text to expand
+            top_k: Number of similar terms to add
+            similarity_threshold: Minimum similarity score for expansion
+            
+        Returns:
+            Semantically expanded query
+        """
+        # Check cache first
+        cache_key = f"{query}_{top_k}_{similarity_threshold}"
+        if cache_key in self.semantic_cache:
+            return self.semantic_cache[cache_key]
+        
+        try:
+            # Generate embedding for the query
+            query_embedding = self.embedding_generator.generate_single_embedding(query)
+            
+            # Get vocabulary embeddings from database if available
+            if self.db_client:
+                # Search for semantically similar content in the database
+                similar_terms = self._find_similar_terms_from_db(
+                    query_embedding, top_k, similarity_threshold
+                )
+            else:
+                # Fallback to vocabulary-based expansion
+                similar_terms = self._find_similar_terms_from_vocabulary(
+                    query, query_embedding, top_k, similarity_threshold
+                )
+            
+            # Combine original query with semantic expansions
+            expanded_terms = query.split() + similar_terms
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_terms = []
+            for term in expanded_terms:
+                term_lower = term.lower()
+                if term_lower not in seen:
+                    seen.add(term_lower)
+                    unique_terms.append(term)
+            
+            expanded_query = " ".join(unique_terms)
+            
+            # Cache the result
+            self.semantic_cache[cache_key] = expanded_query
+            
+            logger.debug(f"Semantic expansion: {query} -> {expanded_query}")
+            return expanded_query
+            
+        except Exception as e:
+            logger.error(f"Failed to perform semantic expansion: {str(e)}")
+            # Fallback to original query
+            return query
+    
+    def _find_similar_terms_from_db(self, query_embedding: List[float], 
+                                   top_k: int, threshold: float) -> List[str]:
+        """
+        Find similar terms from database using embeddings.
+        
+        Args:
+            query_embedding: Query embedding vector
+            top_k: Number of similar terms to return
+            threshold: Similarity threshold
+            
+        Returns:
+            List of similar terms
+        """
+        similar_terms = []
+        
+        try:
+            # Query the database for similar content
+            collections = ["rulebooks", "campaigns", "flavor_sources"]
+            
+            for collection_name in collections:
+                try:
+                    collection = self.db_client.get_collection(collection_name)
+                    
+                    # Search for similar embeddings
+                    results = collection.query(
+                        query_embeddings=[query_embedding],
+                        n_results=top_k * 2,  # Get more results for filtering
+                    )
+                    
+                    # Extract unique terms from results
+                    if results and "documents" in results:
+                        for doc in results["documents"][0]:
+                            # Extract key terms from the document
+                            terms = self._extract_key_terms(doc)
+                            similar_terms.extend(terms)
+                            
+                except Exception as e:
+                    logger.debug(f"Could not search collection {collection_name}: {str(e)}")
+                    continue
+            
+            # Filter by similarity and uniqueness
+            unique_terms = list(set(similar_terms))[:top_k]
+            return unique_terms
+            
+        except Exception as e:
+            logger.error(f"Database search failed: {str(e)}")
+            return []
+    
+    def _find_similar_terms_from_vocabulary(self, query: str, query_embedding: List[float],
+                                           top_k: int, threshold: float) -> List[str]:
+        """
+        Find similar terms from local vocabulary.
+        
+        Args:
+            query: Original query text
+            query_embedding: Query embedding vector
+            top_k: Number of similar terms to return
+            threshold: Similarity threshold
+            
+        Returns:
+            List of similar terms
+        """
+        similar_terms = []
+        
+        # Generate embeddings for vocabulary terms
+        vocab_terms = list(self.ttrpg_vocabulary) + \
+                     [term for group in self.synonyms.values() for term in group]
+        
+        # Filter out terms already in query
+        query_words = set(query.lower().split())
+        vocab_terms = [term for term in vocab_terms if term.lower() not in query_words]
+        
+        # Calculate similarities
+        similarities = []
+        for term in vocab_terms[:100]:  # Limit to prevent performance issues
+            try:
+                term_embedding = self.embedding_generator.generate_single_embedding(term)
+                similarity = self.embedding_generator.calculate_similarity(
+                    query_embedding, term_embedding
+                )
+                
+                if similarity >= threshold:
+                    similarities.append((term, similarity))
+                    
+            except Exception as e:
+                logger.debug(f"Could not generate embedding for {term}: {str(e)}")
+                continue
+        
+        # Sort by similarity and return top k
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        similar_terms = [term for term, _ in similarities[:top_k]]
+        
+        return similar_terms
+    
+    def _extract_key_terms(self, text: str, max_terms: int = 5) -> List[str]:
+        """
+        Extract key terms from text.
+        
+        Args:
+            text: Text to extract terms from
+            max_terms: Maximum number of terms to extract
+            
+        Returns:
+            List of key terms
+        """
+        # Simple keyword extraction based on TTRPG vocabulary
+        words = text.lower().split()
+        key_terms = []
+        
+        for word in words:
+            # Check if word is in vocabulary or is significant
+            if (word in self.ttrpg_vocabulary or 
+                len(word) > 4 and word.isalpha()):
+                key_terms.append(word)
+                
+                if len(key_terms) >= max_terms:
+                    break
+        
+        return key_terms
     
     def extract_intent(self, query: str) -> Dict[str, Any]:
         """

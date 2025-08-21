@@ -12,6 +12,7 @@ from config.logging_config import get_logger
 from config.settings import settings
 from src.core.database import get_db_manager
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
+from src.search.index_persistence import IndexPersistence
 
 logger = get_logger(__name__)
 
@@ -61,41 +62,110 @@ class HybridSearchEngine:
         """Initialize the hybrid search engine."""
         self.db = get_db_manager()
         self.embedding_generator = EmbeddingGenerator()
+        self.index_persistence = IndexPersistence()
         self.bm25_indices = {}  # Collection -> BM25 index
         self.document_cache = {}  # Collection -> documents
+        self.tokenized_cache = {}  # Collection -> tokenized documents
         self._initialize_indices()
         
     def _initialize_indices(self):
-        """Initialize BM25 indices for collections."""
+        """Initialize BM25 indices for collections, using persisted indices when available."""
         collections = ["rulebooks", "flavor_sources"]
         
         for collection_name in collections:
             try:
-                # Load documents from collection
-                documents = self.db.list_documents(
-                    collection_name=collection_name,
-                    limit=10000,  # Large limit to get all docs
-                )
+                # Load documents from collection with pagination
+                documents = self._load_documents_paginated(collection_name)
                 
-                if documents:
-                    # Cache documents
-                    self.document_cache[collection_name] = documents
-                    
-                    # Create BM25 index
-                    self._build_bm25_index(collection_name, documents)
-                    
-                    logger.info(
-                        f"Initialized index for {collection_name}",
-                        document_count=len(documents),
-                    )
-                else:
+                if not documents:
                     logger.warning(f"No documents found in {collection_name}")
+                    continue
+                
+                # Cache documents
+                self.document_cache[collection_name] = documents
+                
+                # Try to load persisted index
+                if self.index_persistence.is_index_valid(collection_name, documents):
+                    loaded = self.index_persistence.load_index(collection_name)
+                    if loaded:
+                        self.bm25_indices[collection_name] = loaded["index"]
+                        self.tokenized_cache[collection_name] = loaded["tokenized_docs"]
+                        logger.info(
+                            f"Loaded persisted index for {collection_name}",
+                            document_count=len(documents),
+                        )
+                        continue
+                
+                # Build new index if not loaded from disk
+                tokenized_docs = self._build_bm25_index(collection_name, documents)
+                
+                # Persist the new index
+                if self.bm25_indices.get(collection_name):
+                    self.index_persistence.save_index(
+                        collection_name,
+                        self.bm25_indices[collection_name],
+                        documents,
+                        tokenized_docs
+                    )
+                
+                logger.info(
+                    f"Built and saved new index for {collection_name}",
+                    document_count=len(documents),
+                )
                     
             except Exception as e:
                 logger.error(f"Failed to initialize index for {collection_name}", error=str(e))
     
-    def _build_bm25_index(self, collection_name: str, documents: List[Dict[str, Any]]):
-        """Build BM25 index for a collection."""
+    def _load_documents_paginated(self, collection_name: str, batch_size: int = 1000) -> List[Dict[str, Any]]:
+        """
+        Load documents from collection with pagination.
+        
+        Args:
+            collection_name: Name of collection
+            batch_size: Number of documents per batch
+            
+        Returns:
+            List of all documents
+        """
+        all_documents = []
+        offset = 0
+        
+        while True:
+            try:
+                # Load batch of documents
+                batch = self.db.list_documents(
+                    collection_name=collection_name,
+                    limit=batch_size,
+                    offset=offset
+                )
+                
+                if not batch:
+                    break
+                
+                all_documents.extend(batch)
+                offset += batch_size
+                
+                # Log progress for large collections
+                if offset % 5000 == 0:
+                    logger.debug(f"Loaded {offset} documents from {collection_name}")
+                
+            except Exception as e:
+                logger.error(f"Error loading documents at offset {offset}: {str(e)}")
+                break
+        
+        return all_documents
+    
+    def _build_bm25_index(self, collection_name: str, documents: List[Dict[str, Any]]) -> List[List[str]]:
+        """
+        Build BM25 index for a collection.
+        
+        Args:
+            collection_name: Name of collection
+            documents: Documents to index
+            
+        Returns:
+            Tokenized documents
+        """
         # Tokenize documents for BM25
         tokenized_docs = []
         for doc in documents:
@@ -106,8 +176,12 @@ class HybridSearchEngine:
         # Create BM25 index
         if tokenized_docs:
             self.bm25_indices[collection_name] = BM25Okapi(tokenized_docs)
+            self.tokenized_cache[collection_name] = tokenized_docs
         else:
             self.bm25_indices[collection_name] = None
+            self.tokenized_cache[collection_name] = []
+        
+        return tokenized_docs
     
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize text for BM25."""
@@ -378,26 +452,39 @@ class HybridSearchEngine:
         # Return top results
         return sorted_results[:max_results]
     
-    def update_index(self, collection_name: str):
+    def update_index(self, collection_name: str, force_rebuild: bool = False):
         """
         Update BM25 index for a collection.
         
         Args:
             collection_name: Collection to update
+            force_rebuild: Force rebuild even if documents haven't changed
         """
         try:
-            # Reload documents
-            documents = self.db.list_documents(
-                collection_name=collection_name,
-                limit=10000,
-            )
+            # Reload documents with pagination
+            documents = self._load_documents_paginated(collection_name)
             
             if documents:
+                # Check if update is needed
+                if not force_rebuild and self.index_persistence.is_index_valid(collection_name, documents):
+                    logger.info(f"Index for {collection_name} is already up to date")
+                    return
+                
                 # Update cache
                 self.document_cache[collection_name] = documents
                 
                 # Rebuild BM25 index
-                self._build_bm25_index(collection_name, documents)
+                tokenized_docs = self._build_bm25_index(collection_name, documents)
+                
+                # Delete old persisted index and save new one
+                self.index_persistence.delete_index(collection_name)
+                if self.bm25_indices.get(collection_name):
+                    self.index_persistence.save_index(
+                        collection_name,
+                        self.bm25_indices[collection_name],
+                        documents,
+                        tokenized_docs
+                    )
                 
                 logger.info(
                     f"Updated index for {collection_name}",
