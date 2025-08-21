@@ -310,8 +310,8 @@ class ChromaDBManager:
             if result["ids"]:
                 return {
                     "id": result["ids"][0],
-                    "content": result["documents"][0] if result["documents"] else None,
-                    "metadata": result["metadatas"][0] if result["metadatas"] else None,
+                    "content": result["documents"][0],
+                    "metadata": result["metadatas"][0],
                 }
             
             return None
