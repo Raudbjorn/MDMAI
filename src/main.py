@@ -206,7 +206,7 @@ async def list_sources(
         # Get unique sources from the collection (limit to reasonable number)
         documents = db.list_documents(
             collection_name=collection_name,
-            limit=100,  # Reduced from 1000 to prevent memory issues
+            limit=100,  # Limit to 100 to prevent memory issues
             metadata_filter=metadata_filter if metadata_filter else None,
         )
         
