@@ -240,7 +240,7 @@ async def create_campaign(
         db.add_document(
             collection_name="campaigns",
             document_id=campaign_id,
-            content=str(campaign_data),
+            content=json.dumps(campaign_data),
             metadata={
                 "campaign_id": campaign_id,
                 "name": name,
