@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from config.logging_config import setup_logging, get_logger
 from config.settings import settings
 from src.core.database import ChromaDBManager
+from src.pdf_processing.pipeline import PDFProcessingPipeline
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -22,6 +23,9 @@ mcp = FastMCP("TTRPG Assistant")
 
 # Database manager will be initialized in main()
 db: Optional[ChromaDBManager] = None
+
+# Initialize PDF processing pipeline
+pdf_pipeline = PDFProcessingPipeline()
 
 
 @mcp.tool()
@@ -155,14 +159,34 @@ async def add_source(
             source_type=source_type,
         )
         
-        # TODO: Implement PDF processing pipeline
-        # This is a placeholder for now
+        # Process PDF through the pipeline
+        result = await pdf_pipeline.process_pdf(
+            pdf_path=pdf_path,
+            rulebook_name=rulebook_name,
+            system=system,
+            source_type=source_type,
+            enable_adaptive_learning=settings.enable_adaptive_learning,
+        )
         
-        return {
-            "status": "success",
-            "message": f"Source '{rulebook_name}' added successfully",
-            "source_id": f"{system}_{rulebook_name}".replace(" ", "_").lower(),
-        }
+        if result["status"] == "success":
+            return {
+                "status": "success",
+                "message": f"Source '{rulebook_name}' added successfully",
+                "source_id": result["source_id"],
+                "chunks_created": result["total_chunks"],
+                "pages_processed": result["total_pages"],
+            }
+        elif result["status"] == "duplicate":
+            return {
+                "status": "duplicate",
+                "message": result["message"],
+                "file_hash": result["file_hash"],
+            }
+        else:
+            return {
+                "status": "error",
+                "error": result.get("error", "Unknown error"),
+            }
         
     except Exception as e:
         logger.error("Failed to add source", error=str(e))
