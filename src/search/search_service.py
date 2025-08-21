@@ -688,7 +688,15 @@ class SearchService:
         """Extract NPCs, locations, and plot points from campaign."""
         # Placeholder for campaign entity extraction
         # This would query specific campaign data structures
-        return []
+        """
+        TODO: Implement extraction of NPCs, locations, and plot points from campaign data structures.
+        This should query the campaign database or data structures using the provided campaign_id and query,
+        and return a list of dictionaries representing the extracted entities.
+        """
+        raise NotImplementedError(
+            "Extraction of campaign entities is not yet implemented. "
+            "This method should query campaign data structures for NPCs, locations, and plot points."
+        )
     
     async def _find_rule_usage_in_campaign(self, rule: str, campaign_id: str) -> List[Dict[str, Any]]:
         """Find where a rule is used in a campaign."""
