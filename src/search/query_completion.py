@@ -517,8 +517,8 @@ class QueryCompletionEngine:
             return
         
         try:
-            with open(model_file, "rb") as f:
-                model_data = pickle.load(f)
+            with open(model_file, "r") as f:
+                model_data = json.load(f)
             
             self.query_frequency = Counter(model_data.get("query_frequency", {}))
             self.query_pairs = defaultdict(Counter)
