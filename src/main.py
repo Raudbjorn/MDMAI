@@ -428,7 +428,6 @@ def main():
         
         if settings.mcp_stdio_mode:
             # Run in stdio mode for MCP
-            import sys
             mcp.run(transport="stdio")
         else:
             # Run as HTTP server for testing
