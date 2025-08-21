@@ -16,6 +16,7 @@ from src.pdf_processing.pipeline import PDFProcessingPipeline
 from src.search.search_service import SearchService
 from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
+from src.campaign.campaign_manager import CampaignManager
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -26,6 +27,9 @@ mcp = FastMCP("TTRPG Assistant")
 
 # Database manager will be initialized in main()
 db: Optional[ChromaDBManager] = None
+
+# Campaign manager will be initialized in main()
+campaign_manager: Optional[CampaignManager] = None
 
 # Initialize PDF processing pipeline
 pdf_pipeline = PDFProcessingPipeline()
@@ -260,6 +264,7 @@ async def create_campaign(
     name: str,
     system: str,
     description: Optional[str] = None,
+    settings: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     """
     Create a new campaign.
@@ -268,53 +273,34 @@ async def create_campaign(
         name: Campaign name
         system: Game system
         description: Optional campaign description
+        settings: Optional campaign settings
     
     Returns:
         Dictionary with campaign ID and status
     """
-    # Check database initialization
-    if db is None:
+    # Check initialization
+    if campaign_manager is None:
         return {
             "status": "error",
-            "error": "Database not initialized",
+            "error": "Campaign manager not initialized",
         }
     
     try:
-        
-        campaign_id = str(uuid.uuid4())
-        
-        campaign_data = {
-            "id": campaign_id,
-            "name": name,
-            "system": system,
-            "description": description or "",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            "characters": [],
-            "npcs": [],
-            "locations": [],
-            "plot_points": [],
-            "sessions": [],
-        }
-        
-        # Store in database
-        db.add_document(
-            collection_name="campaigns",
-            document_id=campaign_id,
-            content=json.dumps(campaign_data),
-            metadata={
-                "campaign_id": campaign_id,
-                "name": name,
-                "system": system,
-                "data_type": "campaign",
-            },
+        # Create campaign using manager
+        campaign = campaign_manager.create_campaign(
+            name=name,
+            system=system,
+            description=description or "",
+            settings=settings,
         )
         
-        logger.info("Campaign created", campaign_id=campaign_id, name=name)
+        logger.info("Campaign created", campaign_id=campaign.campaign_id, name=name)
         
         return {
             "status": "success",
-            "campaign_id": campaign_id,
+            "campaign_id": campaign.campaign_id,
+            "name": campaign.name,
+            "system": campaign.system,
             "message": f"Campaign '{name}' created successfully",
         }
         
@@ -341,54 +327,321 @@ async def get_campaign_data(
     Returns:
         Campaign data dictionary
     """
-    # Check database initialization
-    if db is None:
+    # Check initialization
+    if campaign_manager is None:
         return {
             "status": "error",
-            "error": "Database not initialized",
+            "error": "Campaign manager not initialized",
         }
     
     try:
         logger.info("Getting campaign data", campaign_id=campaign_id, data_type=data_type)
         
-        # Retrieve campaign document
-        campaign_doc = db.get_document(
-            collection_name="campaigns",
-            document_id=campaign_id,
-        )
+        # Get campaign data using manager
+        data = campaign_manager.get_campaign_data(campaign_id, data_type)
         
-        if not campaign_doc:
+        if not data:
             return {
                 "status": "error",
                 "error": f"Campaign '{campaign_id}' not found",
             }
         
-        # Parse campaign data
-        campaign_data = json.loads(campaign_doc["content"])
-        
-        # Filter by data type if specified
-        if data_type:
-            if data_type in campaign_data:
-                return {
-                    "status": "success",
-                    "campaign_id": campaign_id,
-                    "data_type": data_type,
-                    "data": campaign_data[data_type],
-                }
-            else:
-                return {
-                    "status": "error",
-                    "error": f"Data type '{data_type}' not found in campaign",
-                }
-        
         return {
             "status": "success",
             "campaign_id": campaign_id,
-            "data": campaign_data,
+            "data_type": data_type,
+            "data": data,
         }
         
     except Exception as e:
         logger.error("Failed to get campaign data", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def update_campaign_data(
+    campaign_id: str,
+    data_type: str,
+    data: Dict[str, Any],
+    operation: str = "add",
+) -> Dict[str, str]:
+    """
+    Update campaign information.
+    
+    Args:
+        campaign_id: Campaign identifier
+        data_type: Type of data (characters, npcs, locations, etc.)
+        data: Data to add/update
+        operation: Operation type ('add', 'update', 'delete')
+    
+    Returns:
+        Status dictionary
+    """
+    # Check initialization
+    if campaign_manager is None:
+        return {
+            "status": "error",
+            "error": "Campaign manager not initialized",
+        }
+    
+    try:
+        logger.info(
+            "Updating campaign data",
+            campaign_id=campaign_id,
+            data_type=data_type,
+            operation=operation,
+        )
+        
+        if operation == "add":
+            # Add new data
+            success = campaign_manager.add_campaign_data(campaign_id, data_type, data)
+        elif operation == "update":
+            # Update existing data
+            updates = {data_type: data}
+            campaign = campaign_manager.update_campaign(campaign_id, updates)
+            success = campaign is not None
+        elif operation == "delete":
+            # Delete data (implement as needed)
+            success = False  # Not yet implemented
+        else:
+            return {
+                "status": "error",
+                "error": f"Unknown operation: {operation}",
+            }
+        
+        if success:
+            return {
+                "status": "success",
+                "campaign_id": campaign_id,
+                "message": f"Campaign data {operation}ed successfully",
+            }
+        else:
+            return {
+                "status": "error",
+                "error": f"Failed to {operation} campaign data",
+            }
+        
+    except Exception as e:
+        logger.error("Failed to update campaign data", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def list_campaigns(
+    system: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    List all campaigns with optional filters.
+    
+    Args:
+        system: Filter by game system
+        status: Filter by status (active, paused, completed, archived)
+    
+    Returns:
+        List of campaigns
+    """
+    # Check initialization
+    if campaign_manager is None:
+        return {
+            "status": "error",
+            "error": "Campaign manager not initialized",
+            "campaigns": [],
+        }
+    
+    try:
+        campaigns = campaign_manager.list_campaigns(system=system, status=status)
+        
+        campaign_list = []
+        for campaign in campaigns:
+            campaign_list.append({
+                "campaign_id": campaign.campaign_id,
+                "name": campaign.name,
+                "system": campaign.system,
+                "description": campaign.description,
+                "status": campaign.status,
+                "created_at": campaign.created_at.isoformat(),
+                "updated_at": campaign.updated_at.isoformat(),
+                "num_characters": len(campaign.characters),
+                "num_npcs": len(campaign.npcs),
+                "num_sessions": len(campaign.sessions),
+            })
+        
+        return {
+            "status": "success",
+            "campaigns": campaign_list,
+            "total": len(campaign_list),
+        }
+        
+    except Exception as e:
+        logger.error("Failed to list campaigns", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+            "campaigns": [],
+        }
+
+
+@mcp.tool()
+async def add_campaign_link(
+    campaign_id: str,
+    rulebook_id: str,
+    link_type: str = "reference",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    """
+    Add a rulebook link to a campaign.
+    
+    Args:
+        campaign_id: Campaign identifier
+        rulebook_id: Rulebook/source identifier
+        link_type: Type of link (reference, requirement, homebrew)
+        metadata: Optional link metadata
+    
+    Returns:
+        Status dictionary
+    """
+    # Check initialization
+    if campaign_manager is None:
+        return {
+            "status": "error",
+            "error": "Campaign manager not initialized",
+        }
+    
+    try:
+        success = campaign_manager.add_rulebook_link(
+            campaign_id=campaign_id,
+            rulebook_id=rulebook_id,
+            link_type=link_type,
+            metadata=metadata,
+        )
+        
+        if success:
+            return {
+                "status": "success",
+                "campaign_id": campaign_id,
+                "message": f"Rulebook link added successfully",
+            }
+        else:
+            return {
+                "status": "error",
+                "error": "Failed to add rulebook link",
+            }
+        
+    except Exception as e:
+        logger.error("Failed to add campaign link", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def search_campaign(
+    campaign_id: str,
+    query: str,
+    data_types: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Search within campaign data.
+    
+    Args:
+        campaign_id: Campaign identifier
+        query: Search query
+        data_types: Optional data types to search
+    
+    Returns:
+        Search results
+    """
+    # Check initialization
+    if campaign_manager is None:
+        return {
+            "status": "error",
+            "error": "Campaign manager not initialized",
+            "results": [],
+        }
+    
+    try:
+        results = campaign_manager.search_campaign_data(
+            campaign_id=campaign_id,
+            query=query,
+            data_types=data_types,
+        )
+        
+        return {
+            "status": "success",
+            "campaign_id": campaign_id,
+            "query": query,
+            "results": results,
+            "total_results": len(results),
+        }
+        
+    except Exception as e:
+        logger.error("Failed to search campaign", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+            "results": [],
+        }
+
+
+@mcp.tool()
+async def rollback_campaign(
+    campaign_id: str,
+    version_id: str,
+) -> Dict[str, str]:
+    """
+    Rollback campaign to a previous version.
+    
+    Args:
+        campaign_id: Campaign identifier
+        version_id: Version identifier to rollback to
+    
+    Returns:
+        Status dictionary
+    """
+    # Check initialization
+    if campaign_manager is None:
+        return {
+            "status": "error",
+            "error": "Campaign manager not initialized",
+        }
+    
+    try:
+        campaign = campaign_manager.get_campaign(campaign_id)
+        if not campaign:
+            return {
+                "status": "error",
+                "error": f"Campaign '{campaign_id}' not found",
+            }
+        
+        success = campaign.rollback_to_version(version_id)
+        
+        if success:
+            # Save the rollback
+            campaign_manager._save_campaign(campaign)
+            if campaign_manager.db:
+                campaign_manager._store_in_database(campaign)
+            
+            return {
+                "status": "success",
+                "campaign_id": campaign_id,
+                "message": f"Campaign rolled back to version {version_id}",
+            }
+        else:
+            return {
+                "status": "error",
+                "error": f"Version '{version_id}' not found",
+            }
+        
+    except Exception as e:
+        logger.error("Failed to rollback campaign", error=str(e))
         return {
             "status": "error",
             "error": str(e),
@@ -693,7 +946,7 @@ async def apply_personality(
 
 def main():
     """Main entry point for the MCP server."""
-    global db
+    global db, campaign_manager
     
     try:
         # Create necessary directories
@@ -701,6 +954,9 @@ def main():
         
         # Initialize database manager
         db = ChromaDBManager()
+        
+        # Initialize campaign manager
+        campaign_manager = CampaignManager(db)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
