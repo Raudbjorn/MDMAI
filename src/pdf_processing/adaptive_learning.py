@@ -316,7 +316,12 @@ class AdaptiveLearningSystem:
             fields["con"] = match.group(3)
             fields["int"] = match.group(4)
             fields["wis"] = match.group(5)
-            fields["cha"] = match.group(6)
+        # Stats (extract each independently to handle any order)
+        for stat in ["str", "dex", "con", "int", "wis", "cha"]:
+            stat_pattern = rf'{stat.upper()}\s*(\d+)'
+            match = re.search(stat_pattern, text, re.IGNORECASE)
+            if match:
+                fields[stat] = match.group(1)
         
         if fields:
             # Get or create pattern template
