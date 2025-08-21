@@ -164,10 +164,10 @@ class EmbeddingGenerator:
         # Combine with newlines
         prepared_text = "\n".join(text_parts)
         
-        # Truncate if too long (most models have max token limits)
-        max_length = 512  # Conservative limit for most models
+        # Truncate if too long using model's actual max sequence length
+        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
         if len(prepared_text) > max_length:
-            prepared_text = prepared_text[:max_length] + "..."
+            prepared_text = prepared_text[:max_length]
         
         return prepared_text
     

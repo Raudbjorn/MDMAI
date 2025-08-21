@@ -1,5 +1,6 @@
 """Main PDF processing pipeline that integrates all components."""
 
+import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
@@ -57,7 +58,7 @@ class PDFProcessingPipeline:
             
             # Step 1: Extract content from PDF
             logger.info("Step 1: Extracting PDF content")
-            pdf_content = self.parser.extract_text_from_pdf(pdf_path)
+            pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, pdf_path)
             
             # Check for duplicate
             if self._is_duplicate(pdf_content["file_hash"]):
@@ -86,11 +87,11 @@ class PDFProcessingPipeline:
             
             # Step 3: Chunk the content
             logger.info("Step 3: Chunking content")
-            chunks = self.chunker.chunk_document(pdf_content, source_metadata)
+            chunks = await asyncio.to_thread(self.chunker.chunk_document, pdf_content, source_metadata)
             
             # Step 4: Generate embeddings
             logger.info("Step 4: Generating embeddings")
-            embeddings = self.embedding_generator.generate_embeddings(chunks)
+            embeddings = await asyncio.to_thread(self.embedding_generator.generate_embeddings, chunks)
             
             # Validate embeddings
             if not self.embedding_generator.validate_embeddings(embeddings):
@@ -147,14 +148,17 @@ class PDFProcessingPipeline:
         Returns:
             True if duplicate
         """
-        # Check if hash exists in database
-        existing = self.db.list_documents(
-            collection_name="rulebooks",
-            metadata_filter={"file_hash": file_hash},
-            limit=1,
-        )
+        # Check both rulebooks and flavor_sources collections for duplicates
+        for collection_name in ["rulebooks", "flavor_sources"]:
+            existing = self.db.list_documents(
+                collection_name=collection_name,
+                metadata_filter={"file_hash": file_hash},
+                limit=1,
+            )
+            if len(existing) > 0:
+                return True
         
-        return len(existing) > 0
+        return False
     
     def _apply_adaptive_patterns(self, pdf_content: Dict[str, Any], system: str):
         """
@@ -240,9 +244,12 @@ class PDFProcessingPipeline:
             source_metadata: Source metadata dictionary
         """
         try:
+            # Determine collection based on source type
+            collection_name = "flavor_sources" if source_metadata.get("source_type") == "flavor" else "rulebooks"
+            
             # Store as a special document in the database
             self.db.add_document(
-                collection_name="rulebooks",
+                collection_name=collection_name,
                 document_id=f"source_{source_metadata['source_id']}",
                 content=f"Source: {source_metadata['rulebook_name']}",
                 metadata={

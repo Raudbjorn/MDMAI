@@ -310,14 +310,13 @@ class AdaptiveLearningSystem:
         stat_pattern = r'STR\s*(\d+).*?DEX\s*(\d+).*?CON\s*(\d+).*?INT\s*(\d+).*?WIS\s*(\d+).*?CHA\s*(\d+)'
         match = re.search(stat_pattern, text, re.IGNORECASE | re.DOTALL)
         if match:
-            fields["stats"] = {
-                "str": match.group(1),
-                "dex": match.group(2),
-                "con": match.group(3),
-                "int": match.group(4),
-                "wis": match.group(5),
-                "cha": match.group(6),
-            }
+            # Flatten stats into individual fields for proper processing
+            fields["str"] = match.group(1)
+            fields["dex"] = match.group(2)
+            fields["con"] = match.group(3)
+            fields["int"] = match.group(4)
+            fields["wis"] = match.group(5)
+            fields["cha"] = match.group(6)
         
         if fields:
             # Get or create pattern template
