@@ -338,7 +338,7 @@ class QueryClarificationService:
         """Check if query has context that disambiguates a term."""
         for context_type, indicators in self.context_indicators.items():
             for indicator in indicators:
-                if indicator in query and term in self.ambiguous_terms:
+                if indicator in query:
                     # Check if this context helps disambiguate
                     return True
         return False
