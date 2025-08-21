@@ -269,7 +269,45 @@ class SearchValidator:
                 validated.append(result)
                 
             except Exception as e:
+        validated = []
+        MAX_VALIDATION_ERRORS = 100
+        error_count = 0
+        for result in results:
+            try:
+                # Ensure required fields exist
+                if not isinstance(result, dict):
+                    logger.warning(f"Invalid result type: {type(result)}")
+                    error_count += 1
+                    if error_count >= MAX_VALIDATION_ERRORS:
+                        logger.warning(f"Maximum number of validation errors ({MAX_VALIDATION_ERRORS}) reached. Terminating validation early.")
+                        break
+                    continue
+                
+                if "content" not in result:
+                    logger.warning("Result missing content field")
+                    error_count += 1
+                    if error_count >= MAX_VALIDATION_ERRORS:
+                        logger.warning(f"Maximum number of validation errors ({MAX_VALIDATION_ERRORS}) reached. Terminating validation early.")
+                        break
+                    continue
+                
+                # Ensure content is not empty
+                if not result["content"] or not str(result["content"]).strip():
+                    logger.warning("Result has empty content")
+                    error_count += 1
+                    if error_count >= MAX_VALIDATION_ERRORS:
+                        logger.warning(f"Maximum number of validation errors ({MAX_VALIDATION_ERRORS}) reached. Terminating validation early.")
+                        break
+                    continue
+                
+                validated.append(result)
+                
+            except Exception as e:
                 logger.warning(f"Error validating result: {str(e)}")
+                error_count += 1
+                if error_count >= MAX_VALIDATION_ERRORS:
+                    logger.warning(f"Maximum number of validation errors ({MAX_VALIDATION_ERRORS}) reached. Terminating validation early.")
+                    break
                 continue
         
         return validated
