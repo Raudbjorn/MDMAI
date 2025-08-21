@@ -182,7 +182,7 @@ class QueryCompletionEngine:
         # Learning parameters
         self.min_frequency_threshold = 2
         self.learning_rate = 0.1
-        self.context_window = 5
+        self.context_window = context_window
         
         # Load existing model if available
         if self.model_dir:
