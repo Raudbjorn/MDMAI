@@ -1,14 +1,17 @@
 """Main entry point for TTRPG Assistant MCP Server."""
 
 import asyncio
+import json
 import sys
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
 from config.logging_config import setup_logging, get_logger
 from config.settings import settings
-from src.core.database import get_db_manager
+from src.core.database import ChromaDBManager
 from src.pdf_processing.pipeline import PDFProcessingPipeline
 
 # Set up logging
@@ -18,8 +21,8 @@ logger = get_logger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("TTRPG Assistant")
 
-# Initialize database manager
-db = get_db_manager()
+# Database manager will be initialized in main()
+db: Optional[ChromaDBManager] = None
 
 # Initialize PDF processing pipeline
 pdf_pipeline = PDFProcessingPipeline()
@@ -48,6 +51,24 @@ async def search(
     Returns:
         Dictionary containing search results with content, sources, and relevance scores
     """
+    # Check database initialization
+    if db is None:
+        return {
+            "status": "error",
+            "error": "Database not initialized",
+            "query": query,
+            "results": [],
+        }
+    
+    # Validate parameters
+    if max_results < 1 or max_results > 100:
+        return {
+            "status": "error",
+            "error": "max_results must be between 1 and 100",
+            "query": query,
+            "results": [],
+        }
+    
     try:
         logger.info(
             "Search request",
@@ -83,7 +104,7 @@ async def search(
                 "source": result["metadata"].get("source", "Unknown"),
                 "page": result["metadata"].get("page", None),
                 "section": result["metadata"].get("section", None),
-                "relevance_score": 1.0 - result.get("distance", 0) if result.get("distance") else None,
+                "relevance_score": 1.0 - result["distance"] if result.get("distance") is not None else None,
             })
         
         return {
@@ -122,6 +143,13 @@ async def add_source(
     Returns:
         Dictionary with status and source ID
     """
+    # Check database initialization
+    if db is None:
+        return {
+            "status": "error",
+            "error": "Database not initialized",
+        }
+    
     try:
         logger.info(
             "Adding source",
@@ -183,6 +211,11 @@ async def list_sources(
     Returns:
         List of available sources with metadata
     """
+    # Check database initialization
+    if db is None:
+        logger.error("Database not initialized")
+        return []
+    
     try:
         logger.info("Listing sources", system=system, source_type=source_type)
         
@@ -194,10 +227,10 @@ async def list_sources(
         if system:
             metadata_filter["system"] = system
         
-        # Get unique sources from the collection
+        # Get unique sources from the collection (limit to reasonable number)
         documents = db.list_documents(
             collection_name=collection_name,
-            limit=1000,
+            limit=100,  # Limit to 100 to prevent memory issues
             metadata_filter=metadata_filter if metadata_filter else None,
         )
         
@@ -241,9 +274,14 @@ async def create_campaign(
     Returns:
         Dictionary with campaign ID and status
     """
+    # Check database initialization
+    if db is None:
+        return {
+            "status": "error",
+            "error": "Database not initialized",
+        }
+    
     try:
-        import uuid
-        from datetime import datetime
         
         campaign_id = str(uuid.uuid4())
         
@@ -265,7 +303,7 @@ async def create_campaign(
         db.add_document(
             collection_name="campaigns",
             document_id=campaign_id,
-            content=str(campaign_data),
+            content=json.dumps(campaign_data),
             metadata={
                 "campaign_id": campaign_id,
                 "name": name,
@@ -305,6 +343,13 @@ async def get_campaign_data(
     Returns:
         Campaign data dictionary
     """
+    # Check database initialization
+    if db is None:
+        return {
+            "status": "error",
+            "error": "Database not initialized",
+        }
+    
     try:
         logger.info("Getting campaign data", campaign_id=campaign_id, data_type=data_type)
         
@@ -321,7 +366,6 @@ async def get_campaign_data(
             }
         
         # Parse campaign data
-        import json
         campaign_data = json.loads(campaign_doc["content"])
         
         # Filter by data type if specified
@@ -363,8 +407,9 @@ async def server_info() -> Dict[str, Any]:
     """
     try:
         stats = {}
-        for collection_name in db.collections.keys():
-            stats[collection_name] = db.get_collection_stats(collection_name)
+        if db is not None:
+            for collection_name in db.collections.keys():
+                stats[collection_name] = db.get_collection_stats(collection_name)
         
         return {
             "name": settings.app_name,
@@ -390,7 +435,15 @@ async def server_info() -> Dict[str, Any]:
 
 def main():
     """Main entry point for the MCP server."""
+    global db
+    
     try:
+        # Create necessary directories
+        settings.create_directories()
+        
+        # Initialize database manager
+        db = ChromaDBManager()
+        
         logger.info(
             "Starting TTRPG Assistant MCP Server",
             version="0.1.0",
@@ -399,7 +452,6 @@ def main():
         
         if settings.mcp_stdio_mode:
             # Run in stdio mode for MCP
-            import sys
             mcp.run(transport="stdio")
         else:
             # Run as HTTP server for testing
