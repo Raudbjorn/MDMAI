@@ -370,7 +370,10 @@ class QueryProcessor:
         
         # Filter out terms already in query
         query_words = set(query.lower().split())
-        vocab_terms = [term for term in vocab_terms if term.lower() not in query_words]
+        # Use set operations for efficient filtering
+        vocab_terms_map = {term.lower(): term for term in vocab_terms}
+        filtered_terms = set(vocab_terms_map.keys()) - query_words
+        vocab_terms = [vocab_terms_map[term] for term in filtered_terms]
         
         # Calculate similarities
         similarities = []
