@@ -1,6 +1,6 @@
 """Embedding generation module for content chunks."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
@@ -132,9 +132,9 @@ class EmbeddingGenerator:
             
         except Exception as e:
             logger.error(f"Failed to generate embedding", error=str(e))
-            # Return zero embedding on failure
-            embedding_dim = self.model.get_sentence_embedding_dimension()
-            return [0.0] * embedding_dim
+            # Raise exception instead of returning zero embeddings
+            # Zero embeddings would corrupt search quality
+            raise ValueError(f"Failed to generate embedding for text: {str(e)}")
     
     def _prepare_text_for_embedding(self, chunk: ContentChunk) -> str:
         """
@@ -164,10 +164,24 @@ class EmbeddingGenerator:
         # Combine with newlines
         prepared_text = "\n".join(text_parts)
         
-        # Truncate if too long (most models have max token limits)
-        max_length = 512  # Conservative limit for most models
+        # Truncate if too long using model's actual max sequence length
+        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
         if len(prepared_text) > max_length:
-            prepared_text = prepared_text[:max_length] + "..."
+        # Truncate if too long using model's actual max sequence length (by token count)
+        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
+        if hasattr(self.model, "tokenizer"):
+            # Tokenize, truncate, and decode back to text
+            tokens = self.model.tokenizer.encode(
+                prepared_text,
+                max_length=max_length,
+                truncation=True,
+                add_special_tokens=True
+            )
+            prepared_text = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
+        else:
+            # Fallback: truncate by character count if tokenizer is unavailable
+            if len(prepared_text) > max_length:
+                prepared_text = prepared_text[:max_length]
         
         return prepared_text
     

@@ -292,62 +292,6 @@ class PDFParser:
             for byte_block in iter(lambda: f.read(4096), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
-    
-    def detect_content_structure(self, text: str) -> Dict[str, Any]:
-        """
-        Detect structure elements in text (headers, lists, etc.).
-        
-        Args:
-            text: Text content to analyze
-            
-        Returns:
-            Dictionary of detected structure elements
-        """
-        structure = {
-            "headers": [],
-            "lists": [],
-            "paragraphs": [],
-            "possible_stats": [],
-        }
-        
-        lines = text.split('\n')
-        
-        for i, line in enumerate(lines):
-            line = line.strip()
-            
-            if not line:
-                continue
-            
-            # Detect headers (all caps or numbered sections)
-            if re.match(r'^[A-Z][A-Z\s]+$', line) and len(line) < 100:
-                structure["headers"].append({
-                    "line_num": i,
-                    "text": line,
-                    "type": "caps_header"
-                })
-            elif re.match(r'^\d+\.[\d.]*\s+\w+', line):
-                structure["headers"].append({
-                    "line_num": i,
-                    "text": line,
-                    "type": "numbered_header"
-                })
-            
-            # Detect lists
-            if re.match(r'^[\•\-\*]\s+', line) or re.match(r'^\d+\.\s+', line):
-                structure["lists"].append({
-                    "line_num": i,
-                    "text": line,
-                })
-            
-            # Detect possible stat blocks (e.g., "STR 15, DEX 12")
-            if re.search(r'\b(STR|DEX|CON|INT|WIS|CHA|AC|HP|CR)\b', line, re.IGNORECASE):
-                structure["possible_stats"].append({
-                    "line_num": i,
-                    "text": line,
-                })
-        
-        return structure
-    
     def extract_tables_as_markdown(self, tables: List[Dict]) -> List[str]:
         """
         Convert extracted tables to markdown format.

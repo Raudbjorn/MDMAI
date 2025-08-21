@@ -39,6 +39,7 @@ class ContentChunker:
         self,
         max_chunk_size: int = None,
         chunk_overlap: int = None,
+        min_content_threshold: int = 50,
     ):
         """
         Initialize content chunker.
@@ -46,9 +47,11 @@ class ContentChunker:
         Args:
             max_chunk_size: Maximum characters per chunk
             chunk_overlap: Number of characters to overlap between chunks
+            min_content_threshold: Minimum characters for a chunk to be considered substantial
         """
         self.max_chunk_size = max_chunk_size or settings.max_chunk_size
         self.chunk_overlap = chunk_overlap or settings.chunk_overlap
+        self.min_content_threshold = min_content_threshold
         self.current_section = None
         self.current_subsection = None
     
@@ -126,7 +129,7 @@ class ContentChunker:
             chunk_type = self._classify_content_type(block["text"])
             
             # Create chunk if it's substantial enough
-            if len(block["text"].strip()) > 50:  # Minimum content threshold
+            if len(block["text"].strip()) > self.min_content_threshold:
                 chunk = ContentChunk(
                     id=str(uuid.uuid4()),
                     content=block["text"],
@@ -266,7 +269,7 @@ class ContentChunker:
             return "rule"
         
         # Stat block detection
-        if re.search(r'\b(STR|DEX|CON|INT|WIS|CHA)\s*\d+', text):
+        if re.search(STAT_BLOCK_REGEX, text):
             return "stat_block"
         
         # Table detection
@@ -297,7 +300,7 @@ class ContentChunker:
             # Convert table to text representation
             table_text = self._table_to_text(table_info["data"])
             
-            if len(table_text) > 50:  # Minimum content threshold
+            if len(table_text) > self.min_content_threshold:
                 chunk = ContentChunk(
                     id=str(uuid.uuid4()),
                     content=table_text,
