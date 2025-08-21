@@ -1,6 +1,6 @@
 """Embedding generation module for content chunks."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
@@ -132,9 +132,9 @@ class EmbeddingGenerator:
             
         except Exception as e:
             logger.error(f"Failed to generate embedding", error=str(e))
-            # Return zero embedding on failure
-            embedding_dim = self.model.get_sentence_embedding_dimension()
-            return [0.0] * embedding_dim
+            # Raise exception instead of returning zero embeddings
+            # Zero embeddings would corrupt search quality
+            raise ValueError(f"Failed to generate embedding for text: {str(e)}")
     
     def _prepare_text_for_embedding(self, chunk: ContentChunk) -> str:
         """
