@@ -36,8 +36,8 @@ class SearchService:
         
         # Initialize new services
         self.clarification_service = QueryClarificationService()
-        self.analytics_service = SearchAnalytics(persist_dir="data/analytics")
-        self.completion_service = QueryCompletionService(model_dir="data/completion_models")
+        self.analytics_service = SearchAnalytics(persist_dir=settings.ANALYTICS_DIR)
+        self.completion_service = QueryCompletionService(model_dir=settings.COMPLETION_MODELS_DIR)
         
     @handle_search_errors()
     async def search(
