@@ -269,7 +269,7 @@ class ContentChunker:
             return "rule"
         
         # Stat block detection
-        if re.search(r'\b(STR|DEX|CON|INT|WIS|CHA)\s*\d+', text):
+        if re.search(STAT_BLOCK_REGEX, text):
             return "stat_block"
         
         # Table detection
