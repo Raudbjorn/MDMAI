@@ -348,7 +348,9 @@ class SearchAnalytics:
             cached_patterns.sort(key=lambda x: x["cache_hits"], reverse=True)
             
             # Calculate cache effectiveness (time saved)
-            avg_cached_latency = 0.01  # Assume cached queries are very fast
+            avg_cached_latency = self.current_metrics.average_cached_latency()
+            if avg_cached_latency == 0.0:
+                avg_cached_latency = DEFAULT_CACHED_QUERY_LATENCY
             avg_uncached_latency = self.current_metrics.total_latency / self.current_metrics.cache_misses if self.current_metrics.cache_misses > 0 else 0
             time_saved = self.current_metrics.cache_hits * (avg_uncached_latency - avg_cached_latency)
             
