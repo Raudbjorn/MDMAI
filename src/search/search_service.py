@@ -16,6 +16,9 @@ from src.search.error_handler import (
     handle_search_errors, SearchValidator, ErrorRecovery,
     QueryProcessingError, DatabaseError
 )
+from src.search.query_clarification import QueryClarificationService
+from src.search.search_analytics import SearchAnalytics
+from src.search.query_completion import QueryCompletionService
 
 logger = get_logger(__name__)
 
@@ -30,6 +33,11 @@ class SearchService:
         self.query_processor = QueryProcessor(db_client=self.db_client)
         self.cache_manager = SearchCacheManager()  # Use proper cache manager
         self.search_history = []  # Track search history for analytics
+        
+        # Initialize new services
+        self.clarification_service = QueryClarificationService()
+        self.analytics_service = SearchAnalytics(persist_dir="data/analytics")
+        self.completion_service = QueryCompletionService(model_dir="data/completion_models")
         
     @handle_search_errors()
     async def search(
@@ -845,3 +853,246 @@ class SearchService:
         for collection in ["rulebooks", "flavor_sources"]:
             self.search_engine.update_index(collection)
         logger.info("Search indices updated")
+    
+    # New methods for query clarification
+    async def search_with_clarification(
+        self,
+        query: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Search with interactive query clarification.
+        
+        Args:
+            query: Search query
+            **kwargs: Additional search parameters
+            
+        Returns:
+            Search results or clarification request
+        """
+        # Check if query is ambiguous
+        ambiguity_info = self.clarification_service.detect_ambiguity(
+            query, 
+            search_context=kwargs
+        )
+        
+        if ambiguity_info["is_ambiguous"]:
+            # Generate clarification questions
+            questions = self.clarification_service.generate_clarification_questions(
+                query,
+                ambiguity_info,
+                available_content=self._get_available_content_types()
+            )
+            
+            # Generate query refinements
+            refinements = self.clarification_service.generate_query_refinements(
+                query,
+                user_intent=self.query_processor.extract_intent(query)
+            )
+            
+            return {
+                "requires_clarification": True,
+                "original_query": query,
+                "ambiguity_score": ambiguity_info["ambiguity_score"],
+                "clarification_questions": questions,
+                "suggested_refinements": refinements,
+                "message": "Your query needs clarification for better results"
+            }
+        
+        # Proceed with normal search
+        results = await self.search(query, **kwargs)
+        
+        # Learn from successful query
+        if results.get("total_results", 0) > 0:
+            avg_relevance = sum(r.get("relevance_score", 0) for r in results["results"]) / len(results["results"]) if results["results"] else 0
+            self.clarification_service.learn_from_feedback(
+                query,
+                {},
+                avg_relevance
+            )
+        
+        return results
+    
+    async def apply_clarification_and_search(
+        self,
+        original_query: str,
+        clarification_responses: Dict[str, Any],
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Apply clarification responses and perform search.
+        
+        Args:
+            original_query: Original ambiguous query
+            clarification_responses: User's clarification responses
+            **kwargs: Additional search parameters
+            
+        Returns:
+            Search results with refined query
+        """
+        # Apply clarification to refine query
+        refined_query = self.clarification_service.apply_clarification(
+            original_query,
+            clarification_responses
+        )
+        
+        # Perform search with refined query
+        results = await self.search(refined_query, **kwargs)
+        results["original_query"] = original_query
+        results["refined_query"] = refined_query
+        results["clarification_applied"] = True
+        
+        # Learn from the clarification
+        if results.get("total_results", 0) > 0:
+            avg_relevance = sum(r.get("relevance_score", 0) for r in results["results"]) / len(results["results"]) if results["results"] else 0
+            self.clarification_service.learn_from_feedback(
+                original_query,
+                clarification_responses,
+                avg_relevance
+            )
+        
+        return results
+    
+    # New methods for query completion
+    def get_query_suggestions(
+        self,
+        partial_query: str,
+        max_suggestions: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Get query completion suggestions.
+        
+        Args:
+            partial_query: Partial query string
+            max_suggestions: Maximum number of suggestions
+            
+        Returns:
+            List of query suggestions
+        """
+        suggestions = self.completion_service.get_suggestions(
+            partial_query,
+            max_suggestions
+        )
+        
+        # Add next word predictions
+        next_words = self.completion_service.predict_next_word(partial_query)
+        for word in next_words:
+            suggestions.append({
+                "completion": f"{partial_query} {word}",
+                "type": "next_word",
+                "confidence": 0.6
+            })
+        
+        return suggestions[:max_suggestions]
+    
+    # Enhanced search method with analytics tracking
+    async def search_with_analytics(
+        self,
+        query: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Search with detailed analytics tracking.
+        
+        Args:
+            query: Search query
+            **kwargs: Additional search parameters
+            
+        Returns:
+            Search results with analytics tracked
+        """
+        start_time = time.time()
+        error = None
+        
+        try:
+            # Perform search
+            results = await self.search(query, **kwargs)
+            
+            # Track successful search
+            latency = time.time() - start_time
+            relevance_scores = [r.get("relevance_score", 0) for r in results.get("results", [])]
+            
+            self.analytics_service.track_search(
+                query=query,
+                latency=latency,
+                result_count=results.get("total_results", 0),
+                relevance_scores=relevance_scores,
+                metadata={
+                    "filters": kwargs,
+                    "from_cache": results.get("from_cache", False)
+                },
+                from_cache=results.get("from_cache", False)
+            )
+            
+            # Learn from successful query
+            self.completion_service.learn(query, successful=True)
+            
+            return results
+            
+        except Exception as e:
+            error = str(e)
+            latency = time.time() - start_time
+            
+            # Track failed search
+            self.analytics_service.track_search(
+                query=query,
+                latency=latency,
+                result_count=0,
+                relevance_scores=[],
+                error=error
+            )
+            
+            # Learn from failed query
+            self.completion_service.learn(query, successful=False)
+            
+            raise
+    
+    # Analytics getter methods
+    def get_detailed_analytics(self, report_type: str = "summary") -> Dict[str, Any]:
+        """
+        Get detailed search analytics.
+        
+        Args:
+            report_type: Type of report ('summary', 'detailed', 'performance')
+            
+        Returns:
+            Analytics report
+        """
+        report = self.analytics_service.generate_report(report_type)
+        
+        # Add completion service stats
+        report["completion_stats"] = self.completion_service.get_stats()
+        
+        # Add clarification stats
+        report["clarification_stats"] = self.clarification_service.get_clarification_stats()
+        
+        return report
+    
+    def get_performance_metrics(self, time_range: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get search performance metrics.
+        
+        Args:
+            time_range: Time range for metrics
+            
+        Returns:
+            Performance metrics
+        """
+        return self.analytics_service.get_performance_metrics(time_range)
+    
+    def get_query_insights(self) -> Dict[str, Any]:
+        """
+        Get insights about search queries.
+        
+        Returns:
+            Query insights
+        """
+        return self.analytics_service.get_query_insights()
+    
+    def _get_available_content_types(self) -> List[str]:
+        """Get list of available content types."""
+        # This would query the database for available content types
+        return [
+            "spell", "monster", "item", "rule", "class",
+            "feat", "race", "background", "condition"
+        ]
