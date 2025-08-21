@@ -11,7 +11,7 @@ from config.settings import settings
 from src.search.hybrid_search import HybridSearchEngine, SearchResult
 from src.search.query_processor import QueryProcessor
 from src.search.cache_manager import SearchCacheManager
-from src.core.database import ChromaDBClient
+from src.core.database import ChromaDBManager
 from src.search.error_handler import (
     handle_search_errors, SearchValidator, ErrorRecovery,
     QueryProcessingError, DatabaseError
@@ -26,7 +26,7 @@ class SearchService:
     def __init__(self):
         """Initialize search service."""
         self.search_engine = HybridSearchEngine()
-        self.db_client = ChromaDBClient()
+        self.db_client = ChromaDBManager()
         self.query_processor = QueryProcessor(db_client=self.db_client)
         self.cache_manager = SearchCacheManager()  # Use proper cache manager
         self.search_history = []  # Track search history for analytics
@@ -248,7 +248,7 @@ class SearchService:
             "scores": {
                 "semantic": result.semantic_score,
                 "keyword": result.keyword_score,
-                "combined": result.score,
+                "combined": result.combined_score,
             },
             "matching_terms": [],
             "relevance_factors": [],
@@ -315,9 +315,9 @@ class SearchService:
             })
         
         # Calculate confidence level
-        if result.score >= 0.8:
+        if result.combined_score >= 0.8:
             explanation["confidence"] = "high"
-        elif result.score >= 0.6:
+        elif result.combined_score >= 0.6:
             explanation["confidence"] = "medium"
         else:
             explanation["confidence"] = "low"
@@ -332,10 +332,10 @@ class SearchService:
             explanation["summary"] = (
                 f"{explanation['confidence'].capitalize()} confidence match. "
                 f"{primary_factor['description']}. "
-                f"Overall relevance: {result.score:.1%}"
+                f"Overall relevance: {result.combined_score:.1%}"
             )
         else:
-            explanation["summary"] = f"Relevance score: {result.score:.1%}"
+            explanation["summary"] = f"Relevance score: {result.combined_score:.1%}"
         
         return explanation
     
@@ -499,7 +499,10 @@ class SearchService:
         
         try:
             # Get campaign collection
-            campaign_collection = self.db_client.get_collection("campaigns")
+            if "campaigns" not in self.db_client.collections:
+                logger.warning("Campaigns collection not found")
+                return campaign_refs
+            campaign_collection = self.db_client.collections["campaigns"]
             
             # Search within campaign data
             campaign_results = campaign_collection.query(
@@ -551,7 +554,10 @@ class SearchService:
         
         try:
             # Get session collection
-            session_collection = self.db_client.get_collection("sessions")
+            if "sessions" not in self.db_client.collections:
+                logger.warning("Sessions collection not found")
+                return session_refs
+            session_collection = self.db_client.collections["sessions"]
             
             # Search within session data
             session_results = session_collection.query(
@@ -755,7 +761,7 @@ class SearchService:
                 "average_results": 0,
                 "popular_queries": [],
                 "cache_stats": {
-                    "size": len(self.search_cache),
+                    "size": self.cache_manager.query_cache.size(),
                     "hit_rate": 0,
                 },
             }

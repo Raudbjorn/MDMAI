@@ -1,6 +1,6 @@
 """Cache management with LRU eviction policy."""
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from collections import OrderedDict
 import time
 import sys
@@ -214,22 +214,31 @@ class SearchCacheManager:
     
     def __init__(self):
         """Initialize cache manager with separate caches."""
+        # Allocate memory proportionally from the global limit
+        total_memory = settings.cache_max_memory_mb
+        
+        # Allocate memory as percentages of total
+        # Query cache: 30%, Embedding cache: 50%, Cross-ref cache: 20%
+        query_memory = int(total_memory * 0.3)
+        embedding_memory = int(total_memory * 0.5)
+        cross_ref_memory = int(total_memory * 0.2)
+        
         # Different caches for different search types
         self.query_cache = LRUCache(
             max_size=settings.search_cache_size,
-            max_memory_mb=50,
+            max_memory_mb=query_memory,
             ttl_seconds=settings.cache_ttl_seconds
         )
         
         self.embedding_cache = LRUCache(
             max_size=500,
-            max_memory_mb=100,
+            max_memory_mb=embedding_memory,
             ttl_seconds=3600 * 24  # 24 hours for embeddings
         )
         
         self.cross_ref_cache = LRUCache(
             max_size=200,
-            max_memory_mb=20,
+            max_memory_mb=cross_ref_memory,
             ttl_seconds=1800  # 30 minutes for cross-references
         )
     

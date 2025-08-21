@@ -294,10 +294,7 @@ class HybridSearchEngine:
             List of search results
         """
         try:
-            # Generate query embedding
-            query_embedding = self.embedding_generator.generate_single_embedding(query)
-            
-            # Search database
+            # Search database (ChromaDB will generate embeddings internally)
             db_results = self.db.search(
                 collection_name=collection_name,
                 query=query,

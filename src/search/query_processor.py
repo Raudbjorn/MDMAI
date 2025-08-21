@@ -8,7 +8,7 @@ import numpy as np
 
 from config.logging_config import get_logger
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
-from src.core.database import ChromaDBClient
+from src.core.database import ChromaDBManager
 
 logger = get_logger(__name__)
 
@@ -17,7 +17,7 @@ class QueryProcessor:
     """Processes and enhances search queries."""
     
     def __init__(self, embedding_generator: Optional[EmbeddingGenerator] = None,
-                 db_client: Optional[ChromaDBClient] = None):
+                 db_client: Optional[ChromaDBManager] = None):
         """Initialize query processor with optional embedding support."""
         # Initialize embedding generator and database client
         self.embedding_generator = embedding_generator or EmbeddingGenerator()
@@ -317,7 +317,11 @@ class QueryProcessor:
             
             for collection_name in collections:
                 try:
-                    collection = self.db_client.get_collection(collection_name)
+                    # Access collection from ChromaDBManager's collections dictionary
+                    if collection_name not in self.db_client.collections:
+                        logger.debug(f"Collection {collection_name} not found")
+                        continue
+                    collection = self.db_client.collections[collection_name]
                     
                     # Search for similar embeddings
                     results = collection.query(

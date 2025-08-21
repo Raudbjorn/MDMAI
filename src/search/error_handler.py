@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, Type
 from functools import wraps
 import traceback
 import asyncio
+import time
 
 from config.logging_config import get_logger
 
@@ -161,7 +162,6 @@ class ErrorRecovery:
                     last_error = e
                     if attempt < max_retries - 1:
                         logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying...")
-                        import time
                         time.sleep(delay * (attempt + 1))
                     else:
                         logger.error(f"All {max_retries} attempts failed")
