@@ -218,7 +218,6 @@ async def create_campaign(
         Dictionary with campaign ID and status
     """
     try:
-        import uuid
         
         campaign_id = str(uuid.uuid4())
         
