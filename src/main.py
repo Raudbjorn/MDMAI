@@ -10,6 +10,7 @@ from config.logging_config import setup_logging, get_logger
 from config.settings import settings
 from src.core.database import get_db_manager
 from src.pdf_processing.pipeline import PDFProcessingPipeline
+from src.search.search_service import SearchService
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -24,6 +25,9 @@ db = get_db_manager()
 # Initialize PDF processing pipeline
 pdf_pipeline = PDFProcessingPipeline()
 
+# Initialize search service
+search_service = SearchService()
+
 
 @mcp.tool()
 async def search(
@@ -33,6 +37,7 @@ async def search(
     content_type: Optional[str] = None,
     max_results: int = 5,
     use_hybrid: bool = True,
+    explain_results: bool = False,
 ) -> Dict[str, Any]:
     """
     Search across TTRPG content with semantic and keyword matching.
@@ -44,6 +49,7 @@ async def search(
         content_type: Filter by content type ('rule', 'spell', 'monster', etc.)
         max_results: Maximum number of results to return
         use_hybrid: Whether to use hybrid search (semantic + keyword)
+        explain_results: Whether to include explanations for why results matched
     
     Returns:
         Dictionary containing search results with content, sources, and relevance scores
@@ -57,40 +63,26 @@ async def search(
             max_results=max_results,
         )
         
-        # Determine which collection to search
-        collection_name = "flavor_sources" if source_type == "flavor" else "rulebooks"
-        
-        # Build metadata filter
-        metadata_filter = {}
-        if rulebook:
-            metadata_filter["rulebook"] = rulebook
-        if content_type:
-            metadata_filter["content_type"] = content_type
-        
-        # Perform search
-        results = db.search(
-            collection_name=collection_name,
+        # Use the search service
+        result = await search_service.search(
             query=query,
-            n_results=max_results,
-            metadata_filter=metadata_filter if metadata_filter else None,
+            rulebook=rulebook,
+            source_type=source_type,
+            content_type=content_type,
+            max_results=max_results,
+            use_hybrid=use_hybrid,
+            explain_results=explain_results,
         )
-        
-        # Format results
-        formatted_results = []
-        for result in results:
-            formatted_results.append({
-                "content": result["content"],
-                "source": result["metadata"].get("source", "Unknown"),
-                "page": result["metadata"].get("page", None),
-                "section": result["metadata"].get("section", None),
-                "relevance_score": 1.0 - result.get("distance", 0) if result.get("distance") else None,
-            })
         
         return {
             "status": "success",
-            "query": query,
-            "results": formatted_results,
-            "total_results": len(formatted_results),
+            "query": result["query"],
+            "processed_query": result["processed_query"],
+            "results": result["results"],
+            "total_results": result["total_results"],
+            "search_time": result["search_time"],
+            "suggestions": result["suggestions"],
+            "filters_applied": result["filters_applied"],
         }
         
     except Exception as e:
@@ -347,6 +339,72 @@ async def get_campaign_data(
         
     except Exception as e:
         logger.error("Failed to get campaign data", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def search_analytics() -> Dict[str, Any]:
+    """
+    Get search analytics and statistics.
+    
+    Returns:
+        Search analytics including popular queries and performance metrics
+    """
+    try:
+        analytics = search_service.get_search_analytics()
+        return {
+            "status": "success",
+            **analytics,
+        }
+    except Exception as e:
+        logger.error("Failed to get search analytics", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def clear_search_cache() -> Dict[str, str]:
+    """
+    Clear the search result cache.
+    
+    Returns:
+        Status message
+    """
+    try:
+        search_service.clear_cache()
+        return {
+            "status": "success",
+            "message": "Search cache cleared successfully",
+        }
+    except Exception as e:
+        logger.error("Failed to clear cache", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
+@mcp.tool()
+async def update_search_indices() -> Dict[str, str]:
+    """
+    Update search indices for all collections.
+    
+    Returns:
+        Status message
+    """
+    try:
+        search_service.update_indices()
+        return {
+            "status": "success",
+            "message": "Search indices updated successfully",
+        }
+    except Exception as e:
+        logger.error("Failed to update indices", error=str(e))
         return {
             "status": "error",
             "error": str(e),
