@@ -109,7 +109,7 @@ class SearchAnalytics:
         self.daily_metrics = defaultdict(SearchMetrics)
         
         # Performance thresholds
-        self.latency_threshold = 2.0  # seconds
+        self.latency_threshold = latency_threshold  # seconds
         self.relevance_threshold = 0.5
         
         # Load persisted data if available
