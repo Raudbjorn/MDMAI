@@ -29,7 +29,7 @@ class ChromaDBManager:
         try:
             # Configure ChromaDB settings
             chroma_settings = ChromaSettings(
-                chroma_db_impl="duckdb+parquet",
+                chroma_db_impl=settings.chroma_db_impl,
                 persist_directory=str(settings.chroma_db_path),
                 anonymized_telemetry=False,
             )
@@ -418,15 +418,3 @@ class ChromaDBManager:
         except Exception as e:
             logger.error("Failed to persist database", error=str(e))
             raise
-
-
-# Global database manager instance
-db_manager = None
-
-
-def get_db_manager() -> ChromaDBManager:
-    """Get or create the global database manager instance."""
-    global db_manager
-    if db_manager is None:
-        db_manager = ChromaDBManager()
-    return db_manager

@@ -4,7 +4,12 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseSettings, Field
+from pydantic import Field
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    # Fallback for older pydantic versions
+    from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -22,6 +27,7 @@ class Settings(BaseSettings):
     # Database
     chroma_db_path: Path = Field(default=Path("./data/chromadb"), env="CHROMA_DB_PATH")
     chroma_collection_prefix: str = Field(default="ttrpg_", env="CHROMA_COLLECTION_PREFIX")
+    chroma_db_impl: str = Field(default="duckdb+parquet", env="CHROMA_DB_IMPL")
     
     # PDF Processing
     max_chunk_size: int = Field(default=1000, env="MAX_CHUNK_SIZE")
@@ -52,18 +58,19 @@ class Settings(BaseSettings):
         case_sensitive = False
     
     def __init__(self, **kwargs):
-        """Initialize settings and create necessary directories."""
+        """Initialize settings."""
         super().__init__(**kwargs)
-        
-        # Create necessary directories
-        self.chroma_db_path.mkdir(parents=True, exist_ok=True)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Validate weights sum to 1.0
         if abs(self.semantic_weight + self.keyword_weight - 1.0) > 0.01:
             raise ValueError(
                 f"Semantic weight ({self.semantic_weight}) + Keyword weight ({self.keyword_weight}) must equal 1.0"
             )
+    
+    def create_directories(self):
+        """Create necessary directories. Should be called at application startup."""
+        self.chroma_db_path.mkdir(parents=True, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Global settings instance
