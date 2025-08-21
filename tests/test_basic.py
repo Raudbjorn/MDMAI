@@ -23,7 +23,10 @@ def test_database_initialization(mock_client):
     # Verify client was created
     assert db.client is not None
     assert db.embedding_function is not None
-    assert len(db.collections) == 5  # Should have 5 collections
+    # Check for the presence of expected collection names instead of hard-coding the count
+    expected_collections = ['rulebooks', 'campaigns', 'characters', 'monsters', 'items']  # Update as appropriate
+    for name in expected_collections:
+        assert name in db.collections
 
 
 @pytest.mark.asyncio
