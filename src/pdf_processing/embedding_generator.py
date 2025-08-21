@@ -167,7 +167,21 @@ class EmbeddingGenerator:
         # Truncate if too long using model's actual max sequence length
         max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
         if len(prepared_text) > max_length:
-            prepared_text = prepared_text[:max_length]
+        # Truncate if too long using model's actual max sequence length (by token count)
+        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
+        if hasattr(self.model, "tokenizer"):
+            # Tokenize, truncate, and decode back to text
+            tokens = self.model.tokenizer.encode(
+                prepared_text,
+                max_length=max_length,
+                truncation=True,
+                add_special_tokens=True
+            )
+            prepared_text = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
+        else:
+            # Fallback: truncate by character count if tokenizer is unavailable
+            if len(prepared_text) > max_length:
+                prepared_text = prepared_text[:max_length]
         
         return prepared_text
     
