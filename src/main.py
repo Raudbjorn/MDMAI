@@ -524,8 +524,9 @@ async def create_personality_profile(
             if base:
                 base_profile = base.profile_id
         
-        # Create profile
-        profile = personality_manager.create_profile(
+        # Create profile (run in thread for async compatibility)
+        profile = await asyncio.to_thread(
+            personality_manager.create_profile,
             name=name,
             system=system,
             source_text=source_text,
@@ -564,7 +565,7 @@ async def list_personality_profiles(
         List of personality profiles
     """
     try:
-        profiles = personality_manager.list_profiles(system)
+        profiles = await asyncio.to_thread(personality_manager.list_profiles, system)
         
         profile_list = []
         for profile in profiles:
@@ -619,7 +620,10 @@ async def set_active_personality(
             }
         
         # Set as active
-        success = personality_manager.set_active_profile(profile.profile_id)
+        success = await asyncio.to_thread(
+            personality_manager.set_active_profile,
+            profile.profile_id
+        )
         
         if success:
             return {
@@ -671,7 +675,11 @@ async def apply_personality(
                 }
         
         # Apply personality to content
-        transformed = response_generator.generate_response(content, profile)
+        transformed = await asyncio.to_thread(
+            response_generator.generate_response,
+            content,
+            profile
+        )
         
         return {
             "status": "success",

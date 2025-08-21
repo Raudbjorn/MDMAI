@@ -16,6 +16,8 @@ logger = get_logger(__name__)
 class PersonalityProfile:
     """Represents a personality profile for response generation."""
     
+    PROFILE_VERSION = "1.0.0"
+    
     def __init__(
         self,
         profile_id: str,
@@ -29,6 +31,7 @@ class PersonalityProfile:
         characteristics: List[str],
         sentiment: Dict[str, float] = None,
         custom_traits: Dict[str, Any] = None,
+        version: str = None,
     ):
         """
         Initialize personality profile.
@@ -57,6 +60,7 @@ class PersonalityProfile:
         self.characteristics = characteristics
         self.sentiment = sentiment or {"polarity": 0, "subjectivity": 0.5, "mood": "neutral"}
         self.custom_traits = custom_traits or {}
+        self.version = version or self.PROFILE_VERSION
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
         self.usage_count = 0
@@ -75,6 +79,7 @@ class PersonalityProfile:
             "characteristics": self.characteristics,
             "sentiment": self.sentiment,
             "custom_traits": self.custom_traits,
+            "version": self.version,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
             "usage_count": self.usage_count,
@@ -95,6 +100,7 @@ class PersonalityProfile:
             characteristics=data["characteristics"],
             sentiment=data.get("sentiment"),
             custom_traits=data.get("custom_traits"),
+            version=data.get("version"),
         )
         
         # Restore timestamps
@@ -111,9 +117,13 @@ class PersonalityProfile:
 class PersonalityManager:
     """Manages personality profiles for TTRPG content."""
     
-    def __init__(self):
-        """Initialize personality manager."""
-        self.profiles_dir = settings.cache_dir / "personality_profiles"
+    def __init__(self, profiles_dir: Optional[Path] = None):
+        """Initialize personality manager.
+        
+        Args:
+            profiles_dir: Optional custom directory for profiles
+        """
+        self.profiles_dir = profiles_dir or (settings.cache_dir / "personality_profiles")
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
         
         self.profiles: Dict[str, PersonalityProfile] = {}

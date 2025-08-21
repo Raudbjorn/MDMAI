@@ -20,7 +20,8 @@ class PersonalityExtractor:
             # Load spaCy model for NLP
             self.nlp = spacy.load("en_core_web_sm")
         except OSError:
-            logger.warning("spaCy model not found, using basic extraction")
+            logger.warning("spaCy model 'en_core_web_sm' not found. Using basic extraction.")
+            logger.info("To enable advanced NLP features, install with: python -m spacy download en_core_web_sm")
             self.nlp = None
         
         # Tone indicators
@@ -116,10 +117,15 @@ class PersonalityExtractor:
         
         return profile
     
-    def _split_sentences(self, text: str) -> List[str]:
-        """Split text into sentences."""
+    def _split_sentences(self, text: str, max_chars: int = 100000) -> List[str]:
+        """Split text into sentences.
+        
+        Args:
+            text: Text to split
+            max_chars: Maximum characters to process (default 100k)
+        """
         if self.nlp:
-            doc = self.nlp(text[:1000000])  # Limit for performance
+            doc = self.nlp(text[:max_chars])  # Limit for performance
             return [sent.text.strip() for sent in doc.sents]
         else:
             # Basic sentence splitting
