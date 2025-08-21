@@ -28,7 +28,7 @@ class TestPDFParser:
         assert hasattr(parser, 'extract_content')
         assert hasattr(parser, 'extract_tables')
     
-    @patch('src.pdf_processing.pdf_parser.PyPDF2.PdfReader')
+    @patch('src.pdf_processing.pdf_parser.PdfReader')
     def test_extract_with_pypdf(self, mock_pdf_reader, parser):
         """Test extraction using PyPDF2."""
         # Mock PDF reader
