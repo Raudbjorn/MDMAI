@@ -295,7 +295,6 @@ async def get_campaign_data(
             }
         
         # Parse campaign data
-        import json
         campaign_data = json.loads(campaign_doc["content"])
         
         # Filter by data type if specified
