@@ -219,7 +219,6 @@ async def create_campaign(
     """
     try:
         import uuid
-        from datetime import datetime
         
         campaign_id = str(uuid.uuid4())
         
