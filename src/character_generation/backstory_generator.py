@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import field
 
 from .models import Character, Backstory, CharacterClass, CharacterRace
+from .validators import ValidationError
 
 logger = logging.getLogger(__name__)
 

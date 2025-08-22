@@ -7,6 +7,7 @@ from .character_generator import CharacterGenerator
 from .backstory_generator import BackstoryGenerator
 from .npc_generator import NPCGenerator
 from .models import Character, NPC
+from .validators import CharacterValidator, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,20 @@ def register_character_tools(mcp_server):
             Complete character data including stats, equipment, and backstory
         """
         try:
-            logger.info(f"Generating character for {system} at level {level}")
+            # Sanitize inputs
+            sanitized_params = CharacterValidator.sanitize_input(
+                {
+                    "system": system,
+                    "level": level,
+                    "character_class": character_class,
+                    "race": race,
+                    "name": name,
+                    "backstory_hints": backstory_hints
+                },
+                Character
+            )
+            
+            logger.info(f"Generating character for {sanitized_params.get('system', system)} at level {sanitized_params.get('level', level)}")
             
             if not _character_generator:
                 return {
@@ -90,14 +104,14 @@ def register_character_tools(mcp_server):
                     "error": "Character generator not initialized"
                 }
             
-            # Generate base character
+            # Generate base character with sanitized inputs
             character = _character_generator.generate_character(
-                system=system,
-                level=level,
-                character_class=character_class,
-                race=race,
-                name=name,
-                backstory_hints=backstory_hints,
+                system=sanitized_params.get('system', system),
+                level=sanitized_params.get('level', level),
+                character_class=sanitized_params.get('character_class', character_class),
+                race=sanitized_params.get('race', race),
+                name=sanitized_params.get('name', name),
+                backstory_hints=sanitized_params.get('backstory_hints', backstory_hints),
                 stat_generation=stat_generation
             )
             
@@ -135,6 +149,12 @@ def register_character_tools(mcp_server):
                 "character": character.to_dict()
             }
             
+        except ValidationError as e:
+            logger.error(f"Validation error during character generation: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Validation error: {str(e)}"
+            }
         except Exception as e:
             logger.error(f"Character generation failed: {str(e)}")
             return {
@@ -172,7 +192,20 @@ def register_character_tools(mcp_server):
             Complete NPC data including stats, personality, and backstory
         """
         try:
-            logger.info(f"Generating {importance} NPC with role {role}")
+            # Sanitize inputs
+            sanitized_params = CharacterValidator.sanitize_input(
+                {
+                    "system": system,
+                    "role": role,
+                    "level": level,
+                    "name": name,
+                    "importance": importance,
+                    "party_level": party_level
+                },
+                NPC
+            )
+            
+            logger.info(f"Generating {sanitized_params.get('importance', importance)} NPC with role {sanitized_params.get('role', role)}")
             
             if not _npc_generator:
                 return {
@@ -180,15 +213,15 @@ def register_character_tools(mcp_server):
                     "error": "NPC generator not initialized"
                 }
             
-            # Generate NPC
+            # Generate NPC with sanitized inputs
             npc = _npc_generator.generate_npc(
-                system=system,
-                role=role,
-                level=level,
-                name=name,
+                system=sanitized_params.get('system', system),
+                role=sanitized_params.get('role', role),
+                level=sanitized_params.get('level', level),
+                name=sanitized_params.get('name', name),
                 personality_traits=personality_traits,
-                importance=importance,
-                party_level=party_level,
+                importance=sanitized_params.get('importance', importance),
+                party_level=sanitized_params.get('party_level', party_level),
                 backstory_depth=backstory_depth
             )
             
@@ -218,6 +251,12 @@ def register_character_tools(mcp_server):
                 "npc": npc.to_dict()
             }
             
+        except ValidationError as e:
+            logger.error(f"Validation error during NPC generation: {str(e)}")
+            return {
+                "success": False,
+                "error": f"Validation error: {str(e)}"
+            }
         except Exception as e:
             logger.error(f"NPC generation failed: {str(e)}")
             return {

@@ -17,6 +17,7 @@ from .models import (
 )
 from .character_generator import CharacterGenerator
 from .backstory_generator import BackstoryGenerator
+from .validators import CharacterValidator, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,15 @@ class NPCGenerator:
         Returns:
             Complete NPC object
         """
+        # Validate input parameters
+        if level is not None:
+            param_errors = CharacterValidator.validate_generation_params(
+                level=level,
+                system=system
+            )
+            if param_errors:
+                raise ValidationError(f"Invalid parameters: {'; '.join(param_errors)}")
+        
         logger.info(f"Generating {importance} NPC with role {role} for {system}")
         
         # Create base NPC
@@ -268,6 +278,15 @@ class NPCGenerator:
         # Set faction if relevant
         if importance == "major" or npc.role in [NPCRole.NOBLE, NPCRole.SOLDIER, NPCRole.CRIMINAL]:
             npc.faction = self._generate_faction(npc.role)
+        
+        # Validate the generated NPC
+        validation_errors = CharacterValidator.validate_npc(npc)
+        if validation_errors:
+            logger.warning(f"NPC validation issues: {validation_errors}")
+            # Fix critical errors
+            for error in validation_errors:
+                if "must have" in error.lower():
+                    raise ValidationError(f"Critical validation error: {error}")
         
         logger.info(f"NPC generation complete: {npc.name} ({npc.get_role_name()})")
         return npc

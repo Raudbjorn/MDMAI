@@ -13,6 +13,7 @@ from .models import (
     Equipment,
     Backstory
 )
+from .validators import CharacterValidator, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,16 @@ class CharacterGenerator:
         Returns:
             Complete Character object
         """
+        # Validate input parameters
+        param_errors = CharacterValidator.validate_generation_params(
+            level=level,
+            system=system,
+            character_class=character_class,
+            race=race
+        )
+        if param_errors:
+            raise ValidationError(f"Invalid parameters: {'; '.join(param_errors)}")
+        
         logger.info(f"Generating character for {system} at level {level}")
         
         # Create base character
@@ -226,6 +237,15 @@ class CharacterGenerator:
             character,
             backstory_hints
         )
+        
+        # Validate the generated character
+        validation_errors = CharacterValidator.validate_character(character)
+        if validation_errors:
+            logger.warning(f"Character validation issues: {validation_errors}")
+            # Try to fix critical errors
+            for error in validation_errors:
+                if "must have stats" in error:
+                    raise ValidationError(f"Critical validation error: {error}")
         
         logger.info(f"Character generation complete: {character.name}")
         return character
