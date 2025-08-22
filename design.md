@@ -5,6 +5,20 @@
 ### Overview
 The TTRPG Assistant is built as a Model Context Protocol (MCP) server that operates locally via stdin/stdout communication. It provides a comprehensive assistant for Dungeon Masters and Game Runners with fast access to rules, campaign data, and AI-powered content generation.
 
+### Implementation Phases
+The project follows a phased approach to ensure incremental delivery and testing:
+
+1. **Phase 1**: Core Infrastructure - Database setup, basic MCP server
+2. **Phase 2**: PDF Processing - Content extraction, chunking, indexing
+3. **Phase 3**: Search System - Hybrid search, query processing, caching
+4. **Phase 4**: Personality System - Style extraction and application
+5. **Phase 5**: Campaign Management - CRUD operations, versioning, linking
+6. **Phase 6**: Session Management - Game session tracking, initiative
+7. **Phase 7**: Character Generation - PC/NPC generation with personalities
+8. **Phase 8**: Testing & Optimization - Performance tuning, test coverage
+
+Each phase builds on the previous ones, with clear interfaces between components.
+
 ### Core Components
 
 #### 1. MCP Server Layer
@@ -16,6 +30,26 @@ The TTRPG Assistant is built as a Model Context Protocol (MCP) server that opera
 ```python
 from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("TTRPG")
+```
+
+**IMPORTANT: MCP Server Singleton Pattern**
+- There must be ONLY ONE FastMCP instance in the entire application
+- Initialize it in main.py and pass it to modules that need to register tools
+- DO NOT create separate FastMCP instances in module files
+- Use a registration pattern for module tools:
+
+```python
+# In module files (e.g., campaign/mcp_tools.py)
+def register_campaign_tools(mcp_server):
+    """Register tools with the main MCP server."""
+    mcp_server.tool()(create_campaign)
+    mcp_server.tool()(get_campaign_data)
+    # ... register other tools
+
+# In main.py
+from src.campaign import register_campaign_tools
+mcp = FastMCP("TTRPG")
+register_campaign_tools(mcp)
 ```
 
 #### 2. Database Layer
@@ -315,6 +349,143 @@ async def set_active_personality(
 5. **Index Update**: Update search indices
 6. **Confirmation**: Return success with version info
 
+## Implementation Guidelines
+
+### Project Structure
+```
+src/
+├── main.py                 # Single MCP server instance, tool registration
+├── core/
+│   ├── __init__.py
+│   └── database.py         # ChromaDB manager singleton
+├── campaign/
+│   ├── __init__.py        # Module exports
+│   ├── models.py          # Data models (Campaign, Character, etc.)
+│   ├── campaign_manager.py # Business logic
+│   ├── rulebook_linker.py # Cross-referencing logic
+│   └── mcp_tools.py       # Tool definitions (NO MCP instance)
+├── search/
+│   ├── __init__.py
+│   ├── search_service.py  # Main search logic
+│   ├── hybrid_search.py   # Search implementation
+│   ├── query_processor.py # Query handling
+│   ├── cache_manager.py   # Caching logic
+│   └── error_handler.py   # Error handling utilities
+├── personality/
+│   ├── __init__.py
+│   ├── personality_manager.py
+│   ├── personality_extractor.py
+│   └── response_generator.py
+├── pdf_processing/
+│   ├── __init__.py
+│   ├── pipeline.py        # Processing pipeline
+│   ├── pdf_parser.py      # PDF extraction
+│   ├── content_chunker.py # Chunking logic
+│   └── adaptive_learning.py
+└── session/              # Future: Session management
+    └── __init__.py
+```
+
+### Module Structure Best Practices
+
+#### 1. Separation of Concerns
+- **Models** (`models.py`): Data structures and validation
+- **Managers** (`*_manager.py`): Business logic and operations
+- **MCP Tools** (`mcp_tools.py`): Tool definitions and registration
+- **Utilities** (`*_linker.py`, `*_helper.py`): Supporting functionality
+
+#### 2. Dependency Injection
+- Initialize dependencies in main.py
+- Pass dependencies to modules via initialization functions
+- Avoid global imports of stateful objects
+
+```python
+# Good: Dependency injection
+def initialize_campaign_tools(db, campaign_manager, linker):
+    global _db, _campaign_manager, _linker
+    _db = db
+    _campaign_manager = campaign_manager
+    _linker = linker
+
+# Bad: Direct import
+from src.core.database import db  # Creates coupling
+```
+
+#### 3. Async/Await Consistency
+- All MCP tools MUST be async functions
+- Use `@handle_search_errors()` decorator for error handling
+- Maintain async chain through the call stack
+
+#### 4. Error Handling Pattern
+```python
+from src.search.error_handler import handle_search_errors, DatabaseError
+
+@handle_search_errors()
+async def campaign_operation():
+    try:
+        # Operation logic
+        return {"success": True, "data": result}
+    except SpecificError as e:
+        logger.error(f"Operation failed: {str(e)}")
+        raise DatabaseError(f"Operation failed: {str(e)}")
+```
+
+#### 5. Standardized Return Patterns
+All MCP tools should follow consistent return patterns:
+
+**Success Response:**
+```python
+{
+    "success": True,
+    "message": "Operation completed successfully",
+    "data": {...},  # Optional: returned data
+    "id": "...",    # Optional: created/modified entity ID
+}
+```
+
+**Error Response:**
+```python
+{
+    "success": False,
+    "error": "Descriptive error message",
+    "details": {...},  # Optional: additional error context
+}
+```
+
+**Search Response:**
+```python
+{
+    "success": True,
+    "query": "original query",
+    "results": [...],
+    "total_results": 42,
+    "metadata": {...},  # Optional: search metadata
+}
+```
+
+#### 6. Data Model Patterns
+- Use `@dataclass` for models with `to_dict()` and `from_dict()` methods
+- Handle datetime serialization consistently
+- Provide default values using `field(default_factory=...)`
+
+```python
+@dataclass
+class Model:
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    created_at: datetime = field(default_factory=datetime.utcnow)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        data = asdict(self)
+        data['created_at'] = self.created_at.isoformat()
+        return data
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'Model':
+        if isinstance(data.get('created_at'), str):
+            data['created_at'] = datetime.fromisoformat(data['created_at'])
+        return cls(**data)
+```
+
 ## Technical Implementation Details
 
 ### Database Schema (ChromaDB Collections)
@@ -362,6 +533,71 @@ async def set_active_personality(
 - **Data Isolation**: Separate campaign data by user/campaign
 - **Rate Limiting**: Prevent abuse of resource-intensive operations
 
+## Testing Guidelines
+
+### Unit Testing
+- Test each module independently with mocked dependencies
+- Use `pytest` and `pytest-asyncio` for async tests
+- Maintain test coverage above 80%
+
+### Integration Testing
+- Test MCP tool registration and execution
+- Verify database operations with test fixtures
+- Test error handling and edge cases
+
+### Example Test Structure
+```python
+import pytest
+from unittest.mock import Mock, AsyncMock
+
+@pytest.fixture
+def mock_db():
+    db = Mock(spec=ChromaDBManager)
+    db.add_document = AsyncMock()
+    return db
+
+@pytest.mark.asyncio
+async def test_create_campaign(mock_db):
+    manager = CampaignManager(mock_db)
+    result = await manager.create_campaign("Test", "D&D 5e")
+    assert result["success"] == True
+    mock_db.add_document.assert_called_once()
+```
+
+## Common Pitfalls to Avoid
+
+1. **Multiple MCP Instances**: Always use a single FastMCP instance
+2. **Synchronous MCP Tools**: All tools must be async
+3. **Missing Error Handling**: Use decorators consistently
+4. **Direct Database Access**: Always go through managers
+5. **Hardcoded Paths**: Use configuration settings
+6. **Circular Imports**: Use dependency injection
+7. **Unhandled Datetime Serialization**: Always convert to ISO format
+8. **Missing Type Hints**: Use type hints for all functions
+9. **Inconsistent Return Formats**: Standardize on success/error patterns
+10. **Memory Leaks**: Implement proper cache eviction
+
+## Development Workflow
+
+### Adding New Features
+1. Update requirements.md if needed
+2. Design data models first
+3. Implement business logic in managers
+4. Create MCP tool wrappers
+5. Register tools in main.py
+6. Write tests
+7. Update documentation
+
+### Code Review Checklist
+- [ ] Single MCP instance pattern followed
+- [ ] All MCP tools are async
+- [ ] Error handling decorators used
+- [ ] Type hints present
+- [ ] Tests included
+- [ ] Documentation updated
+- [ ] No hardcoded values
+- [ ] Dependency injection used
+
 ## Future Enhancements
 - **Multi-language Support**: Support for non-English rulebooks
 - **Image Processing**: Extract and index images from PDFs
@@ -369,3 +605,6 @@ async def set_active_personality(
 - **Web Interface**: Optional web UI for visual management
 - **Cloud Sync**: Optional cloud backup and sync
 - **Plugin System**: Extensible architecture for custom tools
+- **Real-time Collaboration**: Multiple DMs sharing a campaign
+- **AI-powered Content Generation**: Generate NPCs, quests, and encounters
+- **Mobile Companion App**: Access campaign data on mobile devices
