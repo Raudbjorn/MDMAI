@@ -16,6 +16,12 @@ from src.pdf_processing.pipeline import PDFProcessingPipeline
 from src.search.search_service import SearchService
 from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
+from src.campaign.campaign_manager import CampaignManager
+from src.campaign.rulebook_linker import RulebookLinker
+from src.campaign import (
+    initialize_campaign_tools,
+    register_campaign_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -36,6 +42,10 @@ search_service = SearchService()
 # Initialize personality system
 personality_manager = PersonalityManager()
 response_generator = ResponseGenerator(personality_manager)
+
+# Campaign management components (initialized in main())
+campaign_manager: Optional[CampaignManager] = None
+rulebook_linker: Optional[RulebookLinker] = None
 
 
 @mcp.tool()
@@ -255,144 +265,13 @@ async def list_sources(
         return []
 
 
-@mcp.tool()
-async def create_campaign(
-    name: str,
-    system: str,
-    description: Optional[str] = None,
-) -> Dict[str, str]:
-    """
-    Create a new campaign.
-    
-    Args:
-        name: Campaign name
-        system: Game system
-        description: Optional campaign description
-    
-    Returns:
-        Dictionary with campaign ID and status
-    """
-    # Check database initialization
-    if db is None:
-        return {
-            "status": "error",
-            "error": "Database not initialized",
-        }
-    
-    try:
-        
-        campaign_id = str(uuid.uuid4())
-        
-        campaign_data = {
-            "id": campaign_id,
-            "name": name,
-            "system": system,
-            "description": description or "",
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            "characters": [],
-            "npcs": [],
-            "locations": [],
-            "plot_points": [],
-            "sessions": [],
-        }
-        
-        # Store in database
-        db.add_document(
-            collection_name="campaigns",
-            document_id=campaign_id,
-            content=json.dumps(campaign_data),
-            metadata={
-                "campaign_id": campaign_id,
-                "name": name,
-                "system": system,
-                "data_type": "campaign",
-            },
-        )
-        
-        logger.info("Campaign created", campaign_id=campaign_id, name=name)
-        
-        return {
-            "status": "success",
-            "campaign_id": campaign_id,
-            "message": f"Campaign '{name}' created successfully",
-        }
-        
-    except Exception as e:
-        logger.error("Failed to create campaign", error=str(e))
-        return {
-            "status": "error",
-            "error": str(e),
-        }
-
-
-@mcp.tool()
-async def get_campaign_data(
-    campaign_id: str,
-    data_type: Optional[str] = None,
-) -> Dict[str, Any]:
-    """
-    Retrieve campaign-specific data.
-    
-    Args:
-        campaign_id: Campaign identifier
-        data_type: Optional filter for data type (characters, npcs, locations, etc.)
-    
-    Returns:
-        Campaign data dictionary
-    """
-    # Check database initialization
-    if db is None:
-        return {
-            "status": "error",
-            "error": "Database not initialized",
-        }
-    
-    try:
-        logger.info("Getting campaign data", campaign_id=campaign_id, data_type=data_type)
-        
-        # Retrieve campaign document
-        campaign_doc = db.get_document(
-            collection_name="campaigns",
-            document_id=campaign_id,
-        )
-        
-        if not campaign_doc:
-            return {
-                "status": "error",
-                "error": f"Campaign '{campaign_id}' not found",
-            }
-        
-        # Parse campaign data
-        campaign_data = json.loads(campaign_doc["content"])
-        
-        # Filter by data type if specified
-        if data_type:
-            if data_type in campaign_data:
-                return {
-                    "status": "success",
-                    "campaign_id": campaign_id,
-                    "data_type": data_type,
-                    "data": campaign_data[data_type],
-                }
-            else:
-                return {
-                    "status": "error",
-                    "error": f"Data type '{data_type}' not found in campaign",
-                }
-        
-        return {
-            "status": "success",
-            "campaign_id": campaign_id,
-            "data": campaign_data,
-        }
-        
-    except Exception as e:
-        logger.error("Failed to get campaign data", error=str(e))
-        return {
-            "status": "error",
-            "error": str(e),
-        }
+# NOTE: Campaign tools are now provided by the enhanced campaign management system
+# See src/campaign/mcp_tools.py for the implementations
+# Features include:
+# - Full CRUD operations with versioning
+# - Campaign-rulebook linking
+# - Character, NPC, Location, and Plot Point management
+# - Version history and rollback capabilities
 
 
 @mcp.tool()
@@ -701,6 +580,15 @@ def main():
         
         # Initialize database manager
         db = ChromaDBManager()
+        
+        # Initialize campaign management system
+        global campaign_manager, rulebook_linker
+        campaign_manager = CampaignManager(db)
+        rulebook_linker = RulebookLinker(db)
+        initialize_campaign_tools(db, campaign_manager, rulebook_linker)
+        
+        # Register enhanced campaign tools with MCP server
+        register_campaign_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
