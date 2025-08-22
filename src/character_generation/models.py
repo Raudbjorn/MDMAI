@@ -212,12 +212,13 @@ class Character:
         if isinstance(data.get('updated_at'), str):
             data['updated_at'] = datetime.fromisoformat(data['updated_at'])
         
-        if isinstance(data.get('character_class'), str):
+        class_str = data.get('character_class')
+        if isinstance(class_str, str):
             try:
-                data['character_class'] = CharacterClass(data['character_class'])
+                data['character_class'] = CharacterClass(class_str)
             except ValueError:
                 data['character_class'] = CharacterClass.CUSTOM
-                data['custom_class'] = data.get('character_class')
+                data['custom_class'] = class_str
         
         if isinstance(data.get('race'), str):
             try:
