@@ -367,7 +367,9 @@ class SourceValidator:
     
     def _is_garbled_text(self, text: str) -> bool:
         """Check if text appears to be garbled or corrupted."""
-        # Check for excessive special characters
+    @lru_cache(maxsize=128)
+    def _is_garbled_text(self, text: str) -> bool:
+        """Check if text appears to be garbled or corrupted."""
         special_char_ratio = len(re.findall(r'[^\w\s]', text)) / len(text)
         if special_char_ratio > 0.5:
             return True
