@@ -103,10 +103,9 @@ class EmbeddingGenerator:
                     
             except Exception as e:
                 logger.error(f"Failed to generate embeddings for batch", error=str(e))
-                # Add zero embeddings for failed batch
-                embedding_dim = self.model.get_sentence_embedding_dimension()
-                for _ in range(len(batch_texts)):
-                    embeddings.append([0.0] * embedding_dim)
+                # Re-raise the exception instead of silently adding zero embeddings
+                # Zero embeddings corrupt search quality
+                raise RuntimeError(f"Embedding generation failed for batch: {e}") from e
         
         logger.info(f"Generated {len(embeddings)} embeddings")
         return embeddings
@@ -165,10 +164,8 @@ class EmbeddingGenerator:
         prepared_text = "\n".join(text_parts)
         
         # Truncate if too long using model's actual max sequence length
-        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
-        if len(prepared_text) > max_length:
-        # Truncate if too long using model's actual max sequence length (by token count)
-        max_length = self.model.max_seq_length if hasattr(self.model, 'max_seq_length') else 512
+        max_length = getattr(self.model, 'max_seq_length', 512)
+        
         if hasattr(self.model, "tokenizer"):
             # Tokenize, truncate, and decode back to text
             tokens = self.model.tokenizer.encode(

@@ -10,6 +10,11 @@ from config.settings import settings
 
 logger = get_logger(__name__)
 
+# Regular expressions for content type detection
+STAT_BLOCK_REGEX = r'\b(STR|DEX|CON|INT|WIS|CHA)\s*\d+.*?(AC|Armor Class)\s*\d+.*?(HP|Hit Points)\s*\d+'
+SPELL_REGEX = r'\b(\d+(?:st|nd|rd|th)?[-\s]level|Cantrip).*?(Casting Time|Range|Components|Duration)'
+MONSTER_REGEX = r'(Challenge Rating|CR)\s*[\d/]+.*?(Hit Points|hp)\s*\d+'
+
 
 @dataclass
 class ContentChunk:
@@ -54,6 +59,14 @@ class ContentChunker:
         self.min_content_threshold = min_content_threshold
         self.current_section = None
         self.current_subsection = None
+        
+        # Validate parameters
+        if self.max_chunk_size <= 0:
+            raise ValueError("max_chunk_size must be positive")
+        if self.chunk_overlap < 0:
+            raise ValueError("chunk_overlap cannot be negative")
+        if self.chunk_overlap >= self.max_chunk_size:
+            raise ValueError("chunk_overlap must be less than max_chunk_size")
     
     def chunk_document(
         self,

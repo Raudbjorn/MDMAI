@@ -2,6 +2,8 @@
 
 import json
 import pickle
+import tempfile
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from collections import defaultdict, Counter
@@ -410,43 +412,71 @@ class AdaptiveLearningSystem:
         return stats
     
     def _save_patterns(self):
-        """Save learned patterns to cache."""
+        """Save learned patterns to cache with atomic operations."""
         try:
-            # Save patterns
+            # Save patterns with atomic write
             patterns_file = self.cache_dir / "patterns.pkl"
-            with open(patterns_file, 'wb') as f:
-                pickle.dump(dict(self.patterns), f)
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=self.cache_dir) as tmp:
+                pickle.dump(dict(self.patterns), tmp)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp.name, patterns_file)
             
-            # Save classifiers
+            # Save classifiers with atomic write
             classifiers_file = self.cache_dir / "classifiers.pkl"
-            with open(classifiers_file, 'wb') as f:
-                pickle.dump(self.content_classifiers, f)
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=self.cache_dir) as tmp:
+                pickle.dump(self.content_classifiers, tmp)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp.name, classifiers_file)
             
-            # Save metrics
+            # Save metrics with atomic write
             metrics_file = self.cache_dir / "metrics.json"
-            with open(metrics_file, 'w') as f:
-                json.dump(dict(self.extraction_metrics), f)
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=self.cache_dir) as tmp:
+                json.dump(dict(self.extraction_metrics), tmp)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp.name, metrics_file)
             
-            logger.debug("Adaptive learning patterns saved")
+            logger.debug("Adaptive learning patterns saved atomically")
             
         except Exception as e:
             logger.error(f"Failed to save patterns", error=str(e))
+            # Clean up any temporary files
+            if 'tmp' in locals() and hasattr(tmp, 'name') and os.path.exists(tmp.name):
+                try:
+                    os.unlink(tmp.name)
+                except:
+                    pass
     
     def _load_cached_patterns(self):
-        """Load previously learned patterns from cache."""
+        """Load previously learned patterns from cache with validation."""
         try:
-            # Load patterns
+            # Load patterns with validation
             patterns_file = self.cache_dir / "patterns.pkl"
             if patterns_file.exists():
-                with open(patterns_file, 'rb') as f:
-                    loaded_patterns = pickle.load(f)
-                    self.patterns.update(loaded_patterns)
+                try:
+                    with open(patterns_file, 'rb') as f:
+                        loaded_patterns = pickle.load(f)
+                        if isinstance(loaded_patterns, dict):
+                            self.patterns.update(loaded_patterns)
+                        else:
+                            logger.warning("Invalid patterns file format, skipping")
+                except (pickle.UnpicklingError, EOFError) as e:
+                    logger.error(f"Corrupted patterns file: {e}")
             
-            # Load classifiers
+            # Load classifiers with validation
             classifiers_file = self.cache_dir / "classifiers.pkl"
             if classifiers_file.exists():
-                with open(classifiers_file, 'rb') as f:
-                    self.content_classifiers = pickle.load(f)
+                try:
+                    with open(classifiers_file, 'rb') as f:
+                        loaded_classifiers = pickle.load(f)
+                        if isinstance(loaded_classifiers, dict):
+                            self.content_classifiers = loaded_classifiers
+                        else:
+                            logger.warning("Invalid classifiers file format, skipping")
+                except (pickle.UnpicklingError, EOFError) as e:
+                    logger.error(f"Corrupted classifiers file: {e}")
             
             # Load metrics
             metrics_file = self.cache_dir / "metrics.json"

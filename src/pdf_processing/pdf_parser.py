@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import hashlib
+import os
+from contextlib import contextmanager
 
 import pdfplumber
 import PyPDF2
@@ -13,6 +15,11 @@ from config.logging_config import get_logger
 from config.settings import settings
 
 logger = get_logger(__name__)
+
+
+class PDFProcessingError(Exception):
+    """Custom exception for PDF processing errors."""
+    pass
 
 
 class PDFParser:
@@ -73,9 +80,14 @@ class PDFParser:
             
             return result
             
-        except Exception as e:
-            logger.error(f"Failed to extract PDF content", error=str(e))
+        except FileNotFoundError:
             raise
+        except PermissionError as e:
+            logger.error(f"Permission denied accessing PDF: {e}")
+            raise
+        except (PyPDF2.errors.PdfReadError, Exception) as e:
+            logger.error(f"Unexpected error processing PDF: {e}")
+            raise PDFProcessingError(f"Failed to process {pdf_path}: {e}") from e
     
     def _extract_with_pypdf(self, pdf_path: Path) -> Dict[str, Any]:
         """
@@ -287,11 +299,18 @@ class PDFParser:
         Returns:
             Hex digest of file hash
         """
+        if not file_path.exists():
+            raise FileNotFoundError(f"Cannot calculate hash: {file_path} not found")
+        
         sha256_hash = hashlib.sha256()
-        with open(file_path, "rb") as f:
-            for byte_block in iter(lambda: f.read(4096), b""):
-                sha256_hash.update(byte_block)
-        return sha256_hash.hexdigest()
+        try:
+            with open(file_path, "rb") as f:
+                for byte_block in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(byte_block)
+            return sha256_hash.hexdigest()
+        except IOError as e:
+            logger.error(f"Failed to calculate file hash: {e}")
+            raise PDFProcessingError(f"Cannot hash file {file_path}: {e}") from e
     def extract_tables_as_markdown(self, tables: List[Dict]) -> List[str]:
         """
         Convert extracted tables to markdown format.

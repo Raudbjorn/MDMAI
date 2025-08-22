@@ -373,39 +373,67 @@ class PDFProcessingPipeline:
         collection_name = "flavor_sources" if source_type == "flavor" else "rulebooks"
         stored_count = 0
         
+        # Prepare batch data for more efficient storage
+        batch_documents = []
+        batch_embeddings = []
+        batch_ids = []
+        batch_metadata = []
+        
         for chunk, embedding in zip(chunks, embeddings):
-            try:
-                # Prepare document for storage
-                document_id = chunk.id
-                content = chunk.content
-                metadata = {
-                    **chunk.metadata,
-                    "chunk_type": chunk.chunk_type,
-                    "page_start": chunk.page_start,
-                    "page_end": chunk.page_end,
-                    "section": chunk.section,
-                    "subsection": chunk.subsection,
-                    "char_count": chunk.char_count,
-                    "word_count": chunk.word_count,
-                }
-                
-                # Store in database
-                self.db.add_document(
+            batch_ids.append(chunk.id)
+            batch_documents.append(chunk.content)
+            batch_embeddings.append(embedding)
+            batch_metadata.append({
+                **chunk.metadata,
+                "chunk_type": chunk.chunk_type,
+                "page_start": chunk.page_start,
+                "page_end": chunk.page_end,
+                "section": chunk.section,
+                "subsection": chunk.subsection,
+                "char_count": chunk.char_count,
+                "word_count": chunk.word_count,
+            })
+        
+        # Store in batch with error handling
+        try:
+            if hasattr(self.db, 'add_documents'):
+                # Use batch operation if available
+                self.db.add_documents(
                     collection_name=collection_name,
-                    document_id=document_id,
-                    content=content,
-                    metadata=metadata,
-                    embedding=embedding,
+                    documents=batch_documents,
+                    embeddings=batch_embeddings,
+                    ids=batch_ids,
+                    metadatas=batch_metadata,
                 )
-                
-                stored_count += 1
-                
-            except Exception as e:
-                logger.error(
-                    f"Failed to store chunk",
-                    chunk_id=chunk.id,
-                    error=str(e),
-                )
+                stored_count = len(batch_ids)
+            else:
+                # Fall back to individual operations with error handling
+                for doc_id, content, metadata, embedding in zip(
+                    batch_ids, batch_documents, batch_metadata, batch_embeddings
+                ):
+                    try:
+                        self.db.add_document(
+                            collection_name=collection_name,
+                            document_id=doc_id,
+                            content=content,
+                            metadata=metadata,
+                            embedding=embedding,
+                        )
+                        stored_count += 1
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to store chunk",
+                            chunk_id=doc_id,
+                            error=str(e),
+                        )
+        except Exception as e:
+            logger.error(
+                f"Failed to store batch of chunks",
+                count=len(chunks),
+                error=str(e),
+            )
+            # Re-raise for proper error handling upstream
+            raise RuntimeError(f"Batch storage failed: {e}") from e
         
         return stored_count
     
