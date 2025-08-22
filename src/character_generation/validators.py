@@ -283,7 +283,19 @@ class CharacterValidator:
             try:
                 CharacterRace(race.lower().replace(' ', '-'))
             except ValueError:
-                if race.lower() != "custom":
+        if character_class is not None and character_class.strip():
+            try:
+                CharacterClass(character_class.strip().lower())
+            except ValueError:
+                if character_class.strip().lower() != "custom":
+                    logger.info(f"Unknown class: {character_class}, treating as custom")
+        
+        # Validate race if provided
+        if race is not None and race.strip():
+            try:
+                CharacterRace(race.strip().lower().replace(' ', '_'))
+            except ValueError:
+                if race.strip().lower() != "custom":
                     logger.info(f"Unknown race: {race}, treating as custom")
         
         return errors
