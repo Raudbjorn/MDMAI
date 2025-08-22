@@ -528,7 +528,7 @@ class FlavorIntegrator:
             
         elif tone == 'adventurous' and intensity > 0.5:
             # Add excitement
-            content = content.replace('.', '!')[:len(content)//3] + content[len(content)//3:]
+            content = content[:len(content)//3].replace('.', '!') + content[len(content)//3:]
         
         return content
     
