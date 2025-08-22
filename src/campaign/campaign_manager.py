@@ -64,7 +64,10 @@ class CampaignManager:
             
             # Store in database
             campaign_data = campaign.to_dict()
-            self.db_manager.add_document(
+            # Store in database
+            campaign_data = campaign.to_dict()
+            await asyncio.to_thread(
+                self.db_manager.add_document,
                 collection_name="campaigns",
                 document_id=campaign.id,
                 content=json.dumps(campaign_data),
