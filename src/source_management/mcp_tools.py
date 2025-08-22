@@ -47,7 +47,7 @@ def register_source_tools(mcp_server):
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
         auto_process: bool = True,
-        validate_quality: bool = True
+        auto_process: bool = True
     ) -> Dict[str, Any]:
         """
         Add a source with comprehensive validation and metadata.
