@@ -500,7 +500,10 @@ class FlavorIntegrator:
             # Add epic descriptors
             epic_words = ['mighty', 'legendary', 'glorious']
             # Simple example - in practice, would use NLP
-            content = content.replace('warrior', f'{random.choice(epic_words)} warrior')
+            # Use regex to only replace standalone 'warrior'
+            def epic_warrior_repl(match):
+                return f"{random.choice(epic_words)} warrior"
+            content = re.sub(r'\bwarrior\b', epic_warrior_repl, content)
             content = content.replace('battle', 'epic battle')
         
         elif style == 'dark' and intensity > 0.5:
