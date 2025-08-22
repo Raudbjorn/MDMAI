@@ -165,12 +165,6 @@ class CharacterValidator:
         if npc.faction and len(npc.faction) > 100:
             errors.append("Faction name too long (max 100 characters)")
         
-        if npc.loyalty_score is not None:
-            if not -10 <= npc.loyalty_score <= 10:
-                errors.append(
-                    f"Loyalty score must be between -10 and 10, got {npc.loyalty_score}"
-                )
-        
         # Validate personality traits
         if npc.personality_traits:
             for trait in npc.personality_traits:
@@ -205,8 +199,6 @@ class CharacterValidator:
             # Skip unknown fields  
             if key not in model_fields:
                 logger.debug(f"Skipping unknown field: {key}")
-                # Still add to sanitized for testing purposes
-                sanitized[key] = value
                 continue
             
             # Sanitize strings
@@ -214,10 +206,25 @@ class CharacterValidator:
                 # Strip whitespace and limit length
                 value = value.strip()[:500]  # Max field length
                 
-                # Remove potential injection attempts
-                if any(danger in value.lower() for danger in ['<script', 'javascript:', 'onerror']):
-                    logger.warning(f"Potential injection attempt in field {key}")
-                    value = ""
+                # Use a whitelist approach for names and simple text fields
+                if key in ['name', 'custom_class', 'custom_race', 'faction', 'location', 'occupation']:
+                    # Allow only alphanumeric, spaces, hyphens, apostrophes, and common punctuation
+                    import re
+                    cleaned = re.sub(r'[^a-zA-Z0-9\s\-\'.,!?]', '', value)
+                    if cleaned != value:
+                        logger.warning(f"Sanitized field {key}: removed special characters")
+                        value = cleaned
+                
+                # For text fields that might contain story elements, be less restrictive
+                # but still remove obvious HTML/script tags
+                elif key in ['backstory', 'backstory_hints', 'description', 'secrets']:
+                    import re
+                    # Remove HTML tags and script elements
+                    value = re.sub(r'<[^>]+>', '', value)
+                    value = re.sub(r'(?i)(javascript:|onerror=|onclick=|onload=)', '', value)
+                    
+                    if value != value.strip()[:500]:
+                        logger.debug(f"Sanitized field {key}: removed potential HTML/script content")
             
             # Sanitize numbers
             elif isinstance(value, (int, float)):
@@ -271,18 +278,6 @@ class CharacterValidator:
             logger.warning(f"Unknown system: {system}, using Generic")
         
         # Validate class if provided
-        if character_class:
-            try:
-                CharacterClass(character_class.lower())
-            except ValueError:
-                if character_class.lower() != "custom":
-                    logger.info(f"Unknown class: {character_class}, treating as custom")
-        
-        # Validate race if provided
-        if race and race.strip():
-            try:
-                CharacterRace(race.lower().replace(' ', '-'))
-            except ValueError:
         if character_class is not None and character_class.strip():
             try:
                 CharacterClass(character_class.strip().lower())
@@ -293,7 +288,8 @@ class CharacterValidator:
         # Validate race if provided
         if race is not None and race.strip():
             try:
-                CharacterRace(race.strip().lower().replace(' ', '_'))
+                # Use underscore to match enum values
+                CharacterRace(race.strip().lower().replace(' ', '_').replace('-', '_'))
             except ValueError:
                 if race.strip().lower() != "custom":
                     logger.info(f"Unknown race: {race}, treating as custom")

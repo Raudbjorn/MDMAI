@@ -534,11 +534,19 @@ class BackstoryGenerator:
             category = random.choice(list(self.RELATIONSHIPS.keys()))
             relationship_type = random.choice(self.RELATIONSHIPS[category])
             
+            # Determine relationship status clearly
+            if "status" in relationship_type:
+                status = random.choice(relationship_type.get("status", ["unknown"]))
+            elif "relationship" in relationship_type:
+                status = relationship_type.get("relationship", ["connected"])[0]
+            else:
+                status = relationship_type.get("bond", ["connected"])[0]
+            
             rel = {
                 "category": category,
                 "type": relationship_type["type"],
                 "name": self._generate_npc_name(),
-                "status": random.choice(relationship_type.get("status", ["unknown"])) if "status" in relationship_type else relationship_type.get("relationship", ["connected"])[0] if "relationship" in relationship_type else relationship_type.get("bond", ["connected"])[0],
+                "status": status,
                 "description": self._generate_relationship_description(
                     category, relationship_type
                 )
