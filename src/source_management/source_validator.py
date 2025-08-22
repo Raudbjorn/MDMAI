@@ -405,7 +405,7 @@ class SourceValidator:
         
         # Check ISBN-10 or ISBN-13
         if len(isbn_clean) == 10:
-            return isbn_clean[:-1].isdigit()
+            return isbn_clean[:-1].isdigit() and (isbn_clean[-1].isdigit() or isbn_clean[-1].upper() == 'X')
         elif len(isbn_clean) == 13:
             return isbn_clean.isdigit()
         
