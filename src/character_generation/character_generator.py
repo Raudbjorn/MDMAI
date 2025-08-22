@@ -267,7 +267,9 @@ class CharacterGenerator:
         """Select a character race."""
         if race_name:
             try:
-                return CharacterRace(race_name.lower().replace(' ', '-'))
+                # Replace spaces and hyphens with underscores to match enum values
+                normalized_race = race_name.lower().replace(' ', '_').replace('-', '_')
+                return CharacterRace(normalized_race)
             except ValueError:
                 # Custom race
                 return CharacterRace.CUSTOM
