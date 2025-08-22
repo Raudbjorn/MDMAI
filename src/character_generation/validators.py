@@ -281,7 +281,7 @@ class CharacterValidator:
         # Validate race if provided
         if race:
             try:
-                CharacterRace(race.lower().replace(' ', '_'))
+                CharacterRace(race.lower().replace(' ', '-'))
             except ValueError:
                 if race.lower() != "custom":
                     logger.info(f"Unknown race: {race}, treating as custom")
