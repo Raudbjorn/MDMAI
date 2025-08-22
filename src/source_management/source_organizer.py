@@ -430,7 +430,7 @@ class SourceOrganizer:
         """Organize categories into a hierarchy."""
         # Define parent-child relationships
         hierarchy = {
-            ContentCategory.MECHANICS: [ContentCategory.COMBAT],
+            ContentCategory.MECHANICS: [],
             ContentCategory.RULES: [ContentCategory.MECHANICS, ContentCategory.SKILLS],
             ContentCategory.NARRATIVE: [ContentCategory.ADVENTURES],
             ContentCategory.LORE: [ContentCategory.LOCATIONS, ContentCategory.CHARACTERS]
