@@ -52,11 +52,12 @@ class Character:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Character':
         """Create from dictionary representation."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        return cls(**data)
+        data_copy = data.copy()
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        if 'updated_at' in data_copy and isinstance(data_copy['updated_at'], str):
+            data_copy['updated_at'] = datetime.fromisoformat(data_copy['updated_at'])
+        return cls(**data_copy)
 
 
 @dataclass
@@ -86,11 +87,12 @@ class NPC:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'NPC':
         """Create from dictionary representation."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        return cls(**data)
+        data_copy = data.copy()
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        if 'updated_at' in data_copy and isinstance(data_copy['updated_at'], str):
+            data_copy['updated_at'] = datetime.fromisoformat(data_copy['updated_at'])
+        return cls(**data_copy)
 
 
 @dataclass
@@ -120,11 +122,12 @@ class Location:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Location':
         """Create from dictionary representation."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        return cls(**data)
+        data_copy = data.copy()
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        if 'updated_at' in data_copy and isinstance(data_copy['updated_at'], str):
+            data_copy['updated_at'] = datetime.fromisoformat(data_copy['updated_at'])
+        return cls(**data_copy)
 
 
 @dataclass
@@ -158,13 +161,14 @@ class PlotPoint:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'PlotPoint':
         """Create from dictionary representation."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        if 'completed_at' in data and isinstance(data['completed_at'], str):
-            data['completed_at'] = datetime.fromisoformat(data['completed_at'])
-        return cls(**data)
+        data_copy = data.copy()
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        if 'updated_at' in data_copy and isinstance(data_copy['updated_at'], str):
+            data_copy['updated_at'] = datetime.fromisoformat(data_copy['updated_at'])
+        if 'completed_at' in data_copy and isinstance(data_copy['completed_at'], str):
+            data_copy['completed_at'] = datetime.fromisoformat(data_copy['completed_at'])
+        return cls(**data_copy)
 
 
 @dataclass
@@ -187,6 +191,8 @@ class Campaign:
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
     last_session_date: Optional[datetime] = None
+    archived: bool = False
+    archived_at: Optional[datetime] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary representation."""
@@ -210,42 +216,51 @@ class Campaign:
         }
         if self.last_session_date:
             data['last_session_date'] = self.last_session_date.isoformat()
+        if self.archived:
+            data['archived'] = self.archived
+        if self.archived_at:
+            data['archived_at'] = self.archived_at.isoformat()
         return data
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Campaign':
         """Create from dictionary representation."""
+        # Create a copy to avoid modifying the original
+        data_copy = data.copy()
+        
         # Convert datetime strings
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        if 'updated_at' in data and isinstance(data['updated_at'], str):
-            data['updated_at'] = datetime.fromisoformat(data['updated_at'])
-        if 'last_session_date' in data and isinstance(data['last_session_date'], str):
-            data['last_session_date'] = datetime.fromisoformat(data['last_session_date'])
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        if 'updated_at' in data_copy and isinstance(data_copy['updated_at'], str):
+            data_copy['updated_at'] = datetime.fromisoformat(data_copy['updated_at'])
+        if 'last_session_date' in data_copy and isinstance(data_copy['last_session_date'], str):
+            data_copy['last_session_date'] = datetime.fromisoformat(data_copy['last_session_date'])
+        if 'archived_at' in data_copy and isinstance(data_copy['archived_at'], str):
+            data_copy['archived_at'] = datetime.fromisoformat(data_copy['archived_at'])
         
         # Convert nested objects
-        if 'characters' in data:
-            data['characters'] = [
+        if 'characters' in data_copy:
+            data_copy['characters'] = [
                 Character.from_dict(c) if isinstance(c, dict) else c 
-                for c in data['characters']
+                for c in data_copy['characters']
             ]
-        if 'npcs' in data:
-            data['npcs'] = [
+        if 'npcs' in data_copy:
+            data_copy['npcs'] = [
                 NPC.from_dict(n) if isinstance(n, dict) else n 
-                for n in data['npcs']
+                for n in data_copy['npcs']
             ]
-        if 'locations' in data:
-            data['locations'] = [
+        if 'locations' in data_copy:
+            data_copy['locations'] = [
                 Location.from_dict(l) if isinstance(l, dict) else l 
-                for l in data['locations']
+                for l in data_copy['locations']
             ]
-        if 'plot_points' in data:
-            data['plot_points'] = [
+        if 'plot_points' in data_copy:
+            data_copy['plot_points'] = [
                 PlotPoint.from_dict(p) if isinstance(p, dict) else p 
-                for p in data['plot_points']
+                for p in data_copy['plot_points']
             ]
         
-        return cls(**data)
+        return cls(**data_copy)
     
     def get_character_by_id(self, character_id: str) -> Optional[Character]:
         """Get a character by ID."""
@@ -296,6 +311,7 @@ class CampaignVersion:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CampaignVersion':
         """Create from dictionary representation."""
-        if 'created_at' in data and isinstance(data['created_at'], str):
-            data['created_at'] = datetime.fromisoformat(data['created_at'])
-        return cls(**data)
+        data_copy = data.copy()
+        if 'created_at' in data_copy and isinstance(data_copy['created_at'], str):
+            data_copy['created_at'] = datetime.fromisoformat(data_copy['created_at'])
+        return cls(**data_copy)

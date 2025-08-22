@@ -46,13 +46,16 @@ class RulebookReference:
 class RulebookLinker:
     """Manages links between campaign content and rulebook references."""
     
-    # Common patterns for detecting rulebook references
+    # Default similarity threshold for matching
+    DEFAULT_SIMILARITY_THRESHOLD = 0.7
+    
+    # Compiled regex patterns for detecting rulebook references
     REFERENCE_PATTERNS = [
-        r'\b(?:see|ref|reference|per|according to|as per|following)\s+([A-Z][^,.;!?]{2,30})',
-        r'\b(?:PHB|DMG|MM|XGE|TCE|VGM|MTF)\s*(?:p\.?|page)?\s*(\d+)',
-        r'\(([A-Z][^)]{2,30})\)',
-        r'(?:spell|ability|feat|class feature|trait):\s*([A-Za-z\s]+)',
-        r'(?:DC|AC|CR|HP)\s*\d+',
+        re.compile(r'\b(?:see|ref|reference|per|according to|as per|following)\s+([A-Z][^,.;!?]{2,30})', re.IGNORECASE),
+        re.compile(r'\b(?:PHB|DMG|MM|XGE|TCE|VGM|MTF)\s*(?:p\.?|page)?\s*(\d+)', re.IGNORECASE),
+        re.compile(r'\(([A-Z][^)]{2,30})\)'),
+        re.compile(r'(?:spell|ability|feat|class feature|trait):\s*([A-Za-z\s]+)', re.IGNORECASE),
+        re.compile(r'(?:DC|AC|CR|HP)\s*\d+', re.IGNORECASE),
     ]
     
     # Keywords that suggest rulebook content
@@ -65,7 +68,7 @@ class RulebookLinker:
         "feat": ["feat", "ability", "feature", "trait", "power"],
     }
     
-    def __init__(self, db_manager: ChromaDBManager):
+    def __init__(self, db_manager: ChromaDBManager, similarity_threshold: float = None):
         """
         Initialize the rulebook linker.
         
@@ -73,6 +76,7 @@ class RulebookLinker:
             db_manager: ChromaDB manager instance
         """
         self.db_manager = db_manager
+        self.similarity_threshold = similarity_threshold or self.DEFAULT_SIMILARITY_THRESHOLD
         self._reference_cache: Dict[str, List[RulebookReference]] = {}
     
     @handle_search_errors()
@@ -118,7 +122,7 @@ class RulebookLinker:
             )
             
             for result in results:
-                if result["distance"] < 0.7:  # Similarity threshold
+                if result["distance"] < self.similarity_threshold:
                     reference = RulebookReference(
                         source_type=entity_type,
                         source_id=entity_id,
@@ -150,9 +154,9 @@ class RulebookLinker:
         """
         potential_refs = []
         
-        # Check for pattern matches
+        # Check for pattern matches (patterns are already compiled)
         for pattern in self.REFERENCE_PATTERNS:
-            matches = re.finditer(pattern, text, re.IGNORECASE)
+            matches = pattern.finditer(text)
             for match in matches:
                 ref_text = match.group(0)
                 # Higher confidence for explicit references

@@ -1,6 +1,7 @@
 """Campaign management system for TTRPG Assistant."""
 
 import json
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 import uuid
@@ -222,22 +223,41 @@ class CampaignManager:
                     "message": f"Campaign {campaign_id} not found"
                 }
             
-            # Create character
+            # Create version before modification
+            self._create_version(campaign, f"Adding character: {character_data.get('name', 'Unknown')}")
+            
+            # Create and add character
             character = Character(**character_data)
             campaign.characters.append(character)
+            campaign.updated_at = datetime.utcnow()
             
-            # Update campaign
-            result = await self.update_campaign(
-                campaign_id,
-                {"characters": campaign.characters},
-                f"Added character: {character.name}"
+            # Save directly to database (avoid double fetch)
+            campaign_data = campaign.to_dict()
+            self.db_manager.update_document(
+                collection_name="campaigns",
+                document_id=campaign_id,
+                content=json.dumps(campaign_data),
+                metadata={
+                    "type": "campaign",
+                    "name": campaign.name,
+                    "system": campaign.system,
+                    "created_at": campaign.created_at.isoformat(),
+                    "updated_at": campaign.updated_at.isoformat(),
+                }
             )
             
-            if result["success"]:
-                result["character_id"] = character.id
-                result["character"] = character.to_dict()
+            # Update cache
+            self._campaign_cache[campaign_id] = campaign
             
-            return result
+            logger.info(f"Character added to campaign {campaign_id}: {character.id}")
+            
+            return {
+                "success": True,
+                "message": f"Character '{character.name}' added successfully",
+                "character_id": character.id,
+                "character": character.to_dict(),
+                "campaign": campaign_data
+            }
             
         except Exception as e:
             logger.error(f"Failed to add character: {str(e)}")
@@ -267,22 +287,41 @@ class CampaignManager:
                     "message": f"Campaign {campaign_id} not found"
                 }
             
-            # Create NPC
+            # Create version before modification
+            self._create_version(campaign, f"Adding NPC: {npc_data.get('name', 'Unknown')}")
+            
+            # Create and add NPC
             npc = NPC(**npc_data)
             campaign.npcs.append(npc)
+            campaign.updated_at = datetime.utcnow()
             
-            # Update campaign
-            result = await self.update_campaign(
-                campaign_id,
-                {"npcs": campaign.npcs},
-                f"Added NPC: {npc.name}"
+            # Save directly to database (avoid double fetch)
+            campaign_data = campaign.to_dict()
+            self.db_manager.update_document(
+                collection_name="campaigns",
+                document_id=campaign_id,
+                content=json.dumps(campaign_data),
+                metadata={
+                    "type": "campaign",
+                    "name": campaign.name,
+                    "system": campaign.system,
+                    "created_at": campaign.created_at.isoformat(),
+                    "updated_at": campaign.updated_at.isoformat(),
+                }
             )
             
-            if result["success"]:
-                result["npc_id"] = npc.id
-                result["npc"] = npc.to_dict()
+            # Update cache
+            self._campaign_cache[campaign_id] = campaign
             
-            return result
+            logger.info(f"NPC added to campaign {campaign_id}: {npc.id}")
+            
+            return {
+                "success": True,
+                "message": f"NPC '{npc.name}' added successfully",
+                "npc_id": npc.id,
+                "npc": npc.to_dict(),
+                "campaign": campaign_data
+            }
             
         except Exception as e:
             logger.error(f"Failed to add NPC: {str(e)}")
@@ -312,22 +351,41 @@ class CampaignManager:
                     "message": f"Campaign {campaign_id} not found"
                 }
             
-            # Create location
+            # Create version before modification
+            self._create_version(campaign, f"Adding location: {location_data.get('name', 'Unknown')}")
+            
+            # Create and add location
             location = Location(**location_data)
             campaign.locations.append(location)
+            campaign.updated_at = datetime.utcnow()
             
-            # Update campaign
-            result = await self.update_campaign(
-                campaign_id,
-                {"locations": campaign.locations},
-                f"Added location: {location.name}"
+            # Save directly to database (avoid double fetch)
+            campaign_data = campaign.to_dict()
+            self.db_manager.update_document(
+                collection_name="campaigns",
+                document_id=campaign_id,
+                content=json.dumps(campaign_data),
+                metadata={
+                    "type": "campaign",
+                    "name": campaign.name,
+                    "system": campaign.system,
+                    "created_at": campaign.created_at.isoformat(),
+                    "updated_at": campaign.updated_at.isoformat(),
+                }
             )
             
-            if result["success"]:
-                result["location_id"] = location.id
-                result["location"] = location.to_dict()
+            # Update cache
+            self._campaign_cache[campaign_id] = campaign
             
-            return result
+            logger.info(f"Location added to campaign {campaign_id}: {location.id}")
+            
+            return {
+                "success": True,
+                "message": f"Location '{location.name}' added successfully",
+                "location_id": location.id,
+                "location": location.to_dict(),
+                "campaign": campaign_data
+            }
             
         except Exception as e:
             logger.error(f"Failed to add location: {str(e)}")
@@ -357,22 +415,41 @@ class CampaignManager:
                     "message": f"Campaign {campaign_id} not found"
                 }
             
-            # Create plot point
+            # Create version before modification
+            self._create_version(campaign, f"Adding plot point: {plot_data.get('title', 'Unknown')}")
+            
+            # Create and add plot point
             plot_point = PlotPoint(**plot_data)
             campaign.plot_points.append(plot_point)
+            campaign.updated_at = datetime.utcnow()
             
-            # Update campaign
-            result = await self.update_campaign(
-                campaign_id,
-                {"plot_points": campaign.plot_points},
-                f"Added plot point: {plot_point.title}"
+            # Save directly to database (avoid double fetch)
+            campaign_data = campaign.to_dict()
+            self.db_manager.update_document(
+                collection_name="campaigns",
+                document_id=campaign_id,
+                content=json.dumps(campaign_data),
+                metadata={
+                    "type": "campaign",
+                    "name": campaign.name,
+                    "system": campaign.system,
+                    "created_at": campaign.created_at.isoformat(),
+                    "updated_at": campaign.updated_at.isoformat(),
+                }
             )
             
-            if result["success"]:
-                result["plot_point_id"] = plot_point.id
-                result["plot_point"] = plot_point.to_dict()
+            # Update cache
+            self._campaign_cache[campaign_id] = campaign
             
-            return result
+            logger.info(f"Plot point added to campaign {campaign_id}: {plot_point.id}")
+            
+            return {
+                "success": True,
+                "message": f"Plot point '{plot_point.title}' added successfully",
+                "plot_point_id": plot_point.id,
+                "plot_point": plot_point.to_dict(),
+                "campaign": campaign_data
+            }
             
         except Exception as e:
             logger.error(f"Failed to add plot point: {str(e)}")
@@ -496,31 +573,61 @@ class CampaignManager:
                     "message": f"Campaign {campaign_id} not found"
                 }
             
-            # Archive instead of delete
-            result = await self.update_campaign(
-                campaign_id,
-                {"archived": True, "archived_at": datetime.utcnow()},
-                "Campaign archived"
+            # Create version before archiving
+            self._create_version(campaign, "Campaign archived")
+            
+            # Archive the campaign
+            campaign.archived = True
+            campaign.archived_at = datetime.utcnow()
+            campaign.updated_at = datetime.utcnow()
+            
+            # Save directly to database
+            campaign_data = campaign.to_dict()
+            self.db_manager.update_document(
+                collection_name="campaigns",
+                document_id=campaign_id,
+                content=json.dumps(campaign_data),
+                metadata={
+                    "type": "campaign",
+                    "name": campaign.name,
+                    "system": campaign.system,
+                    "created_at": campaign.created_at.isoformat(),
+                    "updated_at": campaign.updated_at.isoformat(),
+                    "archived": True,
+                    "archived_at": campaign.archived_at.isoformat(),
+                }
             )
             
             # Remove from cache
             if campaign_id in self._campaign_cache:
                 del self._campaign_cache[campaign_id]
             
-            return result
+            logger.info(f"Campaign archived: {campaign_id}")
+            
+            return {
+                "success": True,
+                "message": f"Campaign '{campaign.name}' archived successfully",
+                "campaign": campaign_data
+            }
             
         except Exception as e:
             logger.error(f"Failed to delete campaign: {str(e)}")
             raise DatabaseError(f"Failed to delete campaign: {str(e)}")
     
-    def _create_version(self, campaign: Campaign, description: str) -> None:
+    def _create_version(self, campaign: Campaign, description: str, retry_count: int = 0) -> bool:
         """
         Create a version snapshot of the campaign.
         
         Args:
             campaign: Campaign to version
             description: Change description
+            retry_count: Current retry attempt
+        
+        Returns:
+            True if version was created successfully, False otherwise
         """
+        MAX_RETRIES = 3
+        
         try:
             # Get current version number
             # Get current version number by querying the database
@@ -555,10 +662,54 @@ class CampaignManager:
             self._version_cache[campaign.id].append(version)
             
             logger.debug(f"Created version {version_number} for campaign {campaign.id}")
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to create version: {str(e)}")
-            # Don't raise - versioning failure shouldn't block operations
+            logger.error(
+                f"Failed to create version for campaign {campaign.id}: {str(e)}",
+                extra={
+                    "campaign_id": campaign.id,
+                    "description": description,
+                    "retry_count": retry_count,
+                    "error_type": type(e).__name__
+                }
+            )
+            
+            # Retry mechanism for transient failures
+            if retry_count < MAX_RETRIES:
+                logger.info(f"Retrying version creation (attempt {retry_count + 1}/{MAX_RETRIES})")
+                time.sleep(0.5 * (retry_count + 1))  # Exponential backoff
+                return self._create_version(campaign, description, retry_count + 1)
+            
+            # Log critical error if all retries failed
+            logger.critical(
+                f"Failed to create version after {MAX_RETRIES} attempts. "
+                f"Campaign data may be lost on rollback. Campaign: {campaign.id}",
+                extra={"campaign_id": campaign.id, "description": description}
+            )
+            
+            # Store failure in a separate collection for manual recovery
+            try:
+                self.db_manager.add_document(
+                    collection_name="campaigns",
+                    document_id=f"{campaign.id}_version_failure_{datetime.utcnow().timestamp()}",
+                    content=json.dumps({
+                        "campaign_id": campaign.id,
+                        "campaign_data": campaign.to_dict(),
+                        "description": description,
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat()
+                    }),
+                    metadata={
+                        "type": "version_failure",
+                        "campaign_id": campaign.id,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                )
+            except Exception as recovery_error:
+                logger.critical(f"Failed to store version failure record: {str(recovery_error)}")
+            
+            return False
     
     @handle_search_errors()
     async def get_campaign_versions(
