@@ -127,16 +127,19 @@ def register_character_tools(mcp_server):
             # Store in database if available
             if _db:
                 try:
-                    await _db.add_document(
+                    doc_dict = character.to_dict()
+                    _db.add_document(
                         collection_name="characters",
-                        document=character.to_dict(),
+                        document_id=character.id,
+                        content=f"Character: {character.name}, {character.get_race_name()} {character.get_class_name()}",
                         metadata={
                             "type": "player_character",
                             "system": system,
                             "level": level,
                             "class": character.get_class_name(),
                             "race": character.get_race_name(),
-                            "name": character.name
+                            "name": character.name,
+                            "document": json.dumps(doc_dict)
                         }
                     )
                     logger.info(f"Character {character.name} stored in database")
