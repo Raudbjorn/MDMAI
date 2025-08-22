@@ -383,12 +383,8 @@ class CacheSystem:
                     key_to_evict = k
             
         elif self.policy == CachePolicy.FIFO:
-            # Evict oldest entry
-            oldest_time = float('inf')
-            for k, entry in self.cache.items():
-                if entry.priority <= 0 and entry.created_at < oldest_time:
-                    oldest_time = entry.created_at
-                    key_to_evict = k
+            # Evict oldest entry (first item in OrderedDict)
+            key_to_evict = next(iter(self.cache))
             
         elif self.policy == CachePolicy.TTL:
             # Evict expired or oldest
