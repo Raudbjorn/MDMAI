@@ -30,4 +30,5 @@ __all__ = [
     'FlavorSource',
     'initialize_source_tools',
     'register_source_tools'
+    'register_source_tools'
 ]
