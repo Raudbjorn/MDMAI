@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 class SourceOrganizer:
     """Organize and categorize sources for efficient retrieval."""
     
+    # Fuzzy match word limit for title matching
+    FUZZY_MATCH_WORD_LIMIT = 3
+    
     # Keywords for automatic categorization
     CATEGORY_KEYWORDS = {
         ContentCategory.RULES: [
@@ -538,8 +541,6 @@ class SourceOrganizer:
                 return source
         
         # Very fuzzy match (first few words)
-        name_words = name_lower.split()[:3]
-        for source in sources:
         name_words = name_lower.split()[:self.FUZZY_MATCH_WORD_LIMIT]
         for source in sources:
             title_words = source.metadata.title.lower().split()[:self.FUZZY_MATCH_WORD_LIMIT]

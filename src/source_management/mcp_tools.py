@@ -46,7 +46,6 @@ def register_source_tools(mcp_server):
         edition: Optional[str] = None,
         description: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        auto_process: bool = True,
         auto_process: bool = True
     ) -> Dict[str, Any]:
         """

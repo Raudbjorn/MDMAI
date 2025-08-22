@@ -20,6 +20,15 @@ from .flavor_integrator import FlavorIntegrator
 
 logger = logging.getLogger(__name__)
 
+# Quality level ordering for comparisons
+QUALITY_LEVEL_ORDER = {
+    'excellent': 4,
+    'good': 3,
+    'fair': 2,
+    'poor': 1,
+    'unvalidated': 0
+}
+
 
 class SourceManager:
     """Manage sources throughout their lifecycle."""
@@ -91,10 +100,22 @@ class SourceManager:
             
             # Create source object
             source = Source()
+            
+            # Validate and convert source type
+            try:
+                source_type_enum = SourceType(source_type.lower())
+            except ValueError:
+                # Provide helpful error message with valid options
+                valid_types = [st.value for st in SourceType]
+                return {
+                    'success': False,
+                    'error': f"Invalid source type '{source_type}'. Valid types are: {', '.join(valid_types)}"
+                }
+            
             source.metadata = SourceMetadata(
                 title=title,
                 system=system,
-                source_type=SourceType(source_type.lower()),
+                source_type=source_type_enum,
                 file_path=file_path,
                 file_hash=file_hash,
                 file_size=file_validation['file_info']['size_mb']
@@ -437,14 +458,8 @@ class SourceManager:
             if not rescan and source.relationships:
                 return [rel.to_dict() for rel in source.relationships]
             
-            # Get all sources for comparison
-            all_sources = await self.list_sources(limit=1000)
-            existing_sources = []
-            for src_summary in all_sources:
-                if src_summary['id'] != source_id:
-                    src = await self.get_source(src_summary['id'])
-                    if src:
-                        existing_sources.append(src)
+            # Efficiently get all sources in a single query
+            existing_sources = await self._get_all_sources_bulk(exclude_id=source_id)
             
             # Detect relationships
             relationships = self.organizer.detect_relationships(source, existing_sources)
@@ -546,6 +561,47 @@ class SourceManager:
                 'success': False,
                 'error': str(e)
             }
+    
+    async def _get_all_sources_bulk(
+        self,
+        exclude_id: Optional[str] = None,
+        limit: int = 1000
+    ) -> List[Source]:
+        """
+        Efficiently retrieve all sources in bulk.
+        
+        Args:
+            exclude_id: Optional ID to exclude
+            limit: Maximum number of sources
+            
+        Returns:
+            List of Source objects
+        """
+        try:
+            # Get all source documents in a single query
+            results = await self.db.query_collection(
+                collection_name='sources',
+                limit=limit
+            )
+            
+            sources = []
+            for result in results.get('documents', []):
+                metadata = result.get('metadata', {})
+                source_data = json.loads(metadata.get('source_data', '{}'))
+                
+                # Skip if this is the excluded ID
+                if exclude_id and source_data.get('id') == exclude_id:
+                    continue
+                
+                # Create Source object from data
+                source = Source.from_dict(source_data)
+                sources.append(source)
+            
+            return sources
+            
+        except Exception as e:
+            logger.error(f"Failed to bulk retrieve sources: {str(e)}")
+            return []
     
     async def _check_duplicate(self, file_hash: str) -> Optional[Dict[str, Any]]:
         """Check if a source with this hash already exists."""

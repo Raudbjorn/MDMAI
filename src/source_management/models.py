@@ -148,19 +148,46 @@ class SourceMetadata:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'SourceMetadata':
         """Create from dictionary."""
-        if isinstance(data.get('source_type'), str):
-            data['source_type'] = SourceType(data['source_type'])
+        # Work with a copy to avoid modifying the input
+        data_copy = data.copy()
         
-        if 'categories' in data:
-            data['categories'] = [
-                ContentCategory(cat) if isinstance(cat, str) else cat
-                for cat in data['categories']
-            ]
+        # Convert source_type if needed
+        if isinstance(data_copy.get('source_type'), str):
+            try:
+                data_copy['source_type'] = SourceType(data_copy['source_type'])
+            except ValueError:
+                # Default to CUSTOM if invalid
+                data_copy['source_type'] = SourceType.CUSTOM
         
-        if isinstance(data.get('processed_at'), str):
-            data['processed_at'] = datetime.fromisoformat(data['processed_at'])
+        # Convert categories if needed
+        if 'categories' in data_copy:
+            categories = []
+            for cat in data_copy['categories']:
+                if isinstance(cat, str):
+                    try:
+                        categories.append(ContentCategory(cat))
+                    except ValueError:
+                        # Skip invalid categories
+                        continue
+                else:
+                    categories.append(cat)
+            data_copy['categories'] = categories
         
-        return cls(**data)
+        # Convert datetime if needed
+        if isinstance(data_copy.get('processed_at'), str):
+            data_copy['processed_at'] = datetime.fromisoformat(data_copy['processed_at'])
+        
+        # Filter to known fields to avoid TypeError
+        known_fields = {
+            'title', 'system', 'source_type', 'author', 'publisher',
+            'publication_date', 'edition', 'version', 'isbn', 'language',
+            'page_count', 'categories', 'tags', 'description', 'file_path',
+            'file_hash', 'file_size', 'processed_at', 'processing_time'
+        }
+        
+        filtered_data = {k: v for k, v in data_copy.items() if k in known_fields}
+        
+        return cls(**filtered_data)
 
 
 @dataclass
@@ -260,49 +287,93 @@ class Source:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'Source':
         """Create from dictionary."""
+        # Work with a copy to avoid modifying the input
+        data_copy = data.copy()
+        
         source = cls()
         
-        source.id = data.get('id', source.id)
+        source.id = data_copy.get('id', source.id)
         
-        if 'metadata' in data:
-            source.metadata = SourceMetadata.from_dict(data['metadata'])
+        if 'metadata' in data_copy:
+            source.metadata = SourceMetadata.from_dict(data_copy['metadata'])
         
-        source.chunk_count = data.get('chunk_count', 0)
-        source.total_tokens = data.get('total_tokens', 0)
+        source.chunk_count = data_copy.get('chunk_count', 0)
+        source.total_tokens = data_copy.get('total_tokens', 0)
         
-        if 'quality' in data:
-            quality_data = data['quality']
-            source.quality = SourceQuality(**quality_data) if isinstance(quality_data, dict) else source.quality
+        if 'quality' in data_copy:
+            quality_data = data_copy['quality']
+            if isinstance(quality_data, dict):
+                # Filter to known SourceQuality fields
+                quality_fields = {
+                    'overall_score', 'text_quality', 'structure_quality',
+                    'metadata_completeness', 'content_coverage', 'level',
+                    'issues', 'warnings', 'total_pages', 'extracted_pages',
+                    'total_chunks', 'valid_chunks', 'avg_chunk_length'
+                }
+                filtered_quality = {k: v for k, v in quality_data.items() if k in quality_fields}
+                
+                # Convert level if it's a string
+                if 'level' in filtered_quality and isinstance(filtered_quality['level'], str):
+                    try:
+                        filtered_quality['level'] = QualityLevel(filtered_quality['level'])
+                    except ValueError:
+                        filtered_quality['level'] = QualityLevel.UNVALIDATED
+                
+                source.quality = SourceQuality(**filtered_quality)
         
-        source.validation_results = data.get('validation_results', {})
+        source.validation_results = data_copy.get('validation_results', {})
         
-        if 'categories' in data:
-            source.categories = [
-                SourceCategory(**cat) if isinstance(cat, dict) else cat
-                for cat in data['categories']
-            ]
+        if 'categories' in data_copy:
+            source.categories = []
+            for cat in data_copy['categories']:
+                if isinstance(cat, dict):
+                    # Filter to known SourceCategory fields
+                    cat_fields = {
+                        'name', 'category_type', 'parent_category', 'description',
+                        'source_ids', 'subcategories', 'priority', 'is_primary',
+                        'auto_assigned'
+                    }
+                    filtered_cat = {k: v for k, v in cat.items() if k in cat_fields}
+                    
+                    # Convert category_type if it's a string
+                    if 'category_type' in filtered_cat and isinstance(filtered_cat['category_type'], str):
+                        try:
+                            filtered_cat['category_type'] = ContentCategory(filtered_cat['category_type'])
+                        except ValueError:
+                            continue  # Skip invalid categories
+                    
+                    source.categories.append(SourceCategory(**filtered_cat))
         
-        if 'relationships' in data:
-            source.relationships = [
-                SourceRelationship(**rel) if isinstance(rel, dict) else rel
-                for rel in data['relationships']
-            ]
+        if 'relationships' in data_copy:
+            source.relationships = []
+            for rel in data_copy['relationships']:
+                if isinstance(rel, dict):
+                    # Filter to known SourceRelationship fields
+                    rel_fields = {
+                        'source_id', 'related_source_id', 'relationship_type',
+                        'description', 'strength', 'bidirectional'
+                    }
+                    filtered_rel = {k: v for k, v in rel.items() if k in rel_fields}
+                    source.relationships.append(SourceRelationship(**filtered_rel))
         
-        source.dependencies = data.get('dependencies', [])
+        source.dependencies = data_copy.get('dependencies', [])
         
-        if 'status' in data:
-            source.status = ProcessingStatus(data['status'])
+        if 'status' in data_copy:
+            try:
+                source.status = ProcessingStatus(data_copy['status'])
+            except ValueError:
+                source.status = ProcessingStatus.PENDING
         
-        source.errors = data.get('errors', [])
+        source.errors = data_copy.get('errors', [])
         
-        if isinstance(data.get('created_at'), str):
-            source.created_at = datetime.fromisoformat(data['created_at'])
-        if isinstance(data.get('updated_at'), str):
-            source.updated_at = datetime.fromisoformat(data['updated_at'])
-        if isinstance(data.get('last_accessed'), str):
-            source.last_accessed = datetime.fromisoformat(data['last_accessed'])
+        if isinstance(data_copy.get('created_at'), str):
+            source.created_at = datetime.fromisoformat(data_copy['created_at'])
+        if isinstance(data_copy.get('updated_at'), str):
+            source.updated_at = datetime.fromisoformat(data_copy['updated_at'])
+        if isinstance(data_copy.get('last_accessed'), str):
+            source.last_accessed = datetime.fromisoformat(data_copy['last_accessed'])
         
-        source.access_count = data.get('access_count', 0)
+        source.access_count = data_copy.get('access_count', 0)
         
         return source
 
@@ -353,27 +424,30 @@ class FlavorSource(Source):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'FlavorSource':
         """Create from dictionary."""
+        # Work with a copy to avoid modifying the input
+        data_copy = data.copy()
+        
         # First create base Source
-        source = super().from_dict(data)
+        source = super().from_dict(data_copy)
         
         # Create FlavorSource with Source data
         flavor = cls()
         flavor.__dict__.update(source.__dict__)
         
         # Add flavor-specific fields
-        flavor.narrative_style = data.get('narrative_style', '')
-        flavor.tone = data.get('tone', '')
-        flavor.themes = data.get('themes', [])
-        flavor.characters = data.get('characters', [])
-        flavor.locations = data.get('locations', [])
-        flavor.events = data.get('events', [])
-        flavor.quotes = data.get('quotes', [])
-        flavor.creativity_modifier = data.get('creativity_modifier', 1.0)
-        flavor.canonical = data.get('canonical', False)
-        flavor.priority = data.get('priority', 0)
-        flavor.times_used = data.get('times_used', 0)
+        flavor.narrative_style = data_copy.get('narrative_style', '')
+        flavor.tone = data_copy.get('tone', '')
+        flavor.themes = data_copy.get('themes', [])
+        flavor.characters = data_copy.get('characters', [])
+        flavor.locations = data_copy.get('locations', [])
+        flavor.events = data_copy.get('events', [])
+        flavor.quotes = data_copy.get('quotes', [])
+        flavor.creativity_modifier = data_copy.get('creativity_modifier', 1.0)
+        flavor.canonical = data_copy.get('canonical', False)
+        flavor.priority = data_copy.get('priority', 0)
+        flavor.times_used = data_copy.get('times_used', 0)
         
-        if isinstance(data.get('last_used'), str):
-            flavor.last_used = datetime.fromisoformat(data['last_used'])
+        if isinstance(data_copy.get('last_used'), str):
+            flavor.last_used = datetime.fromisoformat(data_copy['last_used'])
         
         return flavor

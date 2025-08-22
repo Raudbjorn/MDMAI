@@ -6,6 +6,7 @@ import hashlib
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
+from functools import lru_cache
 
 from .models import Source, SourceQuality, QualityLevel, SourceMetadata, SourceType
 
