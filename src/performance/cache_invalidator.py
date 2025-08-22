@@ -1,5 +1,7 @@
 """Cache invalidation logic and strategies."""
 
+import fnmatch
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -64,7 +66,6 @@ class InvalidationRule:
     
     def _match_pattern(self, key: str, pattern: str) -> bool:
         """Match key against pattern (supports wildcards)."""
-        import fnmatch
         return fnmatch.fnmatch(key, pattern)
 
 
@@ -75,7 +76,7 @@ class CacheInvalidator:
         """Initialize cache invalidator."""
         self.rules: Dict[str, InvalidationRule] = {}
         self.cache_systems: Dict[str, Any] = {}  # Reference to cache systems
-        self.invalidation_history: List[Dict[str, Any]] = []
+        self.invalidation_history = deque(maxlen=1000)  # Automatically limited to 1000 entries
         self.scheduled_invalidations: List[Dict[str, Any]] = []
         
         # Default rules
@@ -335,7 +336,7 @@ class CacheInvalidator:
             "active_rules": len(self.rules),
             "registered_caches": len(self.cache_systems),
             "pending_scheduled": pending_scheduled,
-            "recent_invalidations": self.invalidation_history[-10:],
+            "recent_invalidations": list(self.invalidation_history)[-10:],
         }
     
     def _apply_rule(self, cache: Any, rule: InvalidationRule) -> int:
@@ -394,10 +395,7 @@ class CacheInvalidator:
                 "tags": list(tags) if tags else None,
                 "rule_name": rule_name,
             })
-            
-            # Keep history limited
-            if len(self.invalidation_history) > 1000:
-                self.invalidation_history = self.invalidation_history[-1000:]
+            # No need to manually trim - deque with maxlen handles it automatically
     
     def _setup_default_rules(self) -> None:
         """Set up default invalidation rules."""

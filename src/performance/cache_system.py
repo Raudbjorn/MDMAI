@@ -3,13 +3,14 @@
 import hashlib
 import json
 import pickle
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Lock, Thread, Event
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from config.logging_config import get_logger
@@ -141,7 +142,8 @@ class CacheSystem:
             self.cache_file = settings.cache_dir / f"{name}_cache.pkl"
             self._load_from_disk()
         
-        # Start cleanup thread
+        # Thread control
+        self.stop_event = Event()
         self.cleanup_thread = Thread(target=self._auto_cleanup, daemon=True)
         self.cleanup_thread.start()
         
@@ -457,8 +459,11 @@ class CacheSystem:
     
     def _auto_cleanup(self) -> None:
         """Automatically clean up expired entries."""
-        while True:
-            time.sleep(self.auto_cleanup_interval)
+        while not self.stop_event.is_set():
+            # Wait for interval or stop signal
+            if self.stop_event.wait(self.auto_cleanup_interval):
+                # Stop event was set, exit the loop
+                break
             
             expired_count = 0
             with self.lock:
@@ -507,6 +512,26 @@ class CacheSystem:
             logger.info(f"Loaded {len(self.cache)} entries from disk for '{self.name}'")
         except Exception as e:
             logger.error(f"Failed to load cache from disk: {e}")
+    
+    def shutdown(self) -> None:
+        """Gracefully shutdown the cache system."""
+        logger.debug(f"Shutting down cache '{self.name}'")
+        
+        # Signal cleanup thread to stop
+        self.stop_event.set()
+        
+        # Wait for cleanup thread to finish
+        if self.cleanup_thread.is_alive():
+            self.cleanup_thread.join(timeout=5.0)
+            if self.cleanup_thread.is_alive():
+                logger.warning(f"Cleanup thread for cache '{self.name}' did not stop gracefully")
+        
+        # Save persistent cache one final time
+        if self.persistent:
+            with self.lock:
+                self._save_to_disk()
+        
+        logger.debug(f"Cache '{self.name}' shutdown complete")
 
 
 def cache_key_generator(*args, **kwargs) -> str:

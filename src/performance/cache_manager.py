@@ -249,15 +249,12 @@ class GlobalCacheManager:
         """Shutdown cache manager and save persistent caches."""
         logger.info("Shutting down cache manager")
         
-        # Save persistent caches
+        # Gracefully shutdown all cache systems
         for name, cache in self.caches.items():
-            if cache.persistent:
-                cache._save_to_disk()
-                logger.info(f"Saved persistent cache: {name}")
-        
-        # Clear non-persistent caches
-        for name, cache in self.caches.items():
-            if not cache.persistent:
-                cache.clear()
+            try:
+                cache.shutdown()
+                logger.debug(f"Shutdown cache: {name}")
+            except Exception as e:
+                logger.error(f"Error shutting down cache {name}: {e}")
         
         logger.info("Cache manager shutdown complete")
