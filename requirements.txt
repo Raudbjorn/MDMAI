@@ -29,6 +29,7 @@ pydantic>=2.0.0
 python-dotenv>=1.0.0
 aiofiles>=23.0.0
 tqdm>=4.65.0
+pyyaml>=6.0.0
 
 # Logging and Monitoring
 structlog>=23.0.0
