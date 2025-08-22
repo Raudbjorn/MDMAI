@@ -27,6 +27,15 @@ class MonsterStatus(Enum):
     DEAD = "dead"
 
 
+class SessionNoteCategory(Enum):
+    """Category for a session note."""
+    GENERAL = "general"
+    COMBAT = "combat"
+    ROLEPLAY = "roleplay"
+    LOOT = "loot"
+    QUEST = "quest"
+
+
 @dataclass
 class InitiativeEntry:
     """Represents an entry in the initiative order."""
@@ -104,20 +113,12 @@ class Monster:
         """Update status based on current HP."""
         hp_percentage = (self.current_hp / self.max_hp) * 100 if self.max_hp > 0 else 0
         
-        if self.current_hp <= 0:
-            self.status = MonsterStatus.DEAD
-        elif self.current_hp <= -self.max_hp:
         if self.current_hp <= -self.max_hp:
             self.status = MonsterStatus.DEAD  # Instant death
-        elif self.current_hp <= 0:
-            self.status = MonsterStatus.DEAD
-        elif self.current_hp == 0:
-        if self.current_hp == 0:
-            self.status = MonsterStatus.UNCONSCIOUS
         elif self.current_hp < 0:
             self.status = MonsterStatus.DEAD
-        elif self.current_hp <= -self.max_hp:
-            self.status = MonsterStatus.DEAD  # Instant death
+        elif self.current_hp == 0:
+            self.status = MonsterStatus.UNCONSCIOUS
         elif hp_percentage <= 50:
             self.status = MonsterStatus.BLOODIED
         elif hp_percentage < 100:
@@ -132,7 +133,7 @@ class SessionNote:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = field(default_factory=datetime.utcnow)
     content: str = ""
-    category: str = "general"  # general, combat, roleplay, loot, quest
+    category: SessionNoteCategory = SessionNoteCategory.GENERAL
     tags: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -141,7 +142,7 @@ class SessionNote:
             "id": self.id,
             "timestamp": self.timestamp.isoformat(),
             "content": self.content,
-            "category": self.category,
+            "category": self.category.value,
             "tags": self.tags
         }
     
@@ -150,6 +151,8 @@ class SessionNote:
         """Create from dictionary."""
         if isinstance(data.get('timestamp'), str):
             data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+        if isinstance(data.get('category'), str):
+            data['category'] = SessionNoteCategory(data['category'])
         return cls(**data)
 
 
@@ -252,7 +255,7 @@ class Session:
         
         return cls(**data)
     
-    def add_note(self, content: str, category: str = "general", tags: List[str] = None):
+    def add_note(self, content: str, category: SessionNoteCategory = SessionNoteCategory.GENERAL, tags: List[str] = None):
         """Add a note to the session."""
         note = SessionNote(
             content=content,
@@ -283,9 +286,13 @@ class Session:
         self.updated_at = datetime.utcnow()
     
     def next_turn(self):
-        """Advance to the next turn in initiative."""
+        """Advance to the next turn in initiative.
+        
+        Returns:
+            Tuple of (next_entry, round_completed)
+        """
         if not self.initiative_order:
-            return None
+            return None, False
         
         # Find current turn
         current_idx = None
@@ -296,6 +303,7 @@ class Session:
                 break
         
         # Set next turn
+        round_completed = False
         if current_idx is not None:
             next_idx = (current_idx + 1) % len(self.initiative_order)
             self.initiative_order[next_idx].current_turn = True
@@ -303,13 +311,14 @@ class Session:
             # Check if we completed a round
             if next_idx == 0:
                 self.current_round += 1
+                round_completed = True
                 if self.combat_rounds and not self.combat_rounds[-1].completed:
                     self.combat_rounds[-1].completed = True
                 self.combat_rounds.append(CombatRound(round_number=self.current_round))
             
-            return self.initiative_order[next_idx]
+            return self.initiative_order[next_idx], round_completed
         
-        return None
+        return None, False
     
     def add_monster(self, monster: Monster, initiative: int = None):
         """Add a monster to the session."""
@@ -345,12 +354,11 @@ class Session:
     
     def archive(self):
         """Archive the session."""
-        self.status = SessionStatus.ARCHIVED
-        if self.status in [SessionStatus.ACTIVE, SessionStatus.PLANNED]:
+        # Complete the session first if it's still active or planned
         if self.status in [SessionStatus.ACTIVE, SessionStatus.PLANNED]:
             self.status = SessionStatus.COMPLETED
-        else:
-            self.status = SessionStatus.ARCHIVED
+        # Then archive it
+        self.status = SessionStatus.ARCHIVED
         self.completed_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 

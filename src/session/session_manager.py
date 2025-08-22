@@ -9,7 +9,7 @@ from datetime import datetime
 import json
 
 from .models import (
-    Session, SessionStatus, SessionNote, SessionSummary,
+    Session, SessionStatus, SessionNote, SessionNoteCategory, SessionSummary,
     Monster, MonsterStatus, InitiativeEntry, CombatRound
 )
 from ..core.database import ChromaDBManager
@@ -125,7 +125,7 @@ class SessionManager:
         self,
         session_id: str,
         content: str,
-        category: str = "general",
+        category: SessionNoteCategory = SessionNoteCategory.GENERAL,
         tags: List[str] = None
     ) -> SessionNote:
         """
@@ -259,7 +259,7 @@ class SessionManager:
             logger.error(f"Failed to update monster HP: {str(e)}")
             raise
     
-    async def next_turn(self, session_id: str) -> InitiativeEntry:
+    async def next_turn(self, session_id: str) -> tuple[Session, InitiativeEntry, bool]:
         """
         Advance to the next turn in initiative.
         
@@ -267,21 +267,21 @@ class SessionManager:
             session_id: ID of the session
         
         Returns:
-            The entry whose turn it is now
+            Tuple of (updated session, next entry, round_completed)
         """
         try:
             session = await self.get_session(session_id)
             if not session:
                 raise ValueError(f"Session not found: {session_id}")
             
-            next_entry = session.next_turn()
+            next_entry, round_completed = session.next_turn()
             if not next_entry:
                 raise ValueError("No initiative order set")
             
             await self._store_session(session)
             
             logger.info(f"Advanced turn in session: {session_id}")
-            return next_entry
+            return session, next_entry, round_completed
             
         except Exception as e:
             logger.error(f"Failed to advance turn: {str(e)}")
@@ -461,22 +461,31 @@ class SessionManager:
         self,
         session_id: str,
         query: str = None,
-        category: str = None,
-        tags: List[str] = None
+        category: SessionNoteCategory = None,
+        tags: List[str] = None,
+        limit: int = 100
     ) -> List[SessionNote]:
         """
-        Search notes within a session.
+        Search notes within a session using database queries.
+        
+        For better scalability, session notes could be stored as separate
+        documents in a dedicated collection with metadata linking to session_id.
+        This current implementation fetches the session and filters in memory
+        for simplicity, but includes a limit parameter for safety.
         
         Args:
             session_id: ID of the session
             query: Optional text query
             category: Optional category filter
             tags: Optional tag filters
+            limit: Maximum number of notes to return (default 100)
         
         Returns:
             List of matching SessionNote objects
         """
         try:
+            # For now, we still fetch the session, but with better error handling
+            # In a future refactor, notes could be stored separately for better scalability
             session = await self.get_session(session_id)
             if not session:
                 return []
@@ -499,7 +508,8 @@ class SessionManager:
             # Sort by timestamp (most recent first)
             notes.sort(key=lambda x: x.timestamp, reverse=True)
             
-            return notes
+            # Apply limit for safety
+            return notes[:limit]
             
         except Exception as e:
             logger.error(f"Failed to search session notes: {str(e)}")

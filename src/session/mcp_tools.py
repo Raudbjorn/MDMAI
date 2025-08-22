@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from ..search.error_handler import handle_search_errors, DatabaseError
+from .models import SessionNoteCategory
 
 logger = logging.getLogger(__name__)
 
@@ -67,50 +68,42 @@ async def start_session(
     Returns:
         Session creation result with ID and details
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        if not _campaign_manager:
-            raise DatabaseError("Campaign manager not initialized")
-        
-        # Verify campaign exists
-        campaign = await _campaign_manager.get_campaign(campaign_id)
-        if not campaign:
-            return {
-                "success": False,
-                "error": f"Campaign not found: {campaign_id}"
-            }
-        
-        # Create and start the session
-        session = await _session_manager.create_session(
-            campaign_id=campaign_id,
-            name=session_name
-        )
-        
-        # Start the session immediately
-        session = await _session_manager.start_session(session.id)
-        
-        return {
-            "success": True,
-            "message": f"Session '{session.name}' started successfully",
-            "id": session.id,
-            "data": {
-                "session_id": session.id,
-                "campaign_id": session.campaign_id,
-                "name": session.name,
-                "status": session.status.value,
-                "date": session.date.isoformat(),
-                "current_round": session.current_round
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to start session: {str(e)}")
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    if not _campaign_manager:
+        raise DatabaseError("Campaign manager not initialized")
+    
+    # Verify campaign exists
+    campaign = await _campaign_manager.get_campaign(campaign_id)
+    if not campaign:
         return {
             "success": False,
-            "error": f"Failed to start session: {str(e)}"
+            "error": f"Campaign not found: {campaign_id}"
         }
+    
+    # Create and start the session
+    session = await _session_manager.create_session(
+        campaign_id=campaign_id,
+        name=session_name
+    )
+    
+    # Start the session immediately
+    session = await _session_manager.start_session(session.id)
+    
+    return {
+        "success": True,
+        "message": f"Session '{session.name}' started successfully",
+        "id": session.id,
+        "data": {
+            "session_id": session.id,
+            "campaign_id": session.campaign_id,
+            "name": session.name,
+            "status": session.status.value,
+            "date": session.date.isoformat(),
+            "current_round": session.current_round
+        }
+    }
 
 
 @handle_search_errors()
@@ -132,42 +125,36 @@ async def add_session_note(
     Returns:
         Note creation result
     """
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    # Convert string category to enum
     try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        # Validate category
-        valid_categories = ["general", "combat", "roleplay", "loot", "quest"]
-        if category not in valid_categories:
-            return {
-                "success": False,
-                "error": f"Invalid category. Must be one of: {', '.join(valid_categories)}"
-            }
-        
-        note_obj = await _session_manager.add_session_note(
-            session_id=session_id,
-            content=note,
-            category=category,
-            tags=tags or []
-        )
-        
-        return {
-            "success": True,
-            "message": "Note added to session",
-            "data": {
-                "note_id": note_obj.id,
-                "timestamp": note_obj.timestamp.isoformat(),
-                "category": note_obj.category,
-                "tags": note_obj.tags
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to add session note: {str(e)}")
+        category_enum = SessionNoteCategory(category)
+    except ValueError:
+        valid_categories = [c.value for c in SessionNoteCategory]
         return {
             "success": False,
-            "error": f"Failed to add note: {str(e)}"
+            "error": f"Invalid category. Must be one of: {', '.join(valid_categories)}"
         }
+    
+    note_obj = await _session_manager.add_session_note(
+        session_id=session_id,
+        content=note,
+        category=category_enum,
+        tags=tags or []
+    )
+    
+    return {
+        "success": True,
+        "message": "Note added to session",
+        "data": {
+            "note_id": note_obj.id,
+            "timestamp": note_obj.timestamp.isoformat(),
+            "category": note_obj.category.value,
+            "tags": note_obj.tags
+        }
+    }
 
 
 @handle_search_errors()
@@ -186,60 +173,52 @@ async def set_initiative(
     Returns:
         Initiative setting result
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        # Validate initiative entries
-        for entry in initiative_order:
-            if "name" not in entry or "initiative" not in entry:
-                return {
-                    "success": False,
-                    "error": "Each initiative entry must have 'name' and 'initiative' fields"
-                }
-            
-            # Ensure initiative is a number
-            try:
-                entry["initiative"] = int(entry["initiative"])
-            except (ValueError, TypeError):
-                return {
-                    "success": False,
-                    "error": f"Invalid initiative value for {entry['name']}: must be a number"
-                }
-        
-        session = await _session_manager.set_initiative(
-            session_id=session_id,
-            initiative_order=initiative_order
-        )
-        
-        # Format the initiative order for response
-        formatted_order = [
-            {
-                "position": idx + 1,
-                "name": entry.name,
-                "initiative": entry.initiative,
-                "type": "player" if entry.is_player else "npc" if entry.is_npc else "monster" if entry.is_monster else "unknown",
-                "current_turn": entry.current_turn
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    # Validate initiative entries
+    for entry in initiative_order:
+        if "name" not in entry or "initiative" not in entry:
+            return {
+                "success": False,
+                "error": "Each initiative entry must have 'name' and 'initiative' fields"
             }
-            for idx, entry in enumerate(session.initiative_order)
-        ]
         
-        return {
-            "success": True,
-            "message": "Initiative order set",
-            "data": {
-                "session_id": session_id,
-                "initiative_order": formatted_order,
-                "current_round": session.current_round
+        # Ensure initiative is a number
+        try:
+            entry["initiative"] = int(entry["initiative"])
+        except (ValueError, TypeError):
+            return {
+                "success": False,
+                "error": f"Invalid initiative value for {entry['name']}: must be a number"
             }
+    
+    session = await _session_manager.set_initiative(
+        session_id=session_id,
+        initiative_order=initiative_order
+    )
+    
+    # Format the initiative order for response
+    formatted_order = [
+        {
+            "position": idx + 1,
+            "name": entry.name,
+            "initiative": entry.initiative,
+            "type": "player" if entry.is_player else "npc" if entry.is_npc else "monster" if entry.is_monster else "unknown",
+            "current_turn": entry.current_turn
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to set initiative: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to set initiative: {str(e)}"
+        for idx, entry in enumerate(session.initiative_order)
+    ]
+    
+    return {
+        "success": True,
+        "message": "Initiative order set",
+        "data": {
+            "session_id": session_id,
+            "initiative_order": formatted_order,
+            "current_round": session.current_round
         }
+    }
 
 
 @handle_search_errors()
@@ -269,48 +248,40 @@ async def add_monster_to_session(
     Returns:
         Monster creation result
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        # Create monster data
-        monster_data = {
-            "name": name,
-            "type": monster_type,
-            "max_hp": max_hp,
-            "current_hp": max_hp,
-            "armor_class": armor_class,
-            "challenge_rating": challenge_rating,
-            "notes": notes
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    # Create monster data
+    monster_data = {
+        "name": name,
+        "type": monster_type,
+        "max_hp": max_hp,
+        "current_hp": max_hp,
+        "armor_class": armor_class,
+        "challenge_rating": challenge_rating,
+        "notes": notes
+    }
+    
+    monster = await _session_manager.add_monster(
+        session_id=session_id,
+        monster_data=monster_data,
+        initiative=initiative
+    )
+    
+    return {
+        "success": True,
+        "message": f"Monster '{name}' added to session",
+        "data": {
+            "monster_id": monster.id,
+            "name": monster.name,
+            "type": monster.type,
+            "hp": f"{monster.current_hp}/{monster.max_hp}",
+            "ac": monster.armor_class,
+            "cr": monster.challenge_rating,
+            "status": monster.status.value,
+            "added_to_initiative": initiative is not None
         }
-        
-        monster = await _session_manager.add_monster(
-            session_id=session_id,
-            monster_data=monster_data,
-            initiative=initiative
-        )
-        
-        return {
-            "success": True,
-            "message": f"Monster '{name}' added to session",
-            "data": {
-                "monster_id": monster.id,
-                "name": monster.name,
-                "type": monster.type,
-                "hp": f"{monster.current_hp}/{monster.max_hp}",
-                "ac": monster.armor_class,
-                "cr": monster.challenge_rating,
-                "status": monster.status.value,
-                "added_to_initiative": initiative is not None
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to add monster: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to add monster: {str(e)}"
-        }
+    }
 
 
 @handle_search_errors()
@@ -330,43 +301,35 @@ async def update_monster_hp(
     Returns:
         Update result with monster status
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        monster = await _session_manager.update_monster_hp(
-            session_id=session_id,
-            monster_id=monster_id,
-            new_hp=new_hp
-        )
-        
-        # Determine status message
-        status_message = ""
-        if monster.status.value == "dead":
-            status_message = f"{monster.name} has been defeated!"
-        elif monster.status.value == "unconscious":
-            status_message = f"{monster.name} is unconscious!"
-        elif monster.status.value == "bloodied":
-            status_message = f"{monster.name} is bloodied!"
-        
-        return {
-            "success": True,
-            "message": f"Updated {monster.name}'s HP",
-            "data": {
-                "monster_id": monster.id,
-                "name": monster.name,
-                "hp": f"{monster.current_hp}/{monster.max_hp}",
-                "status": monster.status.value,
-                "status_message": status_message
-            }
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    monster = await _session_manager.update_monster_hp(
+        session_id=session_id,
+        monster_id=monster_id,
+        new_hp=new_hp
+    )
+    
+    # Determine status message
+    status_message = ""
+    if monster.status.value == "dead":
+        status_message = f"{monster.name} has been defeated!"
+    elif monster.status.value == "unconscious":
+        status_message = f"{monster.name} is unconscious!"
+    elif monster.status.value == "bloodied":
+        status_message = f"{monster.name} is bloodied!"
+    
+    return {
+        "success": True,
+        "message": f"Updated {monster.name}'s HP",
+        "data": {
+            "monster_id": monster.id,
+            "name": monster.name,
+            "hp": f"{monster.current_hp}/{monster.max_hp}",
+            "status": monster.status.value,
+            "status_message": status_message
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to update monster HP: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to update monster HP: {str(e)}"
-        }
+    }
 
 
 @handle_search_errors()
@@ -380,35 +343,25 @@ async def next_turn(session_id: str) -> Dict[str, Any]:
     Returns:
         Information about whose turn it is
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        next_entry = await _session_manager.next_turn(session_id)
-        
-        # Get the full session to check round advancement
-        session = await _session_manager.get_session(session_id)
-        
-        return {
-            "success": True,
-            "message": f"It's now {next_entry.name}'s turn",
-            "data": {
-                "current_turn": {
-                    "name": next_entry.name,
-                    "initiative": next_entry.initiative,
-                    "type": "player" if next_entry.is_player else "npc" if next_entry.is_npc else "monster"
-                },
-                "current_round": session.current_round,
-                "round_complete": session.current_round > len([r for r in session.combat_rounds if r.completed])
-            }
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    # Get session, next entry, and round completion status in one call
+    session, next_entry, round_completed = await _session_manager.next_turn(session_id)
+    
+    return {
+        "success": True,
+        "message": f"It's now {next_entry.name}'s turn",
+        "data": {
+            "current_turn": {
+                "name": next_entry.name,
+                "initiative": next_entry.initiative,
+                "type": "player" if next_entry.is_player else "npc" if next_entry.is_npc else "monster"
+            },
+            "current_round": session.current_round,
+            "round_complete": round_completed
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to advance turn: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to advance turn: {str(e)}"
-        }
+    }
 
 
 @handle_search_errors()
@@ -422,39 +375,31 @@ async def complete_session(session_id: str) -> Dict[str, Any]:
     Returns:
         Session completion result
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        session = await _session_manager.complete_session(session_id)
-        
-        # Calculate session statistics
-        monsters_defeated = len([m for m in session.monsters if m.status.value == "dead"])
-        total_notes = len(session.notes)
-        
-        return {
-            "success": True,
-            "message": f"Session '{session.name}' completed",
-            "data": {
-                "session_id": session.id,
-                "name": session.name,
-                "status": session.status.value,
-                "completed_at": session.completed_at.isoformat(),
-                "statistics": {
-                    "duration": str(session.completed_at - session.created_at),
-                    "combat_rounds": session.current_round,
-                    "monsters_defeated": monsters_defeated,
-                    "total_notes": total_notes
-                }
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    session = await _session_manager.complete_session(session_id)
+    
+    # Calculate session statistics
+    monsters_defeated = len([m for m in session.monsters if m.status.value == "dead"])
+    total_notes = len(session.notes)
+    
+    return {
+        "success": True,
+        "message": f"Session '{session.name}' completed",
+        "data": {
+            "session_id": session.id,
+            "name": session.name,
+            "status": session.status.value,
+            "completed_at": session.completed_at.isoformat(),
+            "statistics": {
+                "duration": str(session.completed_at - session.created_at),
+                "combat_rounds": session.current_round,
+                "monsters_defeated": monsters_defeated,
+                "total_notes": total_notes
             }
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to complete session: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to complete session: {str(e)}"
-        }
+    }
 
 
 @handle_search_errors()
@@ -468,29 +413,21 @@ async def archive_session(session_id: str) -> Dict[str, Any]:
     Returns:
         Archive result
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        session = await _session_manager.archive_session(session_id)
-        
-        return {
-            "success": True,
-            "message": f"Session '{session.name}' archived",
-            "data": {
-                "session_id": session.id,
-                "name": session.name,
-                "status": session.status.value,
-                "archived_at": session.completed_at.isoformat() if session.completed_at else datetime.utcnow().isoformat()
-            }
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    session = await _session_manager.archive_session(session_id)
+    
+    return {
+        "success": True,
+        "message": f"Session '{session.name}' archived",
+        "data": {
+            "session_id": session.id,
+            "name": session.name,
+            "status": session.status.value,
+            "archived_at": session.completed_at.isoformat() if session.completed_at else datetime.utcnow().isoformat()
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to archive session: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to archive session: {str(e)}"
-        }
+    }
 
 
 @handle_search_errors()
@@ -508,74 +445,66 @@ async def get_session_data(
     Returns:
         Session data
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        session = await _session_manager.get_session(session_id)
-        if not session:
-            return {
-                "success": False,
-                "error": f"Session not found: {session_id}"
-            }
-        
-        # Basic session data
-        data = {
-            "session_id": session.id,
-            "campaign_id": session.campaign_id,
-            "name": session.name,
-            "status": session.status.value,
-            "date": session.date.isoformat(),
-            "current_round": session.current_round,
-            "notes_count": len(session.notes),
-            "monsters_count": len(session.monsters),
-            "active_monsters": len(session.get_active_monsters())
-        }
-        
-        # Add full details if requested
-        if include_full_details:
-            data["initiative_order"] = [
-                {
-                    "name": entry.name,
-                    "initiative": entry.initiative,
-                    "current_turn": entry.current_turn,
-                    "conditions": entry.conditions
-                }
-                for entry in session.initiative_order
-            ]
-            
-            data["monsters"] = [
-                {
-                    "id": monster.id,
-                    "name": monster.name,
-                    "type": monster.type,
-                    "hp": f"{monster.current_hp}/{monster.max_hp}",
-                    "status": monster.status.value,
-                    "conditions": monster.conditions
-                }
-                for monster in session.monsters
-            ]
-            
-            data["recent_notes"] = [
-                {
-                    "timestamp": note.timestamp.isoformat(),
-                    "category": note.category,
-                    "content": note.content[:100] + "..." if len(note.content) > 100 else note.content
-                }
-                for note in sorted(session.notes, key=lambda x: x.timestamp, reverse=True)[:5]
-            ]
-        
-        return {
-            "success": True,
-            "data": data
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to get session data: {str(e)}")
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    session = await _session_manager.get_session(session_id)
+    if not session:
         return {
             "success": False,
-            "error": f"Failed to get session data: {str(e)}"
+            "error": f"Session not found: {session_id}"
         }
+    
+    # Basic session data
+    data = {
+        "session_id": session.id,
+        "campaign_id": session.campaign_id,
+        "name": session.name,
+        "status": session.status.value,
+        "date": session.date.isoformat(),
+        "current_round": session.current_round,
+        "notes_count": len(session.notes),
+        "monsters_count": len(session.monsters),
+        "active_monsters": len(session.get_active_monsters())
+    }
+    
+    # Add full details if requested
+    if include_full_details:
+        data["initiative_order"] = [
+            {
+                "name": entry.name,
+                "initiative": entry.initiative,
+                "current_turn": entry.current_turn,
+                "conditions": entry.conditions
+            }
+            for entry in session.initiative_order
+        ]
+        
+        data["monsters"] = [
+            {
+                "id": monster.id,
+                "name": monster.name,
+                "type": monster.type,
+                "hp": f"{monster.current_hp}/{monster.max_hp}",
+                "status": monster.status.value,
+                "conditions": monster.conditions
+            }
+            for monster in session.monsters
+        ]
+        
+        data["recent_notes"] = [
+            {
+                "timestamp": note.timestamp.isoformat(),
+                "category": note.category.value,
+                "content": note.content[:100] + "..." if len(note.content) > 100 else note.content
+            }
+            for note in sorted(session.notes, key=lambda x: x.timestamp, reverse=True)[:5]
+        ]
+    
+    return {
+        "success": True,
+        "data": data
+    }
 
 
 @handle_search_errors()
@@ -593,40 +522,32 @@ async def list_campaign_sessions(
     Returns:
         List of session summaries
     """
-    try:
-        if not _session_manager:
-            raise DatabaseError("Session manager not initialized")
-        
-        sessions = await _session_manager.get_campaign_sessions(
-            campaign_id=campaign_id,
-            include_archived=include_archived
-        )
-        
-        session_list = [
-            {
-                "session_id": session.id,
-                "name": session.name,
-                "date": session.date.isoformat(),
-                "status": session.status.value,
-                "notes_count": len(session.notes),
-                "monsters_defeated": len([m for m in session.monsters if m.status.value == "dead"]),
-                "combat_rounds": session.current_round
-            }
-            for session in sessions
-        ]
-        
-        return {
-            "success": True,
-            "data": {
-                "campaign_id": campaign_id,
-                "total_sessions": len(session_list),
-                "sessions": session_list
-            }
+    if not _session_manager:
+        raise DatabaseError("Session manager not initialized")
+    
+    sessions = await _session_manager.get_campaign_sessions(
+        campaign_id=campaign_id,
+        include_archived=include_archived
+    )
+    
+    session_list = [
+        {
+            "session_id": session.id,
+            "name": session.name,
+            "date": session.date.isoformat(),
+            "status": session.status.value,
+            "notes_count": len(session.notes),
+            "monsters_defeated": len([m for m in session.monsters if m.status.value == "dead"]),
+            "combat_rounds": session.current_round
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to list campaign sessions: {str(e)}")
-        return {
-            "success": False,
-            "error": f"Failed to list sessions: {str(e)}"
+        for session in sessions
+    ]
+    
+    return {
+        "success": True,
+        "data": {
+            "campaign_id": campaign_id,
+            "total_sessions": len(session_list),
+            "sessions": session_list
         }
+    }
