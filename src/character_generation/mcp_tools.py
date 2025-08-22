@@ -231,9 +231,11 @@ def register_character_tools(mcp_server):
             # Store in database if available
             if _db:
                 try:
-                    await _db.add_document(
+                    doc_dict = npc.to_dict()
+                    _db.add_document(
                         collection_name="npcs",
-                        document=npc.to_dict(),
+                        document_id=npc.id,
+                        content=f"NPC: {npc.name}, {npc.get_role_name()}",
                         metadata={
                             "type": "npc",
                             "system": system,
@@ -241,7 +243,8 @@ def register_character_tools(mcp_server):
                             "importance": importance,
                             "level": npc.stats.level,
                             "name": npc.name,
-                            "location": npc.location
+                            "location": npc.location,
+                            "document": json.dumps(doc_dict)
                         }
                     )
                     logger.info(f"NPC {npc.name} stored in database")
