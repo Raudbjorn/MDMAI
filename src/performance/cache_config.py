@@ -58,7 +58,11 @@ class CacheProfile:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CacheProfile":
         """Create from dictionary."""
-        data["cache_type"] = CacheType(data["cache_type"])
+        try:
+            data["cache_type"] = CacheType(data["cache_type"])
+        except ValueError:
+            logger.warning(f"Invalid cache_type '{data.get('cache_type')}' found in config. Defaulting to GENERAL.")
+            data["cache_type"] = CacheType.GENERAL
         return cls(**data)
 
 
