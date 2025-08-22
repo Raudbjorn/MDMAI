@@ -112,7 +112,12 @@ class Monster:
         elif self.current_hp <= 0:
             self.status = MonsterStatus.DEAD
         elif self.current_hp == 0:
+        if self.current_hp == 0:
             self.status = MonsterStatus.UNCONSCIOUS
+        elif self.current_hp < 0:
+            self.status = MonsterStatus.DEAD
+        elif self.current_hp <= -self.max_hp:
+            self.status = MonsterStatus.DEAD  # Instant death
         elif hp_percentage <= 50:
             self.status = MonsterStatus.BLOODIED
         elif hp_percentage < 100:
