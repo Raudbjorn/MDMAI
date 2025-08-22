@@ -524,7 +524,7 @@ class FlavorIntegrator:
         # Tone-specific adjustments
         if tone == 'mysterious' and intensity > 0.5:
             # Add mysterious elements
-            content = content.replace('. ', '... ')[:len(content)]  # Limit changes
+            content = content.replace('. ', '... ')
             
         elif tone == 'adventurous' and intensity > 0.5:
             # Add excitement
