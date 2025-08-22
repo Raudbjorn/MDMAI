@@ -324,8 +324,7 @@ class CacheConfiguration:
                 self.profiles[name] = CacheProfile.from_dict(profile_data)
             
             logger.info(f"Loaded cache configuration from {self.config_file}")
-        except Exception as e:
-            logger.error(f"Failed to load cache configuration: {e}")
+        except (yaml.YAMLError, FileNotFoundError, PermissionError) as e:
     
     def _save_config(self) -> None:
         """Save configuration to file."""
