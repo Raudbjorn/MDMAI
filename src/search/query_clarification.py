@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import re
 from collections import Counter
 import difflib
+from datetime import datetime
 
 from config.logging_config import get_logger
 from src.search.error_handler import SearchError, handle_search_errors
@@ -432,7 +433,6 @@ class QueryClarificationService:
     
     def _get_timestamp(self) -> str:
         """Get current timestamp."""
-        from datetime import datetime
         return datetime.utcnow().isoformat()
     
     @handle_search_errors()

@@ -162,7 +162,8 @@ class QueryCompletionEngine:
         self.term_associations = defaultdict(Counter)  # Term co-occurrence
         
         # Context-aware completions
-        self.context_completions = defaultdict(list)
+        # TODO: Implement context-aware completions in future
+        # self.context_completions = defaultdict(list)  # Currently unused
         self.session_context = []
         
         # Common TTRPG query templates
@@ -468,8 +469,9 @@ class QueryCompletionEngine:
     
     def _calculate_confidence(self, frequency: int, source: str) -> float:
         """Calculate confidence score for a suggestion."""
-        # Base confidence from frequency
-        base_confidence = min(frequency / 10.0, 1.0)
+        # Base confidence from frequency (normalize by threshold)
+        FREQUENCY_NORMALIZATION = 10.0  # Frequency of 10 = 100% confidence  
+        base_confidence = min(frequency / FREQUENCY_NORMALIZATION, 1.0)
         
         # Adjust based on source
         source_weights = {
