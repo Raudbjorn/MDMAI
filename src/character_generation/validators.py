@@ -279,7 +279,7 @@ class CharacterValidator:
                     logger.info(f"Unknown class: {character_class}, treating as custom")
         
         # Validate race if provided
-        if race:
+        if race and race.strip():
             try:
                 CharacterRace(race.lower().replace(' ', '-'))
             except ValueError:
