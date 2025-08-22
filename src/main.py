@@ -27,6 +27,10 @@ from src.session import (
     initialize_session_tools,
     register_session_tools
 )
+from src.character_generation import (
+    initialize_character_tools,
+    register_character_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -605,6 +609,12 @@ def main():
         
         # Register session tools with MCP server
         register_session_tools(mcp)
+        
+        # Initialize character generation system
+        initialize_character_tools(db, personality_manager)
+        
+        # Register character generation tools with MCP server
+        register_character_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
