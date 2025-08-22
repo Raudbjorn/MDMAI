@@ -16,6 +16,12 @@ from src.pdf_processing.pipeline import PDFProcessingPipeline
 from src.search.search_service import SearchService
 from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
+from src.campaign.campaign_manager import CampaignManager
+from src.campaign.rulebook_linker import RulebookLinker
+from src.campaign import (
+    initialize_campaign_tools,
+    register_campaign_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -36,6 +42,10 @@ search_service = SearchService()
 # Initialize personality system
 personality_manager = PersonalityManager()
 response_generator = ResponseGenerator(personality_manager)
+
+# Campaign management components (initialized in main())
+campaign_manager: Optional[CampaignManager] = None
+rulebook_linker: Optional[RulebookLinker] = None
 
 
 @mcp.tool()
@@ -255,8 +265,16 @@ async def list_sources(
         return []
 
 
-@mcp.tool()
-async def create_campaign(
+# NOTE: Basic campaign tools replaced by enhanced campaign management system
+# The enhanced system provides:
+# - Full CRUD operations with versioning
+# - Campaign-rulebook linking
+# - Character, NPC, Location, and Plot Point management
+# - Version history and rollback capabilities
+# See src/campaign/mcp_tools.py for the enhanced implementations
+
+# @mcp.tool()  # Replaced by enhanced version
+# async def create_campaign(
     name: str,
     system: str,
     description: Optional[str] = None,
@@ -326,8 +344,8 @@ async def create_campaign(
         }
 
 
-@mcp.tool()
-async def get_campaign_data(
+# @mcp.tool()  # Replaced by enhanced version
+# async def get_campaign_data(
     campaign_id: str,
     data_type: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -701,6 +719,15 @@ def main():
         
         # Initialize database manager
         db = ChromaDBManager()
+        
+        # Initialize campaign management system
+        global campaign_manager, rulebook_linker
+        campaign_manager = CampaignManager(db)
+        rulebook_linker = RulebookLinker(db)
+        initialize_campaign_tools(db, campaign_manager, rulebook_linker)
+        
+        # Register enhanced campaign tools with MCP server
+        register_campaign_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
