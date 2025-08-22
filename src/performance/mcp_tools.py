@@ -10,9 +10,12 @@ logger = get_logger(__name__)
 _cache_manager = None
 _cache_invalidator = None
 _cache_config = None
+_db = None
+_optimizer = None
+_monitor = None
 
 
-def initialize_performance_tools(cache_manager, cache_invalidator, cache_config):
+def initialize_performance_tools(cache_manager, cache_invalidator, cache_config, db=None):
     """
     Initialize performance tools with required components.
     
@@ -20,11 +23,15 @@ def initialize_performance_tools(cache_manager, cache_invalidator, cache_config)
         cache_manager: Global cache manager instance
         cache_invalidator: Cache invalidator instance
         cache_config: Cache configuration instance
+        db: Database manager with optimizer and monitor
     """
-    global _cache_manager, _cache_invalidator, _cache_config
+    global _cache_manager, _cache_invalidator, _cache_config, _db, _optimizer, _monitor
     _cache_manager = cache_manager
     _cache_invalidator = cache_invalidator
     _cache_config = cache_config
+    _db = db
+    _optimizer = db.optimizer if db else None
+    _monitor = db.monitor if db else None
     logger.info("Performance tools initialized")
 
 
@@ -35,12 +42,21 @@ def register_performance_tools(mcp_server):
     Args:
         mcp_server: The MCP server instance to register tools with
     """
+    # Cache management tools
     mcp_server.tool()(get_cache_stats)
     mcp_server.tool()(clear_cache)
     mcp_server.tool()(invalidate_cache)
     mcp_server.tool()(configure_cache)
     mcp_server.tool()(optimize_cache_memory)
     mcp_server.tool()(get_cache_recommendations)
+    
+    # Database performance tools
+    mcp_server.tool()(optimize_database)
+    mcp_server.tool()(get_database_performance_report)
+    mcp_server.tool()(start_performance_monitoring)
+    mcp_server.tool()(stop_performance_monitoring)
+    mcp_server.tool()(analyze_query_performance)
+    
     logger.info("Performance tools registered with MCP server")
 
 
@@ -452,4 +468,207 @@ async def get_cache_recommendations() -> Dict[str, Any]:
         return {
             "success": False,
             "error": str(e),
+        }
+
+
+async def optimize_database(
+    collection: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Optimize database indices for improved search performance.
+    
+    Args:
+        collection: Specific collection to optimize, or None for all collections
+        
+    Returns:
+        Optimization results including metrics and recommendations
+    """
+    if not _db:
+        return {
+            "success": False,
+            "error": "Database not initialized",
+        }
+    
+    try:
+        results = await _db.optimize_indices(collection)
+        
+        return {
+            "success": True,
+            "message": f"Successfully optimized {len(results.get('optimized', []))} collections",
+            "optimized_collections": results.get("optimized", []),
+            "metrics": results.get("metrics", {}),
+            "total_time": results.get("total_time", 0),
+            "errors": results.get("errors", []),
+        }
+        
+    except Exception as e:
+        logger.error(f"Database optimization failed: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Optimization failed: {str(e)}",
+        }
+
+
+async def get_database_performance_report() -> Dict[str, Any]:
+    """
+    Generate a comprehensive performance report for the database and system.
+    
+    Returns:
+        Performance metrics, statistics, and recommendations
+    """
+    if not _db:
+        return {
+            "success": False,
+            "error": "Database not initialized",
+        }
+    
+    try:
+        report = await _db.get_performance_report()
+        
+        # Extract key metrics
+        result = {
+            "success": True,
+            "database_stats": report.get("database", {}),
+            "query_performance": {},
+            "system_metrics": {},
+            "recommendations": [],
+        }
+        
+        # Process optimizer report
+        if "optimizer" in report and report["optimizer"]:
+            optimizer_report = report["optimizer"]
+            if "query_metrics" in optimizer_report:
+                result["query_performance"] = optimizer_report["query_metrics"]
+            if "recommendations" in optimizer_report:
+                result["recommendations"].extend(optimizer_report["recommendations"])
+        
+        # Process monitor report
+        if "monitor" in report and report["monitor"]:
+            monitor_report = report["monitor"]
+            if "system" in monitor_report:
+                result["system_metrics"] = monitor_report["system"]
+            if "operations" in monitor_report:
+                result["operation_stats"] = monitor_report["operations"]
+            if "recommendations" in monitor_report:
+                result["recommendations"].extend(monitor_report["recommendations"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to generate performance report: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Report generation failed: {str(e)}",
+        }
+
+
+async def start_performance_monitoring(
+    interval: int = 60,
+) -> Dict[str, Any]:
+    """
+    Start continuous performance monitoring.
+    
+    Args:
+        interval: Monitoring interval in seconds (default: 60)
+        
+    Returns:
+        Monitoring status
+    """
+    if not _db:
+        return {
+            "success": False,
+            "error": "Database not initialized",
+        }
+    
+    try:
+        await _db.start_monitoring(interval)
+        
+        return {
+            "success": True,
+            "message": f"Performance monitoring started with {interval}s interval",
+            "status": "active",
+            "interval": interval,
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start monitoring: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Monitoring start failed: {str(e)}",
+        }
+
+
+async def stop_performance_monitoring() -> Dict[str, Any]:
+    """
+    Stop performance monitoring.
+    
+    Returns:
+        Monitoring status
+    """
+    if not _db:
+        return {
+            "success": False,
+            "error": "Database not initialized",
+        }
+    
+    try:
+        await _db.stop_monitoring()
+        
+        return {
+            "success": True,
+            "message": "Performance monitoring stopped",
+            "status": "stopped",
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to stop monitoring: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Monitoring stop failed: {str(e)}",
+        }
+
+
+async def analyze_query_performance(
+    query: str,
+) -> Dict[str, Any]:
+    """
+    Analyze and optimize a specific query for better performance.
+    
+    Args:
+        query: The query to analyze
+        
+    Returns:
+        Analysis results and optimization suggestions
+    """
+    if not _optimizer:
+        return {
+            "success": False,
+            "error": "Query optimizer not available",
+        }
+    
+    try:
+        # Analyze the query
+        analysis = _optimizer._analyze_query(query)
+        
+        # Generate optimized version
+        optimized = _optimizer._rewrite_query(query, analysis)
+        
+        return {
+            "success": True,
+            "original_query": query,
+            "optimized_query": optimized,
+            "analysis": {
+                "length": analysis["length"],
+                "word_count": analysis["word_count"],
+                "has_special_chars": analysis["has_special_chars"],
+            },
+            "suggestions": analysis["suggestions"],
+            "optimization_applied": query != optimized,
+        }
+        
+    except Exception as e:
+        logger.error(f"Query analysis failed: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Analysis failed: {str(e)}",
         }
