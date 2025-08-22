@@ -56,8 +56,8 @@ class SessionManager:
             # Generate session name if not provided
             if not name:
                 # Count existing sessions for this campaign
-                existing_sessions = await self.get_campaign_sessions(campaign_id)
-                session_number = len(existing_sessions) + 1
+                collection = self.db.collections[self.collection_name]
+                session_number = collection.count(where={"campaign_id": campaign_id}) + 1
                 name = f"Session {session_number}"
             
             # Create session
