@@ -266,7 +266,8 @@ class SourceManager:
                 
                 if quality_min:
                     quality = source_data.get('quality', {})
-                    if quality.get('level', 'unvalidated') < quality_min:
+                    quality_level = quality.get('level', 'unvalidated')
+                    if QUALITY_LEVEL_ORDER.get(quality_level, 0) < QUALITY_LEVEL_ORDER.get(quality_min, 0):
                         continue
                 
                 sources.append({
