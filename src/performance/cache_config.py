@@ -285,7 +285,7 @@ class CacheConfiguration:
             },
         }
         
-        with open(path, 'w') as f:
+        with open(path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False)
         
         logger.info(f"Exported cache configuration to {path}")
