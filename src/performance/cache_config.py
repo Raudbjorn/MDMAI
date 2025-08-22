@@ -269,7 +269,7 @@ class CacheConfiguration:
         recommendations["memory"] = {
             "total_allocated": total_memory,
             "system_limit": settings.cache_max_memory_mb,
-            "utilization": f"{(total_memory / settings.cache_max_memory_mb * 100):.1f}%",
+            "utilization": f"{(total_memory / settings.cache_max_memory_mb * 100):.1f}%" if settings.cache_max_memory_mb > 0 else "N/A",
         }
         
         return recommendations
