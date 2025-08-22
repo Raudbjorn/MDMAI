@@ -90,7 +90,7 @@ async def create_campaign(
         )
         
         # Automatically link to rulebooks
-        if result["success"] and rulebook_linker:
+        if result.get("success") and rulebook_linker:
             campaign = await campaign_manager.get_campaign(result["campaign_id"])
             if campaign:
                 await rulebook_linker.link_campaign_to_rulebooks(campaign)
