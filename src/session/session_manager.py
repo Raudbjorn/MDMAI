@@ -106,7 +106,12 @@ class SessionManager:
             if not session.combat_rounds:
                 session.combat_rounds.append(CombatRound(round_number=1))
                 session.current_round = 1
-            
+            else:
+                # Ensure current_round is consistent with the latest round
+                session.current_round = max(
+                    (cr.round_number for cr in session.combat_rounds),
+                    default=1
+                )
             await self._store_session(session)
             
             logger.info(f"Started session: {session_id}")
