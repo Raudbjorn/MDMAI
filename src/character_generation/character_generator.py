@@ -331,6 +331,8 @@ class CharacterGenerator:
                 stat = random.choice(stat_names)
                 current = getattr(stats, stat)
                 if current < 15:
+                    # D&D 5e point buy: Increasing a score from 8 to 13 costs 1 point per increment,
+                    # and from 13 to 15 costs 2 points per increment.
                     cost = 1 if current < 13 else 2
                     if points >= cost:
                         setattr(stats, stat, current + 1)
