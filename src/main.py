@@ -31,6 +31,10 @@ from src.character_generation import (
     initialize_character_tools,
     register_character_tools
 )
+from src.source_management import (
+    initialize_source_tools,
+    register_source_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -615,6 +619,12 @@ def main():
         
         # Register character generation tools with MCP server
         register_character_tools(mcp)
+        
+        # Initialize enhanced source management system
+        initialize_source_tools(db, pdf_pipeline)
+        
+        # Register enhanced source management tools with MCP server
+        register_source_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
