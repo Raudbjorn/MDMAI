@@ -347,7 +347,10 @@ class Session:
         """Archive the session."""
         self.status = SessionStatus.ARCHIVED
         if self.status in [SessionStatus.ACTIVE, SessionStatus.PLANNED]:
+        if self.status in [SessionStatus.ACTIVE, SessionStatus.PLANNED]:
             self.status = SessionStatus.COMPLETED
+        else:
+            self.status = SessionStatus.ARCHIVED
         self.completed_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
 
