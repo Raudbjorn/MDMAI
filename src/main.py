@@ -22,6 +22,11 @@ from src.campaign import (
     initialize_campaign_tools,
     register_campaign_tools
 )
+from src.session import (
+    SessionManager,
+    initialize_session_tools,
+    register_session_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -46,6 +51,9 @@ response_generator = ResponseGenerator(personality_manager)
 # Campaign management components (initialized in main())
 campaign_manager: Optional[CampaignManager] = None
 rulebook_linker: Optional[RulebookLinker] = None
+
+# Session management components (initialized in main())
+session_manager: Optional[SessionManager] = None
 
 
 @mcp.tool()
@@ -589,6 +597,14 @@ def main():
         
         # Register enhanced campaign tools with MCP server
         register_campaign_tools(mcp)
+        
+        # Initialize session management system
+        global session_manager
+        session_manager = SessionManager(db)
+        initialize_session_tools(session_manager, campaign_manager)
+        
+        # Register session tools with MCP server
+        register_session_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
