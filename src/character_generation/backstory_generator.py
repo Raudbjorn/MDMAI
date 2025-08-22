@@ -303,9 +303,7 @@ class BackstoryGenerator:
         }
         
         # Format template with variables
-        origin = template
-        for key, value in variables.items():
-            origin = origin.replace(f"{{{key}}}", value)
+        origin = template.format(**variables)
         
         return origin
     
