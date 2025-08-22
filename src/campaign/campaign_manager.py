@@ -65,10 +65,7 @@ class CampaignManager:
             
             # Store in database
             campaign_data = campaign.to_dict()
-            # Store in database
-            campaign_data = campaign.to_dict()
-            await asyncio.to_thread(
-                self.db_manager.add_document,
+            self.db_manager.add_document(
                 collection_name="campaigns",
                 document_id=campaign.id,
                 content=json.dumps(campaign_data),
@@ -630,10 +627,9 @@ class CampaignManager:
         
         try:
             # Get current version number
-            # Get current version number by querying the database
-            # This is a placeholder for the actual DB query logic
-            latest_version = await self._get_latest_version_number(campaign.id)
-            version_number = latest_version + 1
+            version_number = 1
+            if campaign.id in self._version_cache:
+                version_number = len(self._version_cache[campaign.id]) + 1
             
             # Create version
             version = CampaignVersion(
