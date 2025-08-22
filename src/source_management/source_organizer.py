@@ -540,7 +540,9 @@ class SourceOrganizer:
         # Very fuzzy match (first few words)
         name_words = name_lower.split()[:3]
         for source in sources:
-            title_words = source.metadata.title.lower().split()[:3]
+        name_words = name_lower.split()[:self.FUZZY_MATCH_WORD_LIMIT]
+        for source in sources:
+            title_words = source.metadata.title.lower().split()[:self.FUZZY_MATCH_WORD_LIMIT]
             if name_words == title_words:
                 return source
         
