@@ -523,9 +523,10 @@ class CampaignManager:
         """
         try:
             # Get current version number
-            version_number = 1
-            if campaign.id in self._version_cache:
-                version_number = len(self._version_cache[campaign.id]) + 1
+            # Get current version number by querying the database
+            # This is a placeholder for the actual DB query logic
+            latest_version = await self._get_latest_version_number(campaign.id)
+            version_number = latest_version + 1
             
             # Create version
             version = CampaignVersion(
