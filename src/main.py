@@ -1,5 +1,6 @@
 """Main entry point for TTRPG Assistant MCP Server."""
 
+import atexit
 import asyncio
 import json
 import sys
@@ -35,6 +36,11 @@ from src.source_management import (
     initialize_source_tools,
     register_source_tools
 )
+from src.performance import (
+    GlobalCacheManager,
+    initialize_performance_tools,
+    register_performance_tools
+)
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -62,6 +68,9 @@ rulebook_linker: Optional[RulebookLinker] = None
 
 # Session management components (initialized in main())
 session_manager: Optional[SessionManager] = None
+
+# Performance management components (initialized in main())
+cache_manager: Optional[GlobalCacheManager] = None
 
 
 @mcp.tool()
@@ -588,7 +597,7 @@ async def apply_personality(
 
 def main():
     """Main entry point for the MCP server."""
-    global db
+    global db, cache_manager
     
     try:
         # Create necessary directories
@@ -596,6 +605,27 @@ def main():
         
         # Initialize database manager
         db = ChromaDBManager()
+        
+        # Initialize performance/cache management system
+        cache_manager = GlobalCacheManager()
+        initialize_performance_tools(
+            cache_manager,
+            cache_manager.invalidator,
+            cache_manager.config
+        )
+        
+        # Register cleanup handler
+        def cleanup_cache_manager():
+            if cache_manager:
+                try:
+                    cache_manager.shutdown()
+                except Exception:
+                    pass  # Already logged
+        
+        atexit.register(cleanup_cache_manager)
+        
+        # Register performance tools with MCP server
+        register_performance_tools(mcp)
         
         # Initialize campaign management system
         global campaign_manager, rulebook_linker
@@ -647,10 +677,21 @@ def main():
             
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
+        if cache_manager:
+            cache_manager.shutdown()
         sys.exit(0)
     except Exception as e:
         logger.error("Server failed to start", error=str(e))
+        if cache_manager:
+            cache_manager.shutdown()
         sys.exit(1)
+    finally:
+        # Ensure cache manager is shut down
+        if cache_manager:
+            try:
+                cache_manager.shutdown()
+            except Exception:
+                pass  # Already logged in shutdown method
 
 
 if __name__ == "__main__":
