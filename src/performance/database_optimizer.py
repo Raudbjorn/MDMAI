@@ -241,8 +241,8 @@ class DatabaseOptimizer:
                     [query],  # query_texts
                     1,  # n_results
                 )
-            except Exception:
-                pass  # Ignore errors in benchmark queries
+            except Exception as e:
+                logger.warning("Benchmark query failed", error=str(e), exc_info=True)
             total_time += time.time() - start
         
         return total_time / len(test_queries)
