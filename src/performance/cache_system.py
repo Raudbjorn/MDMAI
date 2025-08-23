@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-import pickle
+import json
 import threading
 import time
 from collections import OrderedDict
@@ -139,7 +139,7 @@ class CacheSystem:
         
         # Persistence
         if self.persistent:
-            self.cache_file = settings.cache_dir / f"{name}_cache.pkl"
+            self.cache_file = settings.cache_dir / f"{name}_cache.json"
             self._load_from_disk()
         
         # Thread control
@@ -440,18 +440,24 @@ class CacheSystem:
     def _estimate_size(self, obj: Any) -> int:
         """Estimate size of object in bytes."""
         try:
-            # Try pickling for accurate size
-            return len(pickle.dumps(obj))
-        except (pickle.PicklingError, TypeError, AttributeError):
-            # Fallback to JSON for estimation
+            # Use JSON for size estimation (safer than pickle)
+            return len(json.dumps(obj, default=str).encode())
+        except (TypeError, ValueError, RecursionError):
+            # For complex objects, try string representation
             try:
-                return len(json.dumps(obj, default=str).encode())
-            except (TypeError, ValueError, RecursionError):
+                return len(str(obj).encode())
+            except:
                 # Last resort: assume 1KB
                 return 1024
     
     def _update_avg_times(self) -> None:
         """Update average hit/miss times."""
+        # Keep only last 1000 samples to prevent memory growth
+        if len(self.hit_times) > 1000:
+            self.hit_times = self.hit_times[-1000:]
+        if len(self.miss_times) > 1000:
+            self.miss_times = self.miss_times[-1000:]
+        
         if self.hit_times:
             self.stats.avg_hit_time_ms = sum(self.hit_times[-100:]) / len(self.hit_times[-100:])
         if self.miss_times:
@@ -484,32 +490,62 @@ class CacheSystem:
                 logger.debug(f"Auto-cleanup removed {expired_count} expired entries from '{self.name}'")
     
     def _save_to_disk(self) -> None:
-        """Save cache to disk."""
+        """Save cache to disk using JSON (secure alternative to pickle)."""
         if not self.persistent:
             return
         
         try:
             self.cache_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_file, 'wb') as f:
-                pickle.dump(self.cache, f)
+            
+            # Convert cache to JSON-serializable format
+            cache_data = {}
+            for key, entry in self.cache.items():
+                cache_data[key] = {
+                    'value': entry.value,
+                    'size_bytes': entry.size_bytes,
+                    'created_at': entry.created_at,
+                    'last_accessed': entry.last_accessed,
+                    'access_count': entry.access_count,
+                    'ttl_seconds': entry.ttl_seconds,
+                    'tags': list(entry.tags),
+                    'priority': entry.priority
+                }
+            
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, default=str, indent=2)
         except Exception as e:
             logger.error(f"Failed to save cache to disk: {e}")
     
     def _load_from_disk(self) -> None:
-        """Load cache from disk."""
+        """Load cache from disk using JSON (secure alternative to pickle)."""
         if not self.persistent or not self.cache_file.exists():
             return
         
         try:
-            with open(self.cache_file, 'rb') as f:
-                loaded_cache = pickle.load(f)
+            with open(self.cache_file, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
                 
-                # Filter out expired entries
-                for key, entry in loaded_cache.items():
+                # Reconstruct cache entries from JSON data
+                for key, data in cache_data.items():
+                    entry = CacheEntry(
+                        key=key,
+                        value=data['value'],
+                        size_bytes=data['size_bytes'],
+                        created_at=data['created_at'],
+                        last_accessed=data['last_accessed'],
+                        access_count=data.get('access_count', 1),
+                        ttl_seconds=data.get('ttl_seconds'),
+                        tags=set(data.get('tags', [])),
+                        priority=data.get('priority', 0)
+                    )
+                    
+                    # Filter out expired entries
                     if not entry.is_expired():
                         self.cache[key] = entry
                 
             logger.info(f"Loaded {len(self.cache)} entries from disk for '{self.name}'")
+        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
+            logger.warning(f"Could not load cache from disk (will start fresh): {e}")
         except Exception as e:
             logger.error(f"Failed to load cache from disk: {e}")
     
