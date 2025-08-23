@@ -392,7 +392,7 @@ class PerformanceMonitor:
         # Load all metrics files for the date
         for file in self.metrics_dir.glob(f"*_{date_str}_*.json"):
             try:
-                with open(file, "r") as f:
+                with open(file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     
                 if "system" in file.name:
