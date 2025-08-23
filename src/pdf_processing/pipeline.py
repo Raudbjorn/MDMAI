@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import uuid
+import time
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -12,6 +13,7 @@ from src.pdf_processing.pdf_parser import PDFParser
 from src.pdf_processing.content_chunker import ContentChunker, ContentChunk
 from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
+from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
 
 logger = get_logger(__name__)
 
@@ -19,13 +21,20 @@ logger = get_logger(__name__)
 class PDFProcessingPipeline:
     """Orchestrates the complete PDF processing workflow."""
     
-    def __init__(self):
+    def __init__(self, enable_parallel: bool = True):
         """Initialize the PDF processing pipeline."""
         self.parser = PDFParser()
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
         self.embedding_generator = EmbeddingGenerator()
         self.db = get_db_manager()
+        self.enable_parallel = enable_parallel
+        self.parallel_processor = None
+        
+        if enable_parallel:
+            self.parallel_processor = ParallelProcessor(
+                ResourceLimits(max_workers=4)
+            )
     
     async def process_pdf(
         self,
@@ -159,6 +168,96 @@ class PDFProcessingPipeline:
                 return True
         
         return False
+    
+    async def process_multiple_pdfs(
+        self,
+        pdf_files: List[Dict[str, str]],
+        enable_adaptive_learning: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Process multiple PDFs in parallel.
+        
+        Args:
+            pdf_files: List of dicts with pdf_path, rulebook_name, system, source_type
+            enable_adaptive_learning: Whether to use adaptive learning
+            
+        Returns:
+            Processing results for all PDFs
+        """
+        if not self.enable_parallel or not self.parallel_processor:
+            # Fall back to sequential processing
+            results = []
+            for pdf_info in pdf_files:
+                result = await self.process_pdf(**pdf_info)
+                results.append(result)
+            return {
+                "results": results,
+                "total": len(results),
+                "method": "sequential"
+            }
+        
+        # Initialize parallel processor
+        await self.parallel_processor.initialize()
+        
+        try:
+            start_time = time.time()
+            
+            # Submit PDF processing tasks
+            tasks = []
+            for pdf_info in pdf_files:
+                task = await self.parallel_processor.submit_task(
+                    "pdf_processing",
+                    pdf_info
+                )
+                tasks.append(task)
+            
+            # Wait for all tasks to complete
+            completed_tasks = await self.parallel_processor.wait_for_all(
+                [t.id for t in tasks],
+                timeout=300  # 5 minutes timeout
+            )
+            
+            # Process results
+            successful = 0
+            failed = 0
+            results = []
+            
+            for task in completed_tasks:
+                if task.status.value == "completed":
+                    successful += 1
+                    results.append({
+                        "pdf_path": task.data["pdf_path"],
+                        "status": "success",
+                        "result": task.result
+                    })
+                else:
+                    failed += 1
+                    results.append({
+                        "pdf_path": task.data["pdf_path"],
+                        "status": "failed",
+                        "error": task.error
+                    })
+            
+            processing_time = time.time() - start_time
+            stats = self.parallel_processor.get_statistics()
+            
+            return {
+                "results": results,
+                "successful": successful,
+                "failed": failed,
+                "total": len(pdf_files),
+                "processing_time": processing_time,
+                "statistics": stats,
+                "method": "parallel"
+            }
+            
+        finally:
+            await self.parallel_processor.shutdown()
+            # Reinitialize for future use
+            if self.enable_parallel:
+                self.parallel_processor = ParallelProcessor(
+                    ResourceLimits(max_workers=4)
+                )
     
     def _apply_adaptive_patterns(self, pdf_content: Dict[str, Any], system: str):
         """
