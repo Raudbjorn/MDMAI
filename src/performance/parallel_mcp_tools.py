@@ -1,6 +1,8 @@
 """MCP tools for parallel processing operations."""
 
 from typing import Any, Dict, List, Optional
+import asyncio
+from pathlib import Path
 
 from config.logging_config import get_logger
 
@@ -10,6 +12,7 @@ logger = get_logger(__name__)
 _parallel_processor = None
 _resource_manager = None
 _pdf_processor = None
+_active_processors: Dict[str, Any] = {}
 
 
 def initialize_parallel_tools(parallel_processor=None, resource_manager=None, pdf_processor=None):
@@ -28,6 +31,8 @@ def register_parallel_tools(mcp_server):
     async def process_pdfs_parallel(
         pdf_files: List[Dict[str, str]],
         enable_adaptive_learning: bool = True,
+        max_workers: Optional[int] = None,
+        batch_size: int = 5,
     ) -> Dict[str, Any]:
         """
         Process multiple PDF files in parallel for faster extraction.
@@ -39,6 +44,8 @@ def register_parallel_tools(mcp_server):
                 - system: Game system (e.g., "D&D 5e")
                 - source_type: Type of source ("rulebook" or "flavor")
             enable_adaptive_learning: Whether to use adaptive learning patterns
+            max_workers: Maximum number of parallel workers (default: CPU count - 1)
+            batch_size: Number of PDFs to process in each batch
             
         Returns:
             Processing results including success/failure counts and statistics
@@ -50,6 +57,7 @@ def register_parallel_tools(mcp_server):
                     "error": "No PDF files provided",
                 }
             
+            
             # Validate PDF files list
             if len(pdf_files) > 100:
                 return {
@@ -57,7 +65,8 @@ def register_parallel_tools(mcp_server):
                     "error": "Too many PDF files (max 100)",
                 }
             
-            # Validate each PDF file entry
+            # Validate PDF paths and required fields
+            invalid_files = []
             for i, pdf_info in enumerate(pdf_files):
                 if not isinstance(pdf_info, dict):
                     return {
@@ -65,34 +74,60 @@ def register_parallel_tools(mcp_server):
                         "error": f"Invalid PDF info at index {i}: must be a dictionary",
                     }
                 
-                if "pdf_path" not in pdf_info:
+                # Check required fields
+                if not all(k in pdf_info for k in ["pdf_path", "rulebook_name", "system"]):
                     return {
                         "success": False,
-                        "error": f"Missing pdf_path at index {i}",
+                        "error": f"PDF info at index {i} must contain pdf_path, rulebook_name, and system",
                     }
+                
+                # Validate path exists
+                pdf_path = Path(pdf_info.get("pdf_path", ""))
+                if not pdf_path.exists():
+                    invalid_files.append(str(pdf_path))
+            
+            if invalid_files:
+                return {
+                    "success": False,
+                    "error": f"PDF files not found: {', '.join(invalid_files)}",
+                }
             
             # Use the PDF processing pipeline
             from src.pdf_processing.pipeline import PDFProcessingPipeline
             
             pipeline = PDFProcessingPipeline(enable_parallel=True)
-            results = await pipeline.process_multiple_pdfs(
-                pdf_files=pdf_files,
-                enable_adaptive_learning=enable_adaptive_learning
-            )
+            
+            # Process in batches to avoid memory issues
+            all_results = []
+            total_successful = 0
+            total_failed = 0
+            
+            for i in range(0, len(pdf_files), batch_size):
+                batch = pdf_files[i:i + batch_size]
+                logger.info(f"Processing batch {i//batch_size + 1} with {len(batch)} PDFs")
+                
+                batch_results = await pipeline.process_multiple_pdfs(
+                    pdf_files=batch,
+                    enable_adaptive_learning=enable_adaptive_learning,
+                    max_workers=max_workers
+                )
+                
+                all_results.extend(batch_results.get("results", []))
+                total_successful += batch_results.get("successful", 0)
+                total_failed += batch_results.get("failed", 0)
             
             return {
                 "success": True,
-                "message": f"Processed {results['total']} PDFs in parallel",
-                "successful": results.get("successful", 0),
-                "failed": results.get("failed", 0),
-                "processing_time": results.get("processing_time", 0),
-                "method": results.get("method", "unknown"),
-                "statistics": results.get("statistics", {}),
-                "results": results.get("results", []),
+                "message": f"Processed {len(pdf_files)} PDFs in parallel",
+                "successful": total_successful,
+                "failed": total_failed,
+                "total": len(pdf_files),
+                "batch_size": batch_size,
+                "results": all_results,
             }
             
         except Exception as e:
-            logger.error(f"Parallel PDF processing failed: {str(e)}")
+            logger.error(f"Parallel PDF processing failed: {str(e)}", exc_info=True)
             return {
                 "success": False,
                 "error": f"Processing failed: {str(e)}",
@@ -139,15 +174,30 @@ def register_parallel_tools(mcp_server):
                     }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
+            import uuid
+            
+            # Validate queries
+            for query in queries:
+                if not query.get("query"):
+                    return {
+                        "success": False,
+                        "error": "Each query must contain a 'query' field",
+                    }
+            
+            # Create unique processor ID
+            processor_id = f"search-{uuid.uuid4().hex[:8]}"
             
             # Create processor for search operations
             processor = ParallelProcessor(
                 ResourceLimits(max_workers=max_workers or 4)
             )
             
-            await processor.initialize()
+            # Track active processor
+            _active_processors[processor_id] = processor
             
             try:
+                await processor.initialize()
+                
                 # Submit search task
                 task = await processor.submit_task(
                     "search",
@@ -166,6 +216,7 @@ def register_parallel_tools(mcp_server):
                         "message": f"Executed {len(queries)} searches in parallel",
                         "results": completed_task.result.get("results", []),
                         "query_count": completed_task.result.get("query_count", 0),
+                        "processor_id": processor_id,
                     }
                 else:
                     return {
@@ -175,6 +226,7 @@ def register_parallel_tools(mcp_server):
                     
             finally:
                 await processor.shutdown()
+                _active_processors.pop(processor_id, None)
                 
         except Exception as e:
             logger.error(f"Parallel search failed: {str(e)}")
@@ -234,19 +286,36 @@ def register_parallel_tools(mcp_server):
                     }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
+            import uuid
+            
+            # Limit text size to prevent memory issues
+            MAX_TEXT_LENGTH = 10000
+            texts_truncated = []
+            for text in texts:
+                if len(text) > MAX_TEXT_LENGTH:
+                    texts_truncated.append(text[:MAX_TEXT_LENGTH])
+                    logger.warning(f"Truncated text from {len(text)} to {MAX_TEXT_LENGTH} characters")
+                else:
+                    texts_truncated.append(text)
+            
+            # Create unique processor ID
+            processor_id = f"embedding-{uuid.uuid4().hex[:8]}"
             
             # Create processor for embedding generation
             processor = ParallelProcessor(
                 ResourceLimits(max_workers=max_workers or 4)
             )
             
-            await processor.initialize()
+            # Track active processor
+            _active_processors[processor_id] = processor
             
             try:
+                await processor.initialize()
+                
                 # Submit embedding task
                 task = await processor.submit_task(
                     "embedding_generation",
-                    {"chunks": texts, "batch_size": batch_size}
+                    {"chunks": texts_truncated, "batch_size": batch_size}
                 )
                 
                 # Wait for completion
@@ -261,6 +330,8 @@ def register_parallel_tools(mcp_server):
                         "message": f"Generated embeddings for {len(texts)} texts",
                         "embeddings": completed_task.result.get("embeddings", []),
                         "count": completed_task.result.get("count", 0),
+                        "processor_id": processor_id,
+                        "texts_truncated": len([t for t in texts if len(t) > MAX_TEXT_LENGTH]),
                     }
                 else:
                     return {
@@ -270,6 +341,7 @@ def register_parallel_tools(mcp_server):
                     
             finally:
                 await processor.shutdown()
+                _active_processors.pop(processor_id, None)
                 
         except Exception as e:
             logger.error(f"Parallel embedding generation failed: {str(e)}")
@@ -340,15 +412,36 @@ def register_parallel_tools(mcp_server):
                     }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
+            import uuid
+            
+            # Validate operations
+            valid_op_types = {"add_document", "update_document", "delete_document"}
+            for op in operations:
+                if not op.get("type") or op["type"] not in valid_op_types:
+                    return {
+                        "success": False,
+                        "error": f"Invalid operation type. Must be one of: {', '.join(valid_op_types)}",
+                    }
+                if not op.get("data"):
+                    return {
+                        "success": False,
+                        "error": "Each operation must contain a 'data' field",
+                    }
+            
+            # Create unique processor ID
+            processor_id = f"batch-{uuid.uuid4().hex[:8]}"
             
             # Create processor for batch operations
             processor = ParallelProcessor(
                 ResourceLimits(max_workers=max_workers or 4)
             )
             
-            await processor.initialize()
+            # Track active processor
+            _active_processors[processor_id] = processor
             
             try:
+                await processor.initialize()
+                
                 # Submit batch task
                 task = await processor.submit_task(
                     "batch_operation",
@@ -372,6 +465,8 @@ def register_parallel_tools(mcp_server):
                         "processed": result.get("processed", 0),
                         "failed": result.get("failed", 0),
                         "errors": result.get("errors", []),
+                        "processor_id": processor_id,
+                        "batch_size": batch_size,
                     }
                 else:
                     return {
@@ -381,6 +476,7 @@ def register_parallel_tools(mcp_server):
                     
             finally:
                 await processor.shutdown()
+                _active_processors.pop(processor_id, None)
                 
         except Exception as e:
             logger.error(f"Batch database operations failed: {str(e)}")
@@ -450,25 +546,40 @@ def register_parallel_tools(mcp_server):
     @mcp_server.tool()
     async def cancel_parallel_task(
         task_id: str,
+        processor_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Cancel a running parallel processing task.
         
         Args:
             task_id: ID of the task to cancel
+            processor_id: ID of the processor running the task (optional)
             
         Returns:
             Cancellation status
         """
         try:
-            if not _parallel_processor:
+            # Find the processor containing the task
+            target_processor = None
+            
+            if processor_id and processor_id in _active_processors:
+                target_processor = _active_processors[processor_id]
+            else:
+                # Search all active processors
+                for pid, processor in _active_processors.items():
+                    if task_id in processor.tasks:
+                        target_processor = processor
+                        processor_id = pid
+                        break
+            
+            if not target_processor:
                 return {
                     "success": False,
-                    "error": "No active parallel processor",
+                    "error": f"Task {task_id} not found in any active processor",
                 }
             
             # Get task status
-            status = _parallel_processor.get_task_status(task_id)
+            status = target_processor.get_task_status(task_id)
             
             if not status:
                 return {
@@ -477,16 +588,26 @@ def register_parallel_tools(mcp_server):
                 }
             
             # Mark task as cancelled
-            task = _parallel_processor.tasks.get(task_id)
+            task = target_processor.tasks.get(task_id)
             if task:
                 from src.performance.parallel_processor import TaskStatus
-                task.status = TaskStatus.CANCELLED
                 
-                return {
-                    "success": True,
-                    "message": f"Task {task_id} cancelled",
-                    "previous_status": status.value,
-                }
+                # Only cancel if task is pending or running
+                if task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                    task.status = TaskStatus.CANCELLED
+                    
+                    return {
+                        "success": True,
+                        "message": f"Task {task_id} cancelled",
+                        "previous_status": status.value,
+                        "processor_id": processor_id,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Cannot cancel task in {status.value} state",
+                        "current_status": status.value,
+                    }
             
             return {
                 "success": False,
@@ -494,10 +615,56 @@ def register_parallel_tools(mcp_server):
             }
             
         except Exception as e:
-            logger.error(f"Failed to cancel task: {str(e)}")
+            logger.error(f"Failed to cancel task: {str(e)}", exc_info=True)
             return {
                 "success": False,
                 "error": f"Cancellation failed: {str(e)}",
+            }
+    
+    @mcp_server.tool()
+    async def cleanup_parallel_processors() -> Dict[str, Any]:
+        """
+        Cleanup inactive parallel processors to free resources.
+        
+        Returns:
+            Cleanup statistics
+        """
+        try:
+            cleaned = 0
+            active = 0
+            
+            # Check all active processors
+            for processor_id in list(_active_processors.keys()):
+                processor = _active_processors[processor_id]
+                
+                # Check if processor has any pending/running tasks
+                has_active_tasks = any(
+                    task.status.value in ["pending", "running"]
+                    for task in processor.tasks.values()
+                )
+                
+                if not has_active_tasks:
+                    # Shutdown and remove inactive processor
+                    await processor.shutdown()
+                    _active_processors.pop(processor_id, None)
+                    cleaned += 1
+                    logger.info(f"Cleaned up inactive processor: {processor_id}")
+                else:
+                    active += 1
+            
+            return {
+                "success": True,
+                "message": f"Cleanup complete",
+                "processors_cleaned": cleaned,
+                "processors_active": active,
+                "total_before": cleaned + active,
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to cleanup processors: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Cleanup failed: {str(e)}",
             }
     
     logger.info("Parallel processing MCP tools registered successfully")
