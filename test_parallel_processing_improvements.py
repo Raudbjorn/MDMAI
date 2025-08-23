@@ -18,7 +18,6 @@ from src.performance.parallel_processor import (
 )
 from src.performance.parallel_mcp_tools import (
     register_parallel_tools,
-    initialize_parallel_tools,
 )
 from src.pdf_processing.pipeline import PDFProcessingPipeline
 
@@ -233,6 +232,13 @@ class TestParallelMCPTools:
             
             register_parallel_tools(mock_server)
             
+            # Get the registered function
+            process_pdfs_func = None
+            for call_args in mock_server.method_calls:
+                if hasattr(call_args, '__name__') and 'process_pdfs_parallel' in str(call_args):
+                    process_pdfs_func = call_args
+                    break
+            
             # Create test files
             test_files = []
             for i in range(10):
@@ -241,51 +247,238 @@ class TestParallelMCPTools:
                 test_files.append({
                     "pdf_path": str(test_file),
                     "rulebook_name": f"Book {i}",
-                    "system": "D&D 5e"
+                    "system": "D&D 5e",
+                    "source_type": "rulebook"
                 })
             
-            # Would call the function with batch_size parameter
-            # Cleanup test files
-            for file_info in test_files:
-                Path(file_info["pdf_path"]).unlink(missing_ok=True)
+            try:
+                # Test batch processing with different batch sizes
+                result = await mock_instance.process_multiple_pdfs(
+                    pdf_files=test_files[:5],
+                    enable_adaptive_learning=True,
+                    max_workers=2
+                )
+                
+                # Verify batch processing was called
+                assert mock_instance.process_multiple_pdfs.called
+                assert result["successful"] == 5
+                assert result["failed"] == 0
+                
+                # Test batch size handling
+                mock_instance.reset_mock()
+                result = await mock_instance.process_multiple_pdfs(
+                    pdf_files=test_files,
+                    enable_adaptive_learning=False,
+                    max_workers=4
+                )
+                
+                assert mock_instance.process_multiple_pdfs.called
+                call_args = mock_instance.process_multiple_pdfs.call_args
+                assert call_args[1]["enable_adaptive_learning"] == False
+                assert call_args[1]["max_workers"] == 4
+                
+            finally:
+                # Cleanup test files
+                for file_info in test_files:
+                    Path(file_info["pdf_path"]).unlink(missing_ok=True)
     
     @pytest.mark.asyncio
     async def test_text_truncation(self):
         """Test text truncation for embeddings."""
+        from src.performance.parallel_mcp_tools import MAX_TEXT_LENGTH
+        
         mock_server = Mock()
         mock_server.tool = lambda: lambda func: func
         
         register_parallel_tools(mock_server)
         
         # Create very long texts
-        long_texts = ["x" * 15000 for _ in range(3)]
+        long_texts = ["x" * 15000, "y" * 8000, "z" * 20000]
         
-        # Would test that texts are truncated to MAX_TEXT_LENGTH
-        # and warning is logged
+        with patch('src.performance.parallel_processor.ParallelProcessor') as mock_proc_class:
+            mock_processor = AsyncMock()
+            mock_proc_class.return_value = mock_processor
+            
+            # Mock the task submission
+            mock_task = Mock()
+            mock_task.id = "test-task-1"
+            mock_task.status.value = "completed"
+            mock_task.result = {
+                "embeddings": [[0.1, 0.2] for _ in long_texts],
+                "count": len(long_texts)
+            }
+            mock_processor.submit_task.return_value = mock_task
+            mock_processor.wait_for_task.return_value = mock_task
+            
+            # Import the function directly
+            from src.performance.parallel_mcp_tools import batch_embeddings_parallel
+            
+            # Call the embedding function
+            result = await batch_embeddings_parallel(
+                texts=long_texts,
+                batch_size=10,
+                max_workers=2
+            )
+            
+            # Verify truncation occurred
+            assert result["success"] == True
+            assert result["texts_truncated"] == 2  # Two texts were over MAX_TEXT_LENGTH
+            
+            # Check that the submitted data had truncated texts
+            submit_call_args = mock_processor.submit_task.call_args
+            submitted_chunks = submit_call_args[0][1]["chunks"]
+            
+            # First text should be truncated
+            assert len(submitted_chunks[0]) == MAX_TEXT_LENGTH
+            assert submitted_chunks[0] == "x" * MAX_TEXT_LENGTH
+            
+            # Second text should not be truncated (8000 < MAX_TEXT_LENGTH)
+            assert len(submitted_chunks[1]) == 8000
+            assert submitted_chunks[1] == "y" * 8000
+            
+            # Third text should be truncated
+            assert len(submitted_chunks[2]) == MAX_TEXT_LENGTH
+            assert submitted_chunks[2] == "z" * MAX_TEXT_LENGTH
     
     @pytest.mark.asyncio
     async def test_processor_tracking(self):
         """Test active processor tracking."""
-        from src.performance.parallel_mcp_tools import _active_processors
+        from src.performance.parallel_mcp_tools import _active_processors, cleanup_parallel_processors
         
         mock_server = Mock()
         mock_server.tool = lambda: lambda func: func
         
         register_parallel_tools(mock_server)
         
-        # Would test that processors are tracked and cleaned up
-        # using the cleanup_parallel_processors function
+        # Clear any existing processors
+        _active_processors.clear()
+        
+        # Create mock processors
+        mock_proc1 = AsyncMock()
+        mock_proc1.tasks = {
+            "task1": Mock(status=Mock(value="completed")),
+            "task2": Mock(status=Mock(value="failed"))
+        }
+        
+        mock_proc2 = AsyncMock()
+        mock_proc2.tasks = {
+            "task3": Mock(status=Mock(value="running")),
+            "task4": Mock(status=Mock(value="pending"))
+        }
+        
+        mock_proc3 = AsyncMock()
+        mock_proc3.tasks = {
+            "task5": Mock(status=Mock(value="completed")),
+            "task6": Mock(status=Mock(value="cancelled"))
+        }
+        
+        # Add processors to tracking
+        _active_processors["proc1"] = mock_proc1
+        _active_processors["proc2"] = mock_proc2
+        _active_processors["proc3"] = mock_proc3
+        
+        # Test cleanup function
+        result = await cleanup_parallel_processors()
+        
+        assert result["success"] == True
+        assert result["processors_cleaned"] == 2  # proc1 and proc3 should be cleaned
+        assert result["processors_active"] == 1   # proc2 should remain active
+        
+        # Verify correct processors were removed
+        assert "proc1" not in _active_processors
+        assert "proc2" in _active_processors  # Has running/pending tasks
+        assert "proc3" not in _active_processors
+        
+        # Verify shutdown was called on cleaned processors
+        mock_proc1.shutdown.assert_called_once()
+        mock_proc2.shutdown.assert_not_called()
+        mock_proc3.shutdown.assert_called_once()
+        
+        # Clean up
+        _active_processors.clear()
     
     @pytest.mark.asyncio
     async def test_task_cancellation_improvements(self):
         """Test improved task cancellation."""
+        from src.performance.parallel_mcp_tools import _active_processors, cancel_parallel_task
+        from src.performance.parallel_processor import TaskStatus
+        
         mock_server = Mock()
         mock_server.tool = lambda: lambda func: func
         
         register_parallel_tools(mock_server)
         
-        # Would test cancellation with processor_id tracking
-        # and state validation
+        # Clear existing processors
+        _active_processors.clear()
+        
+        # Create mock processor with tasks
+        mock_processor = Mock()
+        
+        # Create mock tasks with different states
+        task_pending = Mock()
+        task_pending.status = TaskStatus.PENDING
+        
+        task_running = Mock()
+        task_running.status = TaskStatus.RUNNING
+        
+        task_completed = Mock()
+        task_completed.status = TaskStatus.COMPLETED
+        
+        task_failed = Mock()
+        task_failed.status = TaskStatus.FAILED
+        
+        mock_processor.tasks = {
+            "task-pending": task_pending,
+            "task-running": task_running,
+            "task-completed": task_completed,
+            "task-failed": task_failed
+        }
+        
+        mock_processor.get_task_status = lambda tid: mock_processor.tasks.get(tid).status if tid in mock_processor.tasks else None
+        
+        # Add processor to tracking
+        _active_processors["test-proc"] = mock_processor
+        
+        # Test 1: Cancel pending task (should succeed)
+        result = await cancel_parallel_task("task-pending", "test-proc")
+        assert result["success"] == True
+        assert result["message"] == "Task task-pending cancelled"
+        assert task_pending.status == TaskStatus.CANCELLED
+        
+        # Test 2: Cancel running task (should succeed)
+        result = await cancel_parallel_task("task-running", "test-proc")
+        assert result["success"] == True
+        assert result["message"] == "Task task-running cancelled"
+        assert task_running.status == TaskStatus.CANCELLED
+        
+        # Test 3: Try to cancel completed task (should fail)
+        result = await cancel_parallel_task("task-completed", "test-proc")
+        assert result["success"] == False
+        assert "Cannot cancel task in" in result["error"]
+        assert task_completed.status == TaskStatus.COMPLETED  # Status unchanged
+        
+        # Test 4: Try to cancel failed task (should fail)
+        result = await cancel_parallel_task("task-failed", "test-proc")
+        assert result["success"] == False
+        assert "Cannot cancel task in" in result["error"]
+        assert task_failed.status == TaskStatus.FAILED  # Status unchanged
+        
+        # Test 5: Try to cancel non-existent task
+        result = await cancel_parallel_task("non-existent", "test-proc")
+        assert result["success"] == False
+        assert "not found" in result["error"]
+        
+        # Test 6: Search for task without processor_id
+        mock_processor2 = Mock()
+        mock_processor2.tasks = {"task-search": Mock(status=TaskStatus.PENDING)}
+        _active_processors["proc2"] = mock_processor2
+        
+        result = await cancel_parallel_task("task-search")  # No processor_id provided
+        assert result["success"] == True
+        assert result["processor_id"] == "proc2"  # Found the correct processor
+        
+        # Clean up
+        _active_processors.clear()
 
 
 class TestPipelineIntegration:

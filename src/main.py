@@ -41,10 +41,7 @@ from src.performance import (
     initialize_performance_tools,
     register_performance_tools
 )
-from src.performance.parallel_mcp_tools import (
-    initialize_parallel_tools,
-    register_parallel_tools
-)
+from src.performance.parallel_mcp_tools import register_parallel_tools
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)

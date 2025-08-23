@@ -331,8 +331,7 @@ class PDFProcessingPipeline:
             }
             
         finally:
-                    ResourceLimits(max_workers=self.max_workers)
-                )
+            pass
     
     def _apply_adaptive_patterns(self, pdf_content: Dict[str, Any], system: str):
         """

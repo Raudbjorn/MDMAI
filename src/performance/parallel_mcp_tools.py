@@ -8,20 +8,11 @@ from config.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Global instances (initialized in main.py)
-_parallel_processor = None
-_resource_manager = None
-_pdf_processor = None
+# Configuration constants
+MAX_TEXT_LENGTH = 10000  # Maximum text length for embeddings to prevent memory issues
+
+# Track active processors for resource management
 _active_processors: Dict[str, Any] = {}
-
-
-def initialize_parallel_tools(parallel_processor=None, resource_manager=None, pdf_processor=None):
-    """Initialize parallel processing tools with dependencies."""
-    global _parallel_processor, _resource_manager, _pdf_processor
-    _parallel_processor = parallel_processor
-    _resource_manager = resource_manager
-    _pdf_processor = pdf_processor
-    logger.info("Parallel processing tools initialized")
 
 
 def register_parallel_tools(mcp_server):
@@ -234,7 +225,6 @@ def register_parallel_tools(mcp_server):
             import uuid
             
             # Limit text size to prevent memory issues
-            MAX_TEXT_LENGTH = 10000
             texts_truncated = []
             for text in texts:
                 if len(text) > MAX_TEXT_LENGTH:
