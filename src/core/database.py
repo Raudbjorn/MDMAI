@@ -603,4 +603,32 @@ class ChromaDBManager:
             await self.optimizer.cleanup()
         if self.monitor:
             await self.monitor.cleanup()
-        self.persist()
+    
+    async def __aenter__(self):
+        """Async context manager entry."""
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit with cleanup."""
+        await self.cleanup()
+        return False
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup."""
+        # Run cleanup in a new event loop if needed
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule cleanup for later
+                loop.create_task(self.cleanup())
+            else:
+                # Run cleanup synchronously
+                loop.run_until_complete(self.cleanup())
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+        return False

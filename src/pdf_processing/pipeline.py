@@ -14,6 +14,7 @@ from src.pdf_processing.content_chunker import ContentChunker, ContentChunk
 from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
 from src.performance.parallel_processor import ParallelProcessor, ResourceLimits, TaskStatus
+from src.utils.security import validate_path, InputSanitizer, InputValidationError
 
 logger = get_logger(__name__)
 
@@ -72,9 +73,23 @@ class PDFProcessingPipeline:
         
         try:
             # Validate inputs
-            pdf_path_obj = Path(pdf_path)
-            if not pdf_path_obj.exists():
-                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+            # Validate and sanitize inputs
+            try:
+                pdf_path_obj = validate_path(pdf_path, must_exist=True)
+                if pdf_path_obj.suffix.lower() != '.pdf':
+                    raise ValueError(f"File must be a PDF: {pdf_path}")
+            except Exception as e:
+                logger.error(f"Path validation failed: {e}")
+                raise ValueError(f"Invalid PDF path: {e}") from e
+            
+            # Sanitize string inputs
+            sanitizer = InputSanitizer()
+            try:
+                rulebook_name = sanitizer.validate_system_name(rulebook_name)
+                system = sanitizer.validate_system_name(system)
+            except InputValidationError as e:
+                logger.error(f"Input validation failed: {e}")
+                raise ValueError(f"Invalid input: {e}") from e
             
             if not rulebook_name or not system:
                 raise ValueError("rulebook_name and system are required")
@@ -92,7 +107,7 @@ class PDFProcessingPipeline:
             # Step 1: Extract content from PDF
             logger.info("Step 1: Extracting PDF content")
             try:
-                pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, pdf_path)
+                pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, str(pdf_path_obj))
             except PDFProcessingError as e:
                 logger.error(f"Failed to extract PDF content: {e}")
                 raise

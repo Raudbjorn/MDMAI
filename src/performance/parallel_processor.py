@@ -111,6 +111,8 @@ class ParallelProcessor:
                 
                 # Create process pool for heavy CPU-bound tasks
                 # Use spawn context to avoid fork issues
+                ctx = mp.get_context('spawn')
+                self.process_executor = concurrent.futures.ProcessPoolExecutor(
                     max_workers=self.limits.max_process_workers,
                     mp_context=ctx
                 )
@@ -618,6 +620,8 @@ class ParallelProcessor:
             with self._executor_lock:
                 if self.executor:
                     self.executor.shutdown(wait=True, cancel_futures=True)
+                if hasattr(self, 'process_executor') and self.process_executor:
+                    self.process_executor.shutdown(wait=True, cancel_futures=True)
                 if self.async_executor:
                     self.async_executor.shutdown(wait=True, cancel_futures=True)
             

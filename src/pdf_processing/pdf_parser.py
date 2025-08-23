@@ -13,13 +13,12 @@ from PyPDF2 import PdfReader
 
 from config.logging_config import get_logger
 from config.settings import settings
+from src.utils.exceptions import (
+    PDFProcessingError, PDFReadError, PDFParseError, 
+    InvalidPDFError, PDFSizeError
+)
 
 logger = get_logger(__name__)
-
-
-class PDFProcessingError(Exception):
-    """Custom exception for PDF processing errors."""
-    pass
 
 
 class PDFParser:
@@ -48,6 +47,15 @@ class PDFParser:
         
         if not pdf_path.suffix.lower() == '.pdf':
             raise ValueError(f"File is not a PDF: {pdf_path}")
+        
+        # Check file size
+        file_size = pdf_path.stat().st_size
+        max_size = getattr(settings, 'max_pdf_size', 100 * 1024 * 1024)  # Default 100MB
+        if file_size > max_size:
+            raise PDFSizeError(
+                f"PDF file too large: {file_size / 1024 / 1024:.2f}MB (max: {max_size / 1024 / 1024:.2f}MB)",
+                {"file_size": file_size, "max_size": max_size, "path": str(pdf_path)}
+            )
         
         logger.info(f"Starting PDF extraction: {pdf_path}")
         
@@ -80,14 +88,17 @@ class PDFParser:
             
             return result
             
-        except FileNotFoundError:
-            raise
+        except FileNotFoundError as e:
+            raise PDFReadError(f"PDF file not found: {pdf_path}", {"path": str(pdf_path)}) from e
         except PermissionError as e:
             logger.error(f"Permission denied accessing PDF: {e}")
-            raise
-        except (PyPDF2.errors.PdfReadError, Exception) as e:
+            raise PDFReadError(f"Permission denied: {pdf_path}", {"path": str(pdf_path)}) from e
+        except PyPDF2.errors.PdfReadError as e:
+            logger.error(f"Invalid PDF format: {e}")
+            raise InvalidPDFError(f"Invalid PDF format: {pdf_path}", {"path": str(pdf_path)}) from e
+        except Exception as e:
             logger.error(f"Unexpected error processing PDF: {e}")
-            raise PDFProcessingError(f"Failed to process {pdf_path}: {e}") from e
+            raise PDFProcessingError(f"Failed to process {pdf_path}: {e}", {"path": str(pdf_path)}) from e
     
     def _extract_with_pypdf(self, pdf_path: Path) -> Dict[str, Any]:
         """

@@ -250,26 +250,6 @@ class SearchValidator:
             return []
         
         validated = []
-        for result in results:
-            try:
-                # Ensure required fields exist
-                if not isinstance(result, dict):
-                    logger.warning(f"Invalid result type: {type(result)}")
-                    continue
-                
-                if "content" not in result:
-                    logger.warning("Result missing content field")
-                    continue
-                
-                # Ensure content is not empty
-                if not result["content"] or not str(result["content"]).strip():
-                    logger.warning("Result has empty content")
-                    continue
-                
-                validated.append(result)
-                
-            except Exception as e:
-        validated = []
         MAX_VALIDATION_ERRORS = 100
         error_count = 0
         for result in results:
