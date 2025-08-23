@@ -17,6 +17,7 @@ from src.utils.exceptions import (
     PDFProcessingError, PDFReadError, PDFParseError, 
     InvalidPDFError, PDFSizeError
 )
+from src.utils.file_size_handler import FileSizeHandler, FileSizeCategory
 
 logger = get_logger(__name__)
 
@@ -30,7 +31,7 @@ class PDFParser:
         self.metadata = {}
         self.content_pages = []
         
-    def extract_text_from_pdf(self, pdf_path: str) -> Dict[str, Any]:
+    def extract_text_from_pdf(self, pdf_path: str, skip_size_check: bool = False, user_confirmed: bool = False) -> Dict[str, Any]:
         """
         Extract text content from a PDF file.
         
@@ -48,14 +49,31 @@ class PDFParser:
         if not pdf_path.suffix.lower() == '.pdf':
             raise ValueError(f"File is not a PDF: {pdf_path}")
         
-        # Check file size
-        file_size = pdf_path.stat().st_size
-        max_size = getattr(settings, 'max_pdf_size', 100 * 1024 * 1024)  # Default 100MB
-        if file_size > max_size:
-            raise PDFSizeError(
-                f"PDF file too large: {file_size / 1024 / 1024:.2f}MB (max: {max_size / 1024 / 1024:.2f}MB)",
-                {"file_size": file_size, "max_size": max_size, "path": str(pdf_path)}
-            )
+        # Check file size and get recommendations
+        if not skip_size_check:
+            file_info = FileSizeHandler.get_file_info(pdf_path)
+            category = FileSizeCategory(file_info["category"])
+            
+            # For excessive files, require explicit confirmation
+            if category == FileSizeCategory.EXCESSIVE and not user_confirmed:
+                raise PDFSizeError(
+                    f"PDF file is excessively large: {file_info['size_formatted']}. "
+                    f"User confirmation required for files over 500MB.",
+                    {
+                        "file_size": file_info["size_bytes"],
+                        "size_formatted": file_info["size_formatted"],
+                        "path": str(pdf_path),
+                        "requires_confirmation": True,
+                        "estimated_time": file_info["estimated_time"]
+                    }
+                )
+            
+            # Log warning for large files
+            if category in [FileSizeCategory.LARGE, FileSizeCategory.VERY_LARGE]:
+                logger.warning(
+                    f"Processing large PDF: {file_info['size_formatted']} "
+                    f"(estimated time: {file_info['estimated_time']})"
+                )
         
         logger.info(f"Starting PDF extraction: {pdf_path}")
         

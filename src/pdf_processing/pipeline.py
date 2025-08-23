@@ -15,6 +15,7 @@ from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
 from src.performance.parallel_processor import ParallelProcessor, ResourceLimits, TaskStatus
 from src.utils.security import validate_path, InputSanitizer, InputValidationError
+from src.utils.file_size_handler import FileSizeHandler, FileSizeCategory
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,8 @@ class PDFProcessingPipeline:
         system: str,
         source_type: str = "rulebook",
         enable_adaptive_learning: bool = True,
+        skip_size_check: bool = False,
+        user_confirmed: bool = False,
     ) -> Dict[str, Any]:
         """
         Process a PDF file through the complete pipeline.
@@ -65,6 +68,8 @@ class PDFProcessingPipeline:
             system: Game system (e.g., "D&D 5e")
             source_type: Type of source ("rulebook" or "flavor")
             enable_adaptive_learning: Whether to use adaptive learning
+            skip_size_check: Skip file size validation
+            user_confirmed: Whether user has already confirmed large file processing
             
         Returns:
             Processing results and statistics
@@ -97,6 +102,30 @@ class PDFProcessingPipeline:
             if source_type not in ["rulebook", "flavor"]:
                 raise ValueError("source_type must be 'rulebook' or 'flavor'")
             
+            # Check file size if not skipped
+            if not skip_size_check and not user_confirmed:
+                file_info = FileSizeHandler.get_file_info(pdf_path_obj)
+                category = FileSizeCategory(file_info["category"])
+                
+                # Return confirmation request for large files
+                if file_info["requires_confirmation"]:
+                    logger.info(f"Large file detected, confirmation required: {file_info['name']}")
+                    return {
+                        "success": False,
+                        "requires_confirmation": True,
+                        "file_info": file_info,
+                        "confirmation_message": FileSizeHandler.generate_confirmation_message(file_info),
+                        "message": f"File '{file_info['name']}' is {file_info['size_formatted']}. Confirmation required to proceed."
+                    }
+                
+                # Adjust processing parameters for large files
+                if category in [FileSizeCategory.LARGE, FileSizeCategory.VERY_LARGE]:
+                    recommendations = FileSizeHandler.get_processing_recommendations(file_info)
+                    logger.info(f"Adjusting processing parameters for large file: {recommendations}")
+                    # Apply recommendations to chunker and other components
+                    if hasattr(self.chunker, 'max_chunk_size'):
+                        self.chunker.max_chunk_size = recommendations['chunk_size']
+            
             logger.info(
                 f"Starting PDF processing",
                 pdf=pdf_path,
@@ -107,7 +136,12 @@ class PDFProcessingPipeline:
             # Step 1: Extract content from PDF
             logger.info("Step 1: Extracting PDF content")
             try:
-                pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, str(pdf_path_obj))
+                pdf_content = await asyncio.to_thread(
+                    self.parser.extract_text_from_pdf, 
+                    str(pdf_path_obj),
+                    skip_size_check=skip_size_check,
+                    user_confirmed=user_confirmed
+                )
             except PDFProcessingError as e:
                 logger.error(f"Failed to extract PDF content: {e}")
                 raise

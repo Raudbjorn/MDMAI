@@ -42,6 +42,7 @@ from src.performance import (
     register_performance_tools
 )
 from src.performance.parallel_mcp_tools import register_parallel_tools
+from src.utils.user_interaction import register_user_interaction_tools
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -164,7 +165,8 @@ async def add_source(
     rulebook_name: str,
     system: str,
     source_type: str = "rulebook",
-) -> Dict[str, str]:
+    user_confirmed_large_file: bool = False,
+) -> Dict[str, Any]:
     """
     Add a new PDF source to the knowledge base.
     
@@ -173,9 +175,10 @@ async def add_source(
         rulebook_name: Name of the rulebook
         system: Game system (e.g., "D&D 5e", "Pathfinder")
         source_type: Type of source ('rulebook' or 'flavor')
+        user_confirmed_large_file: Whether user has confirmed processing a large file
     
     Returns:
-        Dictionary with status and source ID
+        Dictionary with status and source ID, or confirmation request for large files
     """
     # Check database initialization
     if db is None:
@@ -200,9 +203,20 @@ async def add_source(
             system=system,
             source_type=source_type,
             enable_adaptive_learning=settings.enable_adaptive_learning,
+            user_confirmed=user_confirmed_large_file,
         )
         
-        if result["status"] == "success":
+        # Check if confirmation is required
+        if result.get("requires_confirmation"):
+            return {
+                "status": "confirmation_required",
+                "message": result.get("message"),
+                "confirmation_message": result.get("confirmation_message"),
+                "file_info": result.get("file_info"),
+                "instruction": "Please confirm with the user and call this tool again with user_confirmed_large_file=True"
+            }
+        
+        if result.get("status") == "success" or result.get("success"):
             return {
                 "status": "success",
                 "message": f"Source '{rulebook_name}' added successfully",
@@ -669,6 +683,9 @@ def main():
         
         # Register enhanced source management tools with MCP server
         register_source_tools(mcp)
+        
+        # Register user interaction tools
+        register_user_interaction_tools(mcp)
         
         logger.info(
             "Starting TTRPG Assistant MCP Server",
