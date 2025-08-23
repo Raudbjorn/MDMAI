@@ -119,12 +119,23 @@ class PerformanceMonitor:
         logger.info("Performance monitoring stopped")
     
     async def _monitor_loop(self, interval: int) -> None:
-        """Main monitoring loop."""
+        """Main monitoring loop with adaptive throttling."""
+        consecutive_errors = 0
+        max_consecutive_errors = 3
+        min_interval = max(1, interval)  # Ensure minimum 1 second interval
+        
         while self._monitoring:
             try:
+                # Adaptive interval based on system load
+                current_interval = min_interval
+                if hasattr(self, '_last_cpu_percent') and self._last_cpu_percent > 80:
+                    # Double interval if CPU usage is high
+                    current_interval = min_interval * 2
+                
                 # Collect system metrics
                 metrics = await self.collect_system_metrics()
                 self.system_metrics.append(metrics)
+                self._last_cpu_percent = metrics.get('cpu_percent', 0)
                 
                 # Check thresholds
                 self._check_thresholds(metrics)
@@ -133,15 +144,26 @@ class PerformanceMonitor:
                 if len(self.system_metrics) >= 10:
                     await self.save_metrics()
                 
-                await asyncio.sleep(interval)
+                # Reset error counter on success
+                consecutive_errors = 0
+                
+                await asyncio.sleep(current_interval)
                 
             except asyncio.CancelledError:
                 # Expected when monitoring is stopped
                 break
             except Exception as e:
-                logger.error(f"Error in monitoring loop: {str(e)}")
+                consecutive_errors += 1
+                logger.error(f"Error in monitoring loop: {str(e)} (attempt {consecutive_errors}/{max_consecutive_errors})")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Too many consecutive monitoring errors, stopping monitor")
+                    self._monitoring = False
+                    break
+                    
                 if self._monitoring:  # Only sleep if still monitoring
-                    await asyncio.sleep(interval)
+                    # Exponential backoff on errors
+                    await asyncio.sleep(min_interval * (2 ** consecutive_errors))
     
     async def collect_system_metrics(self) -> SystemMetrics:
         """Collect current system metrics."""

@@ -75,6 +75,17 @@ class DatabaseOptimizer:
         }
         self._shutdown = False
     
+    def __del__(self):
+        """Cleanup executor on deletion."""
+        self.shutdown()
+    
+    def shutdown(self):
+        """Shutdown the optimizer and cleanup resources."""
+        if not self._shutdown:
+            self._shutdown = True
+            self.executor.shutdown(wait=True)
+            logger.info("Database optimizer shutdown complete")
+    
     async def optimize_indices(self, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """
         Optimize indices for better search performance.

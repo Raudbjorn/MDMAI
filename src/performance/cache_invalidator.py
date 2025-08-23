@@ -228,18 +228,24 @@ class CacheInvalidator:
                 continue
             
             count = 0
-            # Get all entries and check staleness
+            # Get all entries and check staleness with atomic operations
             with cache.lock:
+                # Create a copy of keys to avoid modification during iteration
+                keys_to_check = list(cache.cache.keys())
                 keys_to_invalidate = []
-                for key, entry in cache.cache.items():
-                    if entry.get_age() > max_age_seconds:
-                        keys_to_invalidate.append(key)
-                    elif max_idle_seconds and entry.get_idle_time() > max_idle_seconds:
-                        keys_to_invalidate.append(key)
                 
+                for key in keys_to_check:
+                    entry = cache.cache.get(key)
+                    if entry:
+                        if entry.get_age() > max_age_seconds:
+                            keys_to_invalidate.append(key)
+                        elif max_idle_seconds and entry.get_idle_time() > max_idle_seconds:
+                            keys_to_invalidate.append(key)
+                
+                # Perform atomic batch invalidation
                 for key in keys_to_invalidate:
-                    cache._remove_entry(key)
-                    count += 1
+                    if cache._remove_entry(key):
+                        count += 1
             
             if count > 0:
                 results[name] = count

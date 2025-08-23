@@ -275,7 +275,7 @@ async def configure_cache(
     persistent: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
-    Configure cache parameters.
+    Configure cache parameters with validation.
     
     Args:
         cache_name: Cache to configure
@@ -303,18 +303,39 @@ async def configure_cache(
                 "error": f"Cache profile '{cache_name}' not found",
             }
         
-        # Update configuration
+        # Validate and update configuration
         updated = []
         if max_size is not None:
+            if max_size <= 0:
+                return {
+                    "success": False,
+                    "error": "max_size must be positive"
+                }
             profile.max_size = max_size
             updated.append("max_size")
         if max_memory_mb is not None:
+            if max_memory_mb <= 0:
+                return {
+                    "success": False,
+                    "error": "max_memory_mb must be positive"
+                }
             profile.max_memory_mb = max_memory_mb
             updated.append("max_memory_mb")
         if ttl_seconds is not None:
+            if ttl_seconds < 0:
+                return {
+                    "success": False,
+                    "error": "ttl_seconds cannot be negative"
+                }
             profile.ttl_seconds = ttl_seconds
             updated.append("ttl_seconds")
         if policy is not None:
+            valid_policies = ["LRU", "LFU", "FIFO", "RANDOM"]
+            if policy.upper() not in valid_policies:
+                return {
+                    "success": False,
+                    "error": f"Invalid policy. Must be one of: {', '.join(valid_policies)}"
+                }
             profile.policy = policy
             updated.append("policy")
         if persistent is not None:

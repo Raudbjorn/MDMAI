@@ -179,6 +179,14 @@ class ChromaDBManager:
         Returns:
             List of search results with content and metadata
         """
+        # Input validation
+        if not query or not query.strip():
+            logger.warning("Empty search query provided")
+            return []
+        
+        if n_results <= 0:
+            raise ValueError(f"n_results must be positive, got {n_results}")
+        
         if collection_name not in self.collections:
             raise ValueError(f"Collection '{collection_name}' not found")
         
