@@ -611,18 +611,33 @@ def main():
         initialize_performance_tools(
             cache_manager,
             cache_manager.invalidator,
-            cache_manager.config
+            cache_manager.config,
+            db  # Pass database for optimizer and monitor
         )
         
         # Register cleanup handler
-        def cleanup_cache_manager():
+        def cleanup_resources():
+            # Cleanup cache manager
             if cache_manager:
                 try:
                     cache_manager.shutdown()
                 except Exception:
                     pass  # Already logged
+            
+            # Cleanup database optimizer and monitor
+            if db and hasattr(db, 'optimizer') and db.optimizer:
+                try:
+                    asyncio.run(db.optimizer.cleanup())
+                except Exception:
+                    pass
+            
+            if db and hasattr(db, 'monitor') and db.monitor:
+                try:
+                    asyncio.run(db.monitor.cleanup())
+                except Exception:
+                    pass
         
-        atexit.register(cleanup_cache_manager)
+        atexit.register(cleanup_resources)
         
         # Register performance tools with MCP server
         register_performance_tools(mcp)

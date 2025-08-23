@@ -135,9 +135,13 @@ class PerformanceMonitor:
                 
                 await asyncio.sleep(interval)
                 
+            except asyncio.CancelledError:
+                # Expected when monitoring is stopped
+                break
             except Exception as e:
                 logger.error(f"Error in monitoring loop: {str(e)}")
-                await asyncio.sleep(interval)
+                if self._monitoring:  # Only sleep if still monitoring
+                    await asyncio.sleep(interval)
     
     async def collect_system_metrics(self) -> SystemMetrics:
         """Collect current system metrics."""
@@ -308,25 +312,39 @@ class PerformanceMonitor:
         try:
             timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             
-            # Save system metrics
+            # Ensure metrics directory exists
+            self.metrics_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save system metrics with proper encoding
             if self.system_metrics:
                 system_file = self.metrics_dir / f"system_{timestamp}.json"
-                with open(system_file, "w") as f:
-                    json.dump(
-                        [m.to_dict() for m in self.system_metrics],
-                        f,
-                        indent=2,
-                    )
+                try:
+                    with open(system_file, "w", encoding="utf-8") as f:
+                        json.dump(
+                            [m.to_dict() for m in self.system_metrics],
+                            f,
+                            indent=2,
+                            default=str,  # Handle non-serializable objects
+                        )
+                except IOError as e:
+                    logger.error(f"Failed to write system metrics: {e}")
             
-            # Save operation metrics
+            # Save operation metrics with proper encoding
             if self.metrics:
                 ops_file = self.metrics_dir / f"operations_{timestamp}.json"
-                with open(ops_file, "w") as f:
-                    json.dump(
-                        [m.to_dict() for m in self.metrics],
-                        f,
-                        indent=2,
-                    )
+                try:
+                    with open(ops_file, "w", encoding="utf-8") as f:
+                        json.dump(
+                            [m.to_dict() for m in self.metrics],
+                            f,
+                            indent=2,
+                            default=str,  # Handle non-serializable objects
+                        )
+                except IOError as e:
+                    logger.error(f"Failed to write operation metrics: {e}")
+            
+            # Clean up old metrics files (keep only last 7 days)
+            await self._cleanup_old_metrics()
             
             logger.debug(f"Metrics saved to {self.metrics_dir}")
             
@@ -411,6 +429,24 @@ class PerformanceMonitor:
                 )
         
         return report
+    
+    async def _cleanup_old_metrics(self) -> None:
+        """Clean up metrics files older than 7 days."""
+        try:
+            cutoff_date = datetime.utcnow() - timedelta(days=7)
+            
+            for metric_file in self.metrics_dir.glob("*.json"):
+                try:
+                    # Get file modification time
+                    file_mtime = datetime.fromtimestamp(metric_file.stat().st_mtime)
+                    if file_mtime < cutoff_date:
+                        metric_file.unlink()
+                        logger.debug(f"Deleted old metric file: {metric_file.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete old metric file {metric_file.name}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to cleanup old metrics: {e}")
     
     async def cleanup(self) -> None:
         """Clean up monitoring resources."""

@@ -62,7 +62,7 @@ class QueryMetrics:
 class DatabaseOptimizer:
     """Optimizes ChromaDB performance through various strategies."""
     
-    def __init__(self, db_manager):
+    def __init__(self, db_manager: Any):
         """Initialize the optimizer."""
         self.db = db_manager
         self.index_metrics: Dict[str, IndexMetrics] = {}
@@ -73,6 +73,7 @@ class DatabaseOptimizer:
             "query_time": 1.0,  # Optimize when avg query time exceeds this (seconds)
             "days_since_optimization": 7,  # Re-optimize after this many days
         }
+        self._shutdown = False
     
     async def optimize_indices(self, collection_name: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -192,7 +193,8 @@ class DatabaseOptimizer:
         query_time = await self._measure_query_performance(collection_name)
         
         # Calculate memory usage (approximate)
-        memory_usage = doc_count * 1024  # Rough estimate: 1KB per doc
+        # Prevent integer overflow and provide reasonable estimate
+        memory_usage = min(doc_count * 1024, 2**31 - 1)  # Rough estimate: 1KB per doc, cap at 2GB
         
         index_time = time.time() - start_time
         
@@ -261,6 +263,15 @@ class DatabaseOptimizer:
     
     def _analyze_query(self, query: str) -> Dict[str, Any]:
         """Analyze a query for optimization opportunities."""
+        # Validate and sanitize query
+        if not query or not isinstance(query, str):
+            return {"suggestions": ["Invalid query"], "length": 0, "word_count": 0, "has_special_chars": False}
+        
+        # Limit query length to prevent DOS
+        MAX_QUERY_LENGTH = 5000
+        if len(query) > MAX_QUERY_LENGTH:
+            query = query[:MAX_QUERY_LENGTH]
+        
         analysis = {
             "length": len(query),
             "word_count": len(query.split()),
@@ -365,35 +376,59 @@ class DatabaseOptimizer:
     
     async def _batch_add(self, data: Dict[str, Any]) -> None:
         """Add document in batch operation."""
-        await asyncio.get_event_loop().run_in_executor(
-            self.executor,
-            self.db.add_document,
-            data["collection"],
-            data["id"],
-            data["content"],
-            data["metadata"],
-            data.get("embedding"),
-        )
+        try:
+            # Validate required fields
+            if not all(k in data for k in ["collection", "id", "content", "metadata"]):
+                raise ValueError(f"Missing required fields in batch add data")
+            
+            await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                self.db.add_document,
+                data["collection"],
+                data["id"],
+                data["content"],
+                data["metadata"],
+                data.get("embedding"),
+            )
+        except Exception as e:
+            logger.error(f"Batch add failed for document {data.get('id', 'unknown')}: {e}")
+            raise
     
     async def _batch_update(self, data: Dict[str, Any]) -> None:
         """Update document in batch operation."""
-        await asyncio.get_event_loop().run_in_executor(
-            self.executor,
-            self.db.update_document,
-            data["collection"],
-            data["id"],
-            data.get("content"),
-            data.get("metadata"),
-        )
+        try:
+            # Validate required fields
+            if not all(k in data for k in ["collection", "id"]):
+                raise ValueError(f"Missing required fields in batch update data")
+            
+            await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                self.db.update_document,
+                data["collection"],
+                data["id"],
+                data.get("content"),
+                data.get("metadata"),
+            )
+        except Exception as e:
+            logger.error(f"Batch update failed for document {data.get('id', 'unknown')}: {e}")
+            raise
     
     async def _batch_delete(self, data: Dict[str, Any]) -> None:
         """Delete document in batch operation."""
-        await asyncio.get_event_loop().run_in_executor(
-            self.executor,
-            self.db.delete_document,
-            data["collection"],
-            data["id"],
-        )
+        try:
+            # Validate required fields
+            if not all(k in data for k in ["collection", "id"]):
+                raise ValueError(f"Missing required fields in batch delete data")
+            
+            await asyncio.get_event_loop().run_in_executor(
+                self.executor,
+                self.db.delete_document,
+                data["collection"],
+                data["id"],
+            )
+        except Exception as e:
+            logger.error(f"Batch delete failed for document {data.get('id', 'unknown')}: {e}")
+            raise
     
     def track_query_performance(
         self,
@@ -477,7 +512,20 @@ class DatabaseOptimizer:
     
     async def cleanup(self) -> None:
         """Clean up resources."""
-        self.executor.shutdown(wait=True)
+        self._shutdown = True
+        if self.executor:
+            try:
+                # Python 3.9+ has cancel_futures parameter
+                import sys
+                if sys.version_info >= (3, 9):
+                    self.executor.shutdown(wait=True, cancel_futures=False)
+                else:
+                    self.executor.shutdown(wait=True)
+            except Exception as e:
+                logger.error(f"Error shutting down executor: {e}")
+        
+        # Clear metrics to free memory
+        self.query_metrics.clear()
         logger.info("Database optimizer cleaned up")
 
 
@@ -534,13 +582,26 @@ class ConnectionPoolManager:
         async with self._lock:
             # Close all available connections
             while not self.available.empty():
-                conn = await self.available.get()
-                # Close connection (implementation depends on ChromaDB)
-                pass
+                try:
+                    conn = self.available.get_nowait()
+                    # Close connection (implementation depends on ChromaDB)
+                    # If the connection has a close method, use it
+                    if hasattr(conn, 'close'):
+                        await conn.close()
+                except asyncio.QueueEmpty:
+                    break
+                except Exception as e:
+                    logger.error(f"Error closing connection: {e}")
             
-            # Wait for in-use connections to be released
-            while self.in_use:
+            # Wait for in-use connections with timeout
+            timeout = 5.0
+            start_time = asyncio.get_event_loop().time()
+            while self.in_use and (asyncio.get_event_loop().time() - start_time < timeout):
                 await asyncio.sleep(0.1)
+            
+            if self.in_use:
+                logger.warning(f"Forcefully closing {len(self.in_use)} in-use connections")
+                self.in_use.clear()
             
             self.connections.clear()
             self._initialized = False
