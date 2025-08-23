@@ -66,7 +66,20 @@ class InvalidationRule:
     
     def _match_pattern(self, key: str, pattern: str) -> bool:
         """Match key against pattern (supports wildcards)."""
-        return fnmatch.fnmatch(key, pattern)
+        try:
+            # Sanitize pattern to prevent potential issues
+            if not pattern or not key:
+                return False
+            
+            # Limit pattern length to prevent DoS
+            if len(pattern) > 1000 or len(key) > 1000:
+                logger.warning("Pattern or key too long for matching")
+                return False
+            
+            return fnmatch.fnmatch(key, pattern)
+        except Exception as e:
+            logger.debug(f"Pattern matching error: {e}")
+            return False
 
 
 class CacheInvalidator:
@@ -221,35 +234,54 @@ class CacheInvalidator:
         Returns:
             Dictionary mapping cache names to number of invalidated entries
         """
+        # Validate inputs
+        if max_age_seconds <= 0:
+            logger.warning("Invalid max_age_seconds, using default 3600")
+            max_age_seconds = 3600
+        
+        if max_idle_seconds is not None and max_idle_seconds <= 0:
+            logger.warning("Invalid max_idle_seconds, ignoring")
+            max_idle_seconds = None
+        
         results = {}
         
         for name, cache in self.cache_systems.items():
             if not cache:
                 continue
             
-            count = 0
-            # Get all entries and check staleness with atomic operations
-            with cache.lock:
-                # Create a copy of keys to avoid modification during iteration
-                keys_to_check = list(cache.cache.keys())
-                keys_to_invalidate = []
+            try:
+                count = 0
+                # Get all entries and check staleness with atomic operations
+                if hasattr(cache, 'lock') and hasattr(cache, 'cache'):
+                    with cache.lock:
+                        # Create a copy of keys to avoid modification during iteration
+                        keys_to_check = list(cache.cache.keys())
+                        keys_to_invalidate = []
+                        
+                        for key in keys_to_check:
+                            entry = cache.cache.get(key)
+                            if entry:
+                                if hasattr(entry, 'get_age') and entry.get_age() > max_age_seconds:
+                                    keys_to_invalidate.append(key)
+                                elif max_idle_seconds and hasattr(entry, 'get_idle_time') and entry.get_idle_time() > max_idle_seconds:
+                                    keys_to_invalidate.append(key)
+                        
+                        # Perform atomic batch invalidation
+                        for key in keys_to_invalidate:
+                            if hasattr(cache, '_remove_entry'):
+                                cache._remove_entry(key)
+                                count += 1
+                            else:
+                                # Fallback to del if _remove_entry doesn't exist
+                                del cache.cache[key]
+                                count += 1
                 
-                for key in keys_to_check:
-                    entry = cache.cache.get(key)
-                    if entry:
-                        if entry.get_age() > max_age_seconds:
-                            keys_to_invalidate.append(key)
-                        elif max_idle_seconds and entry.get_idle_time() > max_idle_seconds:
-                            keys_to_invalidate.append(key)
-                
-                # Perform atomic batch invalidation
-                for key in keys_to_invalidate:
-                    if cache._remove_entry(key):
-                        count += 1
-            
-            if count > 0:
-                results[name] = count
-                logger.info(f"Invalidated {count} stale entries in '{name}'")
+                if count > 0:
+                    results[name] = count
+                    logger.info(f"Invalidated {count} stale entries in '{name}'")
+                    
+            except Exception as e:
+                logger.error(f"Error invalidating stale entries in '{name}': {e}")
         
         return results
     
@@ -349,21 +381,52 @@ class CacheInvalidator:
         """Apply invalidation rule to a cache."""
         count = 0
         
-        with cache.lock:
-            keys_to_invalidate = []
+        try:
+            # Check if cache has required attributes
+            if not hasattr(cache, 'lock') or not hasattr(cache, 'cache'):
+                logger.warning(f"Cache missing required attributes for rule application")
+                return 0
             
-            for key in list(cache.cache.keys()):
-                entry_info = cache.get_entry_info(key)
-                if entry_info and rule.matches(key, entry_info):
-                    keys_to_invalidate.append(key)
+            with cache.lock:
+                keys_to_invalidate = []
+                
+                # Safely iterate over cache keys
+                try:
+                    cache_keys = list(cache.cache.keys())
+                except Exception as e:
+                    logger.error(f"Error getting cache keys: {e}")
+                    return 0
+                
+                for key in cache_keys:
+                    try:
+                        if hasattr(cache, 'get_entry_info'):
+                            entry_info = cache.get_entry_info(key)
+                            if entry_info and rule.matches(key, entry_info):
+                                keys_to_invalidate.append(key)
+                    except Exception as e:
+                        logger.debug(f"Error checking entry {key}: {e}")
+                        continue
+                
+                # Apply invalidations
+                for key in keys_to_invalidate:
+                    try:
+                        if hasattr(cache, '_remove_entry'):
+                            cache._remove_entry(key)
+                        else:
+                            del cache.cache[key]
+                        count += 1
+                        
+                        # Update stats if available
+                        if hasattr(cache, 'stats') and hasattr(cache.stats, 'total_invalidations'):
+                            cache.stats.total_invalidations += 1
+                    except Exception as e:
+                        logger.debug(f"Error removing entry {key}: {e}")
             
-            for key in keys_to_invalidate:
-                cache._remove_entry(key)
-                count += 1
-                cache.stats.total_invalidations += 1
-        
-        if count > 0:
-            logger.debug(f"Rule '{rule.name}' invalidated {count} entries")
+            if count > 0:
+                logger.debug(f"Rule '{rule.name}' invalidated {count} entries")
+                
+        except Exception as e:
+            logger.error(f"Error applying rule '{rule.name}': {e}")
         
         return count
     

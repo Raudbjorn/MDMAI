@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import multiprocessing as mp
 from functools import partial
@@ -206,17 +207,25 @@ class ParallelProcessor:
             task.end_time = datetime.utcnow()
     
     async def _process_pdf_task(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Process PDF in parallel."""
-        # Validate required fields
-        if "pdf_path" not in data:
-            raise ValueError("pdf_path is required for PDF processing")
-        
-        pdf_path = Path(data["pdf_path"])
-        if not pdf_path.exists():
-            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
-        
+        """Process PDF in parallel with input validation and error handling."""
         from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
         from src.pdf_processing.content_chunker import ContentChunker
+        
+        # Validate and sanitize PDF path
+        pdf_path = data.get("pdf_path")
+        if not pdf_path:
+            raise ValueError("PDF path is required")
+        
+        # Convert to Path object and resolve to prevent path traversal
+        pdf_path = Path(pdf_path).resolve()
+        
+        # Ensure file exists and is a PDF
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        if not pdf_path.is_file():
+            raise ValueError(f"Path is not a file: {pdf_path}")
+        if pdf_path.suffix.lower() not in ['.pdf']:
+            raise ValueError(f"File is not a PDF: {pdf_path}")
         
         loop = asyncio.get_event_loop()
         
@@ -250,7 +259,7 @@ class ParallelProcessor:
         except Exception as e:
             logger.error(f"Unexpected error processing PDF: {e}")
             raise
-    
+
     async def _process_embedding_task(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate embeddings in parallel."""
         from src.pdf_processing.embedding_generator import EmbeddingGenerator
@@ -341,21 +350,42 @@ class ParallelProcessor:
         }
     
     async def _execute_operation(self, operation: Dict[str, Any]) -> Any:
-        """Execute a single operation."""
+        """Execute a single operation with input validation."""
         op_type = operation.get("type")
         op_data = operation.get("data")
         
+        if not op_type:
+            raise ValueError("Operation type is required")
+        if not op_data:
+            raise ValueError("Operation data is required")
+        
+        # Validate operation type against whitelist
+        allowed_operations = {"add_document", "update_document", "delete_document"}
+        if op_type not in allowed_operations:
+            raise ValueError(f"Invalid operation type: {op_type}")
+        
         if op_type == "add_document":
+            # Validate required fields
+            required_fields = ["collection", "id", "content", "metadata"]
+            for field in required_fields:
+                if field not in op_data:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            # Sanitize collection name
+            collection_name = str(op_data["collection"]).strip()
+            if not collection_name or not collection_name.replace("_", "").isalnum():
+                raise ValueError(f"Invalid collection name: {collection_name}")
+            
             from src.core.database import get_db_manager
             db = get_db_manager()
             return db.add_document(
-                collection_name=op_data["collection"],
-                document_id=op_data["id"],
+                collection_name=collection_name,
+                document_id=str(op_data["id"]),
                 content=op_data["content"],
                 metadata=op_data["metadata"],
             )
         else:
-            raise ValueError(f"Unknown operation type: {op_type}")
+            raise ValueError(f"Operation type not implemented: {op_type}")
     
     async def _resource_monitor(self) -> None:
         """Monitor resource usage and adjust processing."""
@@ -365,7 +395,14 @@ class ParallelProcessor:
             logger.warning("psutil not available, resource monitoring disabled")
             return
         
-        process = psutil.Process()
+        try:
+            process = psutil.Process()
+        except Exception as e:
+            logger.error(f"Failed to initialize process monitor: {e}")
+            return
+        
+        consecutive_errors = 0
+        max_consecutive_errors = 5
         consecutive_high_memory = 0
         
         while not self._shutdown:
@@ -401,6 +438,9 @@ class ParallelProcessor:
                         f"Task queue nearly full: {queue_size}/{self.limits.max_queue_size}"
                     )
                 
+                # Reset error counter on success
+                consecutive_errors = 0
+                
                 # Dynamic adjustment interval based on load
                 if queue_size > self.limits.max_queue_size * 0.5:
                     await asyncio.sleep(5)  # Check more frequently under load
@@ -408,25 +448,47 @@ class ParallelProcessor:
                     await asyncio.sleep(10)  # Normal interval
                 
             except asyncio.CancelledError:
+                # Shutdown requested
                 break
             except Exception as e:
-                logger.error(f"Resource monitor error: {str(e)}")
+                consecutive_errors += 1
+                logger.error(f"Resource monitor error ({consecutive_errors}/{max_consecutive_errors}): {str(e)}")
+                
+                if consecutive_errors >= max_consecutive_errors:
+                    logger.error("Resource monitor shutting down due to repeated errors")
+                    break
+                
                 await asyncio.sleep(10)
-    
+
     async def submit_task(
         self,
         task_type: str,
         data: Any,
         task_id: Optional[str] = None,
     ) -> ProcessingTask:
-        """Submit a task for parallel processing."""
+        """Submit a task for parallel processing with validation."""
         if self._shutdown:
             raise RuntimeError("Processor has been shut down")
         
-        # Create task
+        # Validate task type
+        allowed_task_types = {
+            "pdf_processing", "embedding_generation", 
+            "search", "batch_operation"
+        }
+        if task_type not in allowed_task_types:
+            raise ValueError(f"Invalid task type: {task_type}")
+        
+        # Create task with validated ID
         import uuid
+        if task_id:
+            # Sanitize task ID to prevent injection
+            if not re.match(r'^[a-zA-Z0-9_-]+$', task_id):
+                raise ValueError(f"Invalid task ID format: {task_id}")
+        else:
+            task_id = str(uuid.uuid4())
+        
         task = ProcessingTask(
-            id=task_id or str(uuid.uuid4()),
+            id=task_id,
             type=task_type,
             data=data,
         )
