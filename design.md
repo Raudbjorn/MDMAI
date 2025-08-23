@@ -602,9 +602,302 @@ async def test_create_campaign(mock_db):
 - **Multi-language Support**: Support for non-English rulebooks
 - **Image Processing**: Extract and index images from PDFs
 - **Voice Integration**: Voice commands for hands-free operation
-- **Web Interface**: Optional web UI for visual management
+- **Web Interface**: Optional web UI for visual management (See Web UI Integration Architecture below)
 - **Cloud Sync**: Optional cloud backup and sync
 - **Plugin System**: Extensible architecture for custom tools
-- **Real-time Collaboration**: Multiple DMs sharing a campaign
+- **Real-time Collaboration**: Multiple DMs sharing a campaign (See Collaborative Features below)
 - **AI-powered Content Generation**: Generate NPCs, quests, and encounters
 - **Mobile Companion App**: Access campaign data on mobile devices
+
+## Web UI Integration Architecture
+
+### Overview
+The Web UI Integration enables users to connect their own AI provider accounts (Anthropic, OpenAI, Google Gemini) to access the TTRPG Assistant's MCP tools through a web interface, eliminating the need for custom clients like Claude Desktop while maintaining the robustness of local stdio operations.
+
+### High-Level Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│    Web UI       │────│  Orchestrator    │────│ MCP Server      │
+│   (React)       │SSE │   (FastAPI)      │stdio│  (Existing)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │              ┌────────┴────────┐              │
+         │              │                 │              │
+    ┌────▼────┐    ┌────▼────┐      ┌─────▼─────┐       │
+    │ Auth    │    │ AI      │      │ Session   │       │
+    │ Service │    │Providers│      │ Manager   │       │
+    └─────────┘    └─────────┘      └───────────┘       │
+                        │                               │
+               ┌────────┼────────┐                      │
+               │        │        │                      │
+          ┌────▼─┐ ┌────▼─┐ ┌────▼─┐                   │
+          │Claude│ │OpenAI│ │Gemini│                   │
+          └──────┘ └──────┘ └──────┘                   │
+```
+
+### Core Components
+
+#### 1. MCP Bridge Service
+A new component that bridges HTTP/SSE requests to the stdio MCP server, managing session state and request routing.
+
+```python
+# src/bridge/mcp_bridge.py
+class MCPBridge:
+    """
+    Bridges HTTP/SSE requests to stdio MCP server.
+    Manages session state and request routing.
+    """
+    def __init__(self):
+        self.mcp_process = None
+        self.sessions = {}  # Track user sessions
+        self.request_queue = asyncio.Queue()
+        
+    async def start_mcp_server(self, session_id: str):
+        """Start a dedicated MCP server process for a session."""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "src.main",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "MCP_STDIO_MODE": "true"}
+        )
+        return process
+```
+
+#### 2. Transport Configuration
+Maintains stdio as primary transport while adding bridge capability:
+
+```python
+class TransportConfig:
+    STDIO_ONLY = "stdio"          # Current mode
+    HTTP_BRIDGE = "http_bridge"   # New bridge mode
+    HYBRID = "hybrid"              # Both modes simultaneously
+```
+
+#### 3. Unified AI Provider Interface
+Abstraction layer for different AI providers:
+
+```python
+from abc import ABC, abstractmethod
+
+class AIProvider(ABC):
+    @abstractmethod
+    async def chat_completion(
+        self, 
+        messages: List[AIMessage], 
+        tools: List[Dict],
+        stream: bool = False
+    ) -> AsyncIterator[StreamChunk]:
+        pass
+    
+    @abstractmethod
+    async def validate_credentials(self, api_key: str) -> bool:
+        pass
+
+class UnifiedAIClient:
+    def __init__(self):
+        self.providers = {
+            ProviderType.ANTHROPIC: AnthropicProvider(),
+            ProviderType.OPENAI: OpenAIProvider(), 
+            ProviderType.GEMINI: GeminiProvider()
+        }
+```
+
+### Request/Response Flow
+
+1. **User Query**: Web UI sends query with context to orchestrator
+2. **Tool Discovery**: Orchestrator gets available tools from MCP server
+3. **AI Processing**: Query forwarded to selected AI provider with tools
+4. **Tool Execution**: AI requests tool execution, routed through MCP bridge
+5. **Response Streaming**: Results streamed back to UI via SSE
+
+### Security Architecture
+
+#### Authentication & Authorization
+- **Multi-provider Authentication**: Support for API keys, OAuth, JWT
+- **Session Isolation**: Each user gets isolated MCP process
+- **Tool Permissions**: Granular control over tool access per user
+- **Rate Limiting**: Per-user and per-tool rate limits
+
+```python
+class AuthenticationManager:
+    def __init__(self):
+        self.providers = {
+            "api_key": APIKeyAuthProvider(),
+            "oauth": OAuthProvider(),
+            "jwt": JWTProvider()
+        }
+        
+    async def authenticate_request(self, request: Request) -> User:
+        auth_header = request.headers.get("Authorization")
+        provider = self.get_provider(auth_header)
+        user = await provider.validate(auth_header)
+        
+        if not self.check_mcp_permissions(user):
+            raise PermissionError("Insufficient MCP permissions")
+            
+        return user
+```
+
+### Context Management Architecture
+
+#### Conversation Context Handling
+Manages context across distributed components with consistency and performance:
+
+```python
+@dataclass
+class ConversationContext:
+    session_id: str
+    campaign_id: str
+    current_scene: Optional[str] = None
+    active_characters: List[str] = field(default_factory=list)
+    recent_actions: List[Dict] = field(default_factory=list)
+    tool_results_cache: Dict[str, Any] = field(default_factory=dict)
+    conversation_history: List[AIMessage] = field(default_factory=list)
+```
+
+#### State Synchronization Strategy
+- **Event-driven Updates**: Use event bus for component communication
+- **Optimistic Locking**: Prevent conflicting updates with version tracking
+- **Cache Coherence**: Multi-layer caching with automatic invalidation
+- **Conflict Resolution**: Last-write-wins with audit trail
+
+### Collaborative Features
+
+#### Real-time Multi-user Sessions
+```python
+class SessionRoom:
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.connections: Set[WebSocket] = set()
+        self.participants: Dict[str, Dict] = {}
+        
+    async def broadcast(self, message: Dict, exclude: WebSocket = None):
+        for connection in self.connections:
+            if connection != exclude:
+                await connection.send_text(json.dumps(message))
+```
+
+### Performance Optimization
+
+#### Intelligent Caching System
+- **Response Caching**: Cache AI responses with context hashing
+- **Tool Result Caching**: Reuse tool results within TTL window
+- **Predictive Prefetching**: Preload likely next data based on patterns
+- **Compression**: Context compression for storage efficiency
+
+#### Load Balancing
+- **MCP Server Pool**: Multiple MCP processes for horizontal scaling
+- **Cost-optimized Routing**: Route to cheapest appropriate AI provider
+- **Circuit Breakers**: Automatic failover for provider failures
+
+### Frontend Architecture
+
+#### Technology Stack
+- **Framework**: React 18+ with TypeScript
+- **State Management**: Zustand for lightweight real-time updates
+- **UI Components**: Shadcn/ui + Tailwind CSS
+- **Real-time**: Socket.io client for WebSocket communication
+- **Build Tool**: Vite for fast development
+
+#### Key UI Components
+- **Campaign Dashboard**: Overview of active campaigns and sessions
+- **Tool Result Visualizer**: Rich visualization for different tool outputs
+- **Collaborative Canvas**: Shared workspace for maps and notes
+- **AI Provider Selector**: Dynamic provider switching interface
+
+### Implementation Phases
+
+#### Phase 1: Bridge Foundation (Weeks 1-2)
+- Create FastAPI bridge service
+- Implement stdio subprocess management
+- Add SSE transport for real-time updates
+- Basic request/response routing
+
+#### Phase 2: AI Provider Integration (Weeks 2-3)
+- Implement provider abstraction layer
+- Add support for Anthropic, OpenAI, Google
+- Tool format conversion utilities
+- Response streaming handlers
+
+#### Phase 3: Security & Auth (Weeks 3-4)
+- Authentication mechanisms
+- Session isolation implementation
+- Permission system setup
+- Rate limiting and quotas
+
+#### Phase 4: Context Management (Weeks 4-5)
+- Context persistence layer
+- State synchronization system
+- Cache implementation
+- Conflict resolution
+
+#### Phase 5: UI Development (Weeks 5-7)
+- React frontend setup
+- Component development
+- Real-time features
+- Tool visualization
+
+#### Phase 6: Testing & Optimization (Weeks 7-8)
+- Load testing
+- Performance optimization
+- Security auditing
+- Documentation
+
+### Configuration
+
+```yaml
+# config/bridge.yaml
+bridge:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+  
+  transport:
+    type: "sse"  # or "websocket"
+    heartbeat_interval: 30
+    
+  security:
+    auth_required: true
+    providers:
+      - api_key
+      - oauth
+    rate_limits:
+      per_minute: 60
+      per_hour: 1000
+      
+  ai_providers:
+    anthropic:
+      enabled: true
+      api_key: ${ANTHROPIC_API_KEY}
+    openai:
+      enabled: true
+      api_key: ${OPENAI_API_KEY}
+    gemini:
+      enabled: true
+      api_key: ${GEMINI_API_KEY}
+      
+  mcp:
+    spawn_mode: "per_session"
+    max_sessions: 100
+    session_ttl: 3600
+    resource_limits:
+      memory_mb: 512
+      cpu_percent: 50
+```
+
+### Monitoring & Observability
+
+#### Key Metrics
+- **Context Retrieval**: < 50ms for 95th percentile
+- **Cache Hit Rate**: > 90% for frequently accessed data
+- **Synchronization Latency**: < 100ms cross-component updates
+- **Memory Efficiency**: < 2GB context storage per 1000 sessions
+- **Error Recovery Time**: < 5 seconds for component failures
+
+#### Monitoring Stack
+- **Metrics**: Prometheus + Grafana
+- **Tracing**: OpenTelemetry
+- **Logging**: Structured logging with correlation IDs
+- **Alerting**: PagerDuty integration for critical issues
