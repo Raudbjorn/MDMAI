@@ -48,13 +48,21 @@ class PathValidator:
         # Ensure all allowed dirs are absolute and resolved
         self.allowed_dirs = {dir_path.resolve() for dir_path in self.allowed_dirs}
         
-    def validate_path(self, path: str, must_exist: bool = False) -> Path:
+    def validate_path(
+        self, 
+        path: str, 
+        must_exist: bool = False,
+        _visited: Optional[Set[Path]] = None,
+        _depth: int = 0
+    ) -> Path:
         """
         Validate a file path for security issues.
         
         Args:
             path: Path to validate
             must_exist: Whether the path must exist
+            _visited: Internal use - tracks visited symlinks to detect cycles
+            _depth: Internal use - tracks recursion depth for symlink following
             
         Returns:
             Validated Path object
@@ -63,6 +71,14 @@ class PathValidator:
             PathTraversalError: If path traversal is detected
             FileNotFoundError: If must_exist=True and path doesn't exist
         """
+        # Initialize visited set for symlink cycle detection
+        if _visited is None:
+            _visited = set()
+        
+        # Check recursion depth to prevent infinite loops
+        if _depth > 10:
+            raise PathTraversalError("Too many levels of symbolic links")
+        
         # Convert to Path object
         try:
             path_obj = Path(path)

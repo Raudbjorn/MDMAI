@@ -411,43 +411,63 @@ class AdaptiveLearningSystem:
         
         return stats
     
+    def _atomic_save(self, data: Any, file_name: str, is_json: bool = False) -> None:
+        """
+        Atomically save data to a file.
+        
+        Args:
+            data: Data to save
+            file_name: Name of the file to save to
+            is_json: Whether to save as JSON (True) or pickle (False)
+            
+        Raises:
+            Exception: If save fails
+        """
+        file_path = self.cache_dir / file_name
+        mode = 'w' if is_json else 'wb'
+        
+        tmp_file = None
+        tmp_name = None
+        try:
+            with tempfile.NamedTemporaryFile(mode=mode, delete=False, dir=self.cache_dir) as tmp:
+                tmp_file = tmp
+                tmp_name = tmp.name  # Keep reference for cleanup
+                if is_json:
+                    json.dump(data, tmp)
+                else:
+                    pickle.dump(data, tmp)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            
+            # Atomic replace
+            os.replace(tmp_name, file_path)
+            tmp_name = None  # Clear since file was successfully moved
+            
+        except Exception as e:
+            # Clean up temporary file if it still exists
+            if tmp_name and os.path.exists(tmp_name):
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass  # Best effort cleanup
+            raise e
+    
     def _save_patterns(self):
         """Save learned patterns to cache with atomic operations."""
         try:
-            # Save patterns with atomic write
-            patterns_file = self.cache_dir / "patterns.pkl"
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=self.cache_dir) as tmp:
-                pickle.dump(dict(self.patterns), tmp)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            os.replace(tmp.name, patterns_file)
+            # Save patterns
+            self._atomic_save(dict(self.patterns), "patterns.pkl")
             
-            # Save classifiers with atomic write
-            classifiers_file = self.cache_dir / "classifiers.pkl"
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=self.cache_dir) as tmp:
-                pickle.dump(self.content_classifiers, tmp)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            os.replace(tmp.name, classifiers_file)
+            # Save classifiers
+            self._atomic_save(self.content_classifiers, "classifiers.pkl")
             
-            # Save metrics with atomic write
-            metrics_file = self.cache_dir / "metrics.json"
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=self.cache_dir) as tmp:
-                json.dump(dict(self.extraction_metrics), tmp)
-                tmp.flush()
-                os.fsync(tmp.fileno())
-            os.replace(tmp.name, metrics_file)
+            # Save metrics
+            self._atomic_save(dict(self.extraction_metrics), "metrics.json", is_json=True)
             
             logger.debug("Adaptive learning patterns saved atomically")
             
         except Exception as e:
-            logger.error(f"Failed to save patterns", error=str(e))
-            # Clean up any temporary files
-            if 'tmp' in locals() and hasattr(tmp, 'name') and os.path.exists(tmp.name):
-                try:
-                    os.unlink(tmp.name)
-                except:
-                    pass
+            logger.error(f"Failed to save patterns: {str(e)}")
     
     def _load_cached_patterns(self):
         """Load previously learned patterns from cache with validation."""

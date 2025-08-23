@@ -113,7 +113,7 @@ class ParallelProcessor:
                 # Use spawn context to avoid fork issues
                 ctx = mp.get_context('spawn')
                 self.process_executor = concurrent.futures.ProcessPoolExecutor(
-                    max_workers=self.limits.max_workers,
+                    max_workers=self.limits.max_process_workers,
                     mp_context=ctx
                 )
             
