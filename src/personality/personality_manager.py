@@ -1,10 +1,10 @@
 """Personality profile management for TTRPG content."""
 
 import json
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
-import uuid
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 class PersonalityProfile:
     """Represents a personality profile for response generation."""
-    
+
     def __init__(
         self,
         profile_id: str,
@@ -32,7 +32,7 @@ class PersonalityProfile:
     ):
         """
         Initialize personality profile.
-        
+
         Args:
             profile_id: Unique identifier
             name: Profile name
@@ -60,7 +60,7 @@ class PersonalityProfile:
         self.created_at = datetime.utcnow()
         self.updated_at = datetime.utcnow()
         self.usage_count = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert profile to dictionary."""
         return {
@@ -79,7 +79,7 @@ class PersonalityProfile:
             "updated_at": self.updated_at.isoformat(),
             "usage_count": self.usage_count,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PersonalityProfile":
         """Create profile from dictionary."""
@@ -96,7 +96,7 @@ class PersonalityProfile:
             sentiment=data.get("sentiment"),
             custom_traits=data.get("custom_traits"),
         )
-        
+
         # Restore timestamps
         if "created_at" in data:
             profile.created_at = datetime.fromisoformat(data["created_at"])
@@ -104,28 +104,28 @@ class PersonalityProfile:
             profile.updated_at = datetime.fromisoformat(data["updated_at"])
         if "usage_count" in data:
             profile.usage_count = data["usage_count"]
-        
+
         return profile
 
 
 class PersonalityManager:
     """Manages personality profiles for TTRPG content."""
-    
+
     def __init__(self):
         """Initialize personality manager."""
         self.profiles_dir = settings.cache_dir / "personality_profiles"
         self.profiles_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.profiles: Dict[str, PersonalityProfile] = {}
         self.active_profile: Optional[PersonalityProfile] = None
         self.extractor = PersonalityExtractor()
-        
+
         # Load existing profiles
         self._load_profiles()
-        
+
         # Initialize default profiles
         self._initialize_default_profiles()
-    
+
     def create_profile(
         self,
         name: str,
@@ -136,19 +136,19 @@ class PersonalityManager:
     ) -> PersonalityProfile:
         """
         Create a new personality profile.
-        
+
         Args:
             name: Profile name
             system: Game system
             source_text: Optional text to extract personality from
             base_profile: Optional base profile to build upon
             custom_traits: Optional custom traits
-            
+
         Returns:
             Created personality profile
         """
         logger.info(f"Creating personality profile: {name} for system: {system}")
-        
+
         # Start with base profile if provided
         if base_profile and base_profile in self.profiles:
             base = self.profiles[base_profile]
@@ -168,7 +168,7 @@ class PersonalityManager:
             common_phrases = []
             characteristics = []
             sentiment = {"polarity": 0, "subjectivity": 0.5, "mood": "neutral"}
-        
+
         # Extract personality from source text if provided
         if source_text:
             extracted = self.extractor.extract_personality(source_text, system)
@@ -179,7 +179,7 @@ class PersonalityManager:
             common_phrases = extracted["common_phrases"]
             characteristics = extracted["characteristics"]
             sentiment = extracted["sentiment"]
-        
+
         # Create profile
         profile = PersonalityProfile(
             profile_id=str(uuid.uuid4()),
@@ -194,33 +194,35 @@ class PersonalityManager:
             sentiment=sentiment,
             custom_traits=custom_traits or {},
         )
-        
+
         # Store profile
         self.profiles[profile.profile_id] = profile
         self._save_profile(profile)
-        
+
         return profile
-    
+
     def get_profile(self, profile_id: str) -> Optional[PersonalityProfile]:
         """
         Get a personality profile by ID.
-        
+
         Args:
             profile_id: Profile ID
-            
+
         Returns:
             Profile or None if not found
         """
         return self.profiles.get(profile_id)
-    
-    def get_profile_by_name(self, name: str, system: Optional[str] = None) -> Optional[PersonalityProfile]:
+
+    def get_profile_by_name(
+        self, name: str, system: Optional[str] = None
+    ) -> Optional[PersonalityProfile]:
         """
         Get a profile by name and optionally system.
-        
+
         Args:
             name: Profile name
             system: Optional system filter
-            
+
         Returns:
             Profile or None if not found
         """
@@ -229,39 +231,37 @@ class PersonalityManager:
                 if system is None or profile.system == system:
                     return profile
         return None
-    
+
     def list_profiles(self, system: Optional[str] = None) -> List[PersonalityProfile]:
         """
         List all profiles, optionally filtered by system.
-        
+
         Args:
             system: Optional system filter
-            
+
         Returns:
             List of profiles
         """
         profiles = list(self.profiles.values())
-        
+
         if system:
             profiles = [p for p in profiles if p.system == system]
-        
+
         # Sort by usage count and name
         profiles.sort(key=lambda p: (-p.usage_count, p.name))
-        
+
         return profiles
-    
+
     def update_profile(
-        self,
-        profile_id: str,
-        updates: Dict[str, Any]
+        self, profile_id: str, updates: Dict[str, Any]
     ) -> Optional[PersonalityProfile]:
         """
         Update a personality profile.
-        
+
         Args:
             profile_id: Profile ID
             updates: Dictionary of updates
-            
+
         Returns:
             Updated profile or None if not found
         """
@@ -269,56 +269,62 @@ class PersonalityManager:
         if not profile:
             logger.warning(f"Profile not found: {profile_id}")
             return None
-        
+
         # Update allowed fields
         allowed_fields = [
-            "name", "tone", "perspective", "style",
-            "vocabulary", "common_phrases", "characteristics",
-            "sentiment", "custom_traits"
+            "name",
+            "tone",
+            "perspective",
+            "style",
+            "vocabulary",
+            "common_phrases",
+            "characteristics",
+            "sentiment",
+            "custom_traits",
         ]
-        
+
         for field in allowed_fields:
             if field in updates:
                 setattr(profile, field, updates[field])
-        
+
         profile.updated_at = datetime.utcnow()
-        
+
         # Save updated profile
         self._save_profile(profile)
-        
+
         return profile
-    
+
     def delete_profile(self, profile_id: str) -> bool:
         """
         Delete a personality profile.
-        
+
         Args:
             profile_id: Profile ID
-            
+
         Returns:
             True if deleted, False if not found
         """
         if profile_id not in self.profiles:
             return False
-        
+
         # Remove from memory
         del self.profiles[profile_id]
-        
+
         # Remove from disk
         profile_file = self.profiles_dir / f"{profile_id}.json"
         if profile_file.exists():
             profile_file.unlink()
-        
+
         logger.info(f"Deleted profile: {profile_id}")
         return True
-    
+
     def set_active_profile(self, profile_id: str) -> bool:
         """
         Set the active personality profile.
-        
+
         Args:
             profile_id: Profile ID
-            
+
         Returns:
             True if set, False if not found
         """
@@ -326,32 +332,29 @@ class PersonalityManager:
         if not profile:
             logger.warning(f"Profile not found: {profile_id}")
             return False
-        
+
         self.active_profile = profile
         profile.usage_count += 1
         self._save_profile(profile)
-        
+
         logger.info(f"Active profile set: {profile.name}")
         return True
-    
+
     def get_active_profile(self) -> Optional[PersonalityProfile]:
         """Get the currently active profile."""
         return self.active_profile
-    
+
     def merge_profiles(
-        self,
-        profile_ids: List[str],
-        new_name: str,
-        weights: Optional[List[float]] = None
+        self, profile_ids: List[str], new_name: str, weights: Optional[List[float]] = None
     ) -> Optional[PersonalityProfile]:
         """
         Merge multiple profiles into a new one.
-        
+
         Args:
             profile_ids: List of profile IDs to merge
             new_name: Name for the merged profile
             weights: Optional weights for each profile
-            
+
         Returns:
             Merged profile or None if profiles not found
         """
@@ -362,14 +365,14 @@ class PersonalityManager:
                 logger.warning(f"Profile not found for merging: {pid}")
                 return None
             profiles.append(profile)
-        
+
         if not profiles:
             return None
-        
+
         # Use equal weights if not provided
         if not weights:
             weights = [1.0 / len(profiles)] * len(profiles)
-        
+
         # Merge tone scores
         merged_tone = {}
         for profile, weight in zip(profiles, weights):
@@ -378,12 +381,12 @@ class PersonalityManager:
                     if tone_type not in merged_tone:
                         merged_tone[tone_type] = 0
                     merged_tone[tone_type] += score * weight
-        
+
         # Find dominant tone
         if merged_tone:
             dominant = max(merged_tone, key=merged_tone.get)
             merged_tone["dominant"] = dominant
-        
+
         # Merge vocabulary
         merged_vocab = {}
         for profile, weight in zip(profiles, weights):
@@ -391,40 +394,41 @@ class PersonalityManager:
                 if word not in merged_vocab:
                     merged_vocab[word] = 0
                 merged_vocab[word] += freq * weight
-        
+
         # Combine phrases
         all_phrases = []
         for profile in profiles:
             all_phrases.extend(profile.common_phrases)
-        
+
         # Combine characteristics
         all_characteristics = []
         for profile in profiles:
             all_characteristics.extend(profile.characteristics)
-        
+
         # Use most common characteristics
         from collections import Counter
+
         char_counts = Counter(all_characteristics)
         merged_characteristics = [char for char, _ in char_counts.most_common(10)]
-        
+
         # Average sentiment
         merged_sentiment = {
             "polarity": sum(p.sentiment["polarity"] * w for p, w in zip(profiles, weights)),
             "subjectivity": sum(p.sentiment["subjectivity"] * w for p, w in zip(profiles, weights)),
         }
-        
+
         if merged_sentiment["polarity"] > 0.3:
             merged_sentiment["mood"] = "positive"
         elif merged_sentiment["polarity"] < -0.3:
             merged_sentiment["mood"] = "negative"
         else:
             merged_sentiment["mood"] = "neutral"
-        
+
         # Use first profile's system and perspective
         system = profiles[0].system
         perspective = profiles[0].perspective
         style = profiles[0].style
-        
+
         # Create merged profile
         merged_profile = PersonalityProfile(
             profile_id=str(uuid.uuid4()),
@@ -439,14 +443,14 @@ class PersonalityManager:
             sentiment=merged_sentiment,
             custom_traits={"merged_from": profile_ids},
         )
-        
+
         # Store merged profile
         self.profiles[merged_profile.profile_id] = merged_profile
         self._save_profile(merged_profile)
-        
+
         logger.info(f"Created merged profile: {new_name}")
         return merged_profile
-    
+
     def _initialize_default_profiles(self):
         """Initialize default personality profiles."""
         default_profiles = [
@@ -553,7 +557,7 @@ class PersonalityManager:
                 "characteristics": ["strategic", "concise", "practical", "focused"],
             },
         ]
-        
+
         for profile_data in default_profiles:
             # Check if profile already exists
             existing = self.get_profile_by_name(profile_data["name"], profile_data["system"])
@@ -572,24 +576,24 @@ class PersonalityManager:
                     sentiment={"polarity": 0, "subjectivity": 0.5, "mood": "neutral"},
                     custom_traits={"is_default": True},
                 )
-                
+
                 self.profiles[profile.profile_id] = profile
                 self._save_profile(profile)
-                
+
                 logger.info(f"Created default profile: {profile.name}")
-    
+
     def _save_profile(self, profile: PersonalityProfile):
         """Save profile to disk."""
         try:
             profile_file = self.profiles_dir / f"{profile.profile_id}.json"
             with open(profile_file, "w") as f:
                 json.dump(profile.to_dict(), f, indent=2)
-            
+
             logger.debug(f"Profile saved: {profile.profile_id}")
-            
+
         except Exception as e:
             logger.error(f"Failed to save profile", error=str(e))
-    
+
     def _load_profiles(self):
         """Load profiles from disk."""
         try:
@@ -598,8 +602,8 @@ class PersonalityManager:
                     data = json.load(f)
                     profile = PersonalityProfile.from_dict(data)
                     self.profiles[profile.profile_id] = profile
-            
+
             logger.info(f"Loaded {len(self.profiles)} personality profiles")
-            
+
         except Exception as e:
             logger.error(f"Failed to load profiles", error=str(e))

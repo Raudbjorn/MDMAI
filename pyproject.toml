@@ -19,16 +19,119 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+# Core dependencies
+dependencies = [
+    # Core MCP dependencies
+    "mcp>=1.0.0",
+    "fastmcp>=0.1.0",
+    
+    # Database
+    "chromadb>=0.4.0",
+    
+    # PDF Processing
+    "pypdf2>=3.0.0",
+    "pdfplumber>=0.10.0",
+    "python-magic>=0.4.27",
+    
+    # NLP and Embeddings
+    # Note: We don't include torch here - install via extras
+    # "torch" is installed separately via [cpu] or [cuda] extras
+    "sentence-transformers>=2.2.0",
+    "transformers>=4.30.0",
+    "spacy>=3.5.0",
+    "textblob>=0.17.1",
+    
+    # Search
+    "rank-bm25>=0.2.2",
+    
+    # Web Server (for development/testing)
+    "uvicorn>=0.23.0",
+    "fastapi>=0.100.0",
+    
+    # Utilities
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "aiofiles>=23.0.0",
+    "tqdm>=4.65.0",
+    "pyyaml>=6.0.0",
+    
+    # Logging and Monitoring
+    "structlog>=23.0.0",
+    "rich>=13.0.0",
+    "psutil>=5.9.0",
+]
+
+[project.optional-dependencies]
+# CPU-only installation (no GPU support, much smaller)
+cpu = [
+    "torch>=2.0.0",  # Will get CPU-only version when installed with --index-url
+]
+
+# NVIDIA GPU support
+cuda = [
+    "torch>=2.0.0",  # Full CUDA version
+]
+
+# AMD GPU support (ROCm)
+rocm = [
+    "torch>=2.0.0",  # ROCm version when installed with appropriate index
+]
+
+dev = [
+    # Testing
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-xdist>=3.3.0",  # For parallel test execution
+    
+    # Code Quality
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.4.0",
+    "isort>=5.12.0",
+    "pylint>=2.17.0",
+    
+    # Development Tools
+    "pre-commit>=3.3.0",
+    "ipython>=8.14.0",
+    "ipdb>=0.13.13",
+    
+    # Documentation
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+]
+
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-xdist>=3.3.0",
+]
+
+docs = [
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=1.3.0",
+    "myst-parser>=2.0.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Raudbjorn/MDMAI"
 Repository = "https://github.com/Raudbjorn/MDMAI"
 Issues = "https://github.com/Raudbjorn/MDMAI/issues"
+Documentation = "https://github.com/Raudbjorn/MDMAI/wiki"
 
 [project.scripts]
 ttrpg-server = "src.main:main"
+ttrpg-test = "pytest:main"
 
+# Tool configurations
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*"]
@@ -37,23 +140,54 @@ include = ["src*"]
 line-length = 100
 target-version = ['py39']
 include = '\.pyi?$'
+extend-exclude = '''
+/(
+    \.git
+  | \.venv
+  | build
+  | dist
+  | __pycache__
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
 
 [tool.flake8]
 max-line-length = 100
-extend-ignore = ["E203", "W503"]
-exclude = [".git", "__pycache__", "build", "dist", ".venv"]
+extend-ignore = ["E203", "W503", "E501"]
+exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv"]
 
 [tool.mypy]
 python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false  # Changed to false for gradual typing
 disallow_any_unimported = false
 no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_no_return = true
 check_untyped_defs = true
+ignore_missing_imports = true  # Important for external libs
+
+[[tool.mypy.overrides]]
+module = [
+    "chromadb.*",
+    "sentence_transformers.*",
+    "rank_bm25.*",
+    "pdfplumber.*",
+    "PyPDF2.*",
+    "mcp.*",
+    "fastmcp.*",
+]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -61,11 +195,29 @@ python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
-addopts = "-v --cov=src --cov-report=term-missing"
+addopts = """
+    -v 
+    --tb=short
+    --strict-markers
+    --cov=src 
+    --cov-report=term-missing
+    --cov-report=html:htmlcov
+    --cov-fail-under=70
+"""
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["*/tests/*", "*/test_*.py"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__init__.py",
+    "*/config/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -75,4 +227,31 @@ exclude_lines = [
     "raise AssertionError",
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.pylint.messages_control]
+disable = [
+    "C0111",  # missing-docstring
+    "C0103",  # invalid-name
+    "R0903",  # too-few-public-methods
+    "R0913",  # too-many-arguments
+    "W0621",  # redefined-outer-name
+]
+
+[tool.pylint.format]
+max-line-length = 100
+
+# UV specific configuration
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.4.0",
+    "pre-commit>=3.3.0",
 ]
