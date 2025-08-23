@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package mcp_bridge;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// Control messages for MCP Bridge communication
+// These are sent over stdio for command and control
+
+// Request message from Bridge to MCP Server
+message MCPRequest {
+  string request_id = 1;
+  string session_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  
+  oneof request_type {
+    ToolCall tool_call = 4;
+    ListTools list_tools = 5;
+    GetContext get_context = 6;
+    Initialize initialize = 7;
+    Shutdown shutdown = 8;
+  }
+}
+
+// Tool invocation request
+message ToolCall {
+  string tool_name = 1;
+  google.protobuf.Struct arguments = 2;
+  bool use_arrow_for_result = 3;  // If true, result will be in shared memory
+}
+
+// Request to list available tools
+message ListTools {
+  string category_filter = 1;
+}
+
+// Request to get current context
+message GetContext {
+  string campaign_id = 1;
+  bool include_history = 2;
+}
+
+// Initialize session
+message Initialize {
+  string campaign_id = 1;
+  map<string, string> preferences = 2;
+  string plasma_socket_path = 3;  // Path to Arrow Plasma store
+}
+
+// Shutdown session
+message Shutdown {
+  bool cleanup_shared_memory = 1;
+}
+
+// Response message from MCP Server to Bridge
+message MCPResponse {
+  string request_id = 1;
+  string session_id = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  
+  oneof response_type {
+    ToolResult tool_result = 4;
+    ToolList tool_list = 5;
+    ContextData context_data = 6;
+    Acknowledgment acknowledgment = 7;
+    Error error = 8;
+  }
+}
+
+// Tool execution result
+message ToolResult {
+  bool success = 1;
+  
+  oneof result_data {
+    google.protobuf.Struct json_result = 2;  // Small results via protobuf
+    ArrowReference arrow_reference = 3;      // Large results via Arrow
+  }
+  
+  repeated string messages = 4;
+  map<string, string> metadata = 5;
+}
+
+// Reference to data in Apache Arrow shared memory
+message ArrowReference {
+  bytes object_id = 1;  // Plasma object ID (20 bytes)
+  int64 size_bytes = 2;
+  string schema_type = 3;  // "table", "array", "record_batch"
+  map<string, string> metadata = 4;
+}
+
+// List of available tools
+message ToolList {
+  repeated ToolInfo tools = 1;
+}
+
+// Tool information
+message ToolInfo {
+  string name = 1;
+  string description = 2;
+  string category = 3;
+  google.protobuf.Struct parameter_schema = 4;
+  repeated string required_permissions = 5;
+}
+
+// Context data
+message ContextData {
+  string campaign_id = 1;
+  google.protobuf.Struct current_state = 2;
+  
+  oneof history_data {
+    google.protobuf.Struct json_history = 3;  // Small history
+    ArrowReference arrow_history = 4;         // Large history in Arrow
+  }
+}
+
+// Simple acknowledgment
+message Acknowledgment {
+  bool success = 1;
+  string message = 2;
+}
+
+// Error information
+message Error {
+  enum ErrorType {
+    UNKNOWN = 0;
+    TOOL_NOT_FOUND = 1;
+    INVALID_ARGUMENTS = 2;
+    PERMISSION_DENIED = 3;
+    SESSION_EXPIRED = 4;
+    SHARED_MEMORY_ERROR = 5;
+    INTERNAL_ERROR = 6;
+  }
+  
+  ErrorType error_type = 1;
+  string message = 2;
+  string details = 3;
+  string stack_trace = 4;
+}
+
+// Streaming support for real-time updates
+message StreamingUpdate {
+  string session_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  
+  oneof update_type {
+    ProgressUpdate progress = 3;
+    PartialResult partial_result = 4;
+    LogMessage log_message = 5;
+  }
+}
+
+// Progress update for long-running operations
+message ProgressUpdate {
+  string operation_id = 1;
+  float progress_percentage = 2;
+  string current_step = 3;
+  string estimated_time_remaining = 4;
+}
+
+// Partial result for streaming responses
+message PartialResult {
+  string operation_id = 1;
+  int32 chunk_index = 2;
+  bool is_final = 3;
+  google.protobuf.Struct data = 4;
+}
+
+// Log message for debugging
+message LogMessage {
+  enum LogLevel {
+    DEBUG = 0;
+    INFO = 1;
+    WARNING = 2;
+    ERROR = 3;
+  }
+  
+  LogLevel level = 1;
+  string message = 2;
+  string source = 3;
+}

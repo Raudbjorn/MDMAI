@@ -1,0 +1,19 @@
+# Port-free IPC Bridge Requirements
+
+# Protocol Buffers
+protobuf>=4.25.0
+grpcio-tools>=1.60.0  # For protoc compiler
+
+# Apache Arrow with Plasma support
+pyarrow>=14.0.0
+
+# Async support (already in main requirements)
+asyncio
+aiofiles
+
+# Optional: Performance monitoring
+psutil>=5.9.0
+
+# Optional: Compression for stdio channel
+lz4>=4.3.0
+msgpack>=1.0.0
