@@ -872,9 +872,11 @@ bridge:
       api_key: ${GEMINI_API_KEY}
       
   mcp:
-    spawn_mode: "per_session"
-    max_sessions: 100
-    session_ttl: 3600
+    session_ttl:
+      # Default TTL for sessions (in seconds). Adjust per session type as needed.
+      default: 21600  # 6 hours
+      one_shot: 14400  # 4 hours
+      campaign: 28800  # 8 hours
     resource_limits:
       memory_mb: 512
       cpu_percent: 50
