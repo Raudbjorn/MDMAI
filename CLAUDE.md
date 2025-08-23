@@ -31,6 +31,15 @@ This is a Model Context Protocol (MCP) server for assisting with Tabletop Role-P
 
 ## Development Guidelines
 
+### IMPORTANT: Use of Specialized Sub-Agents
+When working on this project, ALWAYS proactively use these specialized sub-agents:
+- **mcp-protocol-expert**: For all MCP protocol implementation, tool design, and FastMCP integration
+- **llm-architect**: For designing AI provider integrations, model selection, and LLM system architecture
+- **context-manager**: For context persistence, session management, and distributed state handling
+- **python-pro**: For ALL Python development - optimization, advanced patterns, testing, and refactoring
+
+These agents should be used proactively without waiting for explicit requests. They provide specialized expertise critical for this project's success.
+
 ### Code Style
 - Use Python type hints for all functions
 - Follow PEP 8 style guidelines
