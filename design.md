@@ -619,7 +619,7 @@ The Web UI Integration enables users to connect their own AI provider accounts (
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │    Web UI       │────│  Orchestrator    │────│ MCP Server      │
-│   (React)       │SSE │   (FastAPI)      │stdio│  (Existing)     │
+│   (React)       │ WS │   (FastAPI)      │stdio│  (Existing)     │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │                       │                       │
          │              ┌────────┴────────┐              │
@@ -639,7 +639,7 @@ The Web UI Integration enables users to connect their own AI provider accounts (
 ### Core Components
 
 #### 1. MCP Bridge Service
-A new component that bridges HTTP/SSE requests to the stdio MCP server, managing session state and request routing.
+A new component that bridges WebSocket requests to the stdio MCP server, managing session state and request routing.
 
 ```python
         self.mcp_processes = {}  # Dict of session_id -> process
@@ -697,7 +697,7 @@ class UnifiedAIClient:
 2. **Tool Discovery**: Orchestrator gets available tools from MCP server
 3. **AI Processing**: Query forwarded to selected AI provider with tools
 4. **Tool Execution**: AI requests tool execution, routed through MCP bridge
-5. **Response Streaming**: Results streamed back to UI via SSE
+5. **Response Streaming**: Results streamed back to UI via WebSocket
 
 ### Security Architecture
 
@@ -748,22 +748,39 @@ class ConversationContext:
 - **Event-driven Updates**: Use event bus for component communication
 - **Optimistic Locking**: Prevent conflicting updates with version tracking
 - **Cache Coherence**: Multi-layer caching with automatic invalidation
-- **Conflict Resolution**: Last-write-wins with audit trail
+- **Conflict Resolution**: Hybrid approach based on data type:
+  - **Operational Transformation (OT)**: For text-based content (notes, descriptions)
+  - **CRDTs (Conflict-free Replicated Data Types)**: For collaborative canvas and shared maps
+  - **Last-write-wins with audit trail**: For simple property updates (HP, status flags)
+  - **Three-way merge**: For complex campaign data with user-prompted resolution
 
 ### Collaborative Features
 
-#### Real-time Multi-user Sessions
+#### Real-time Multi-user Sessions with CRDT Support
 ```python
 class SessionRoom:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self.connections: Set[WebSocket] = set()
         self.participants: Dict[str, Dict] = {}
+        # CRDT state for collaborative features
+        self.crdt_state = {
+            'canvas': YjsDocument(),  # For collaborative canvas
+            'notes': ShareableString(),  # For shared notes
+            'map_positions': LWWMap()  # Last-write-wins map for positions
+        }
         
     async def broadcast(self, message: Dict, exclude: WebSocket = None):
         for connection in self.connections:
             if connection != exclude:
                 await connection.send_text(json.dumps(message))
+    
+    def apply_operation(self, op_type: str, operation: Any):
+        """Apply CRDT operation based on type"""
+        if op_type == 'canvas':
+            self.crdt_state['canvas'].apply_update(operation)
+        elif op_type == 'text':
+            self.crdt_state['notes'].apply_op(operation)
 ```
 
 ### Performance Optimization
@@ -785,7 +802,7 @@ class SessionRoom:
 - **Framework**: React 18+ with TypeScript
 - **State Management**: Zustand for lightweight real-time updates
 - **UI Components**: Shadcn/ui + Tailwind CSS
-- **Real-time**: Socket.io client for WebSocket communication
+- **Real-time**: WebSocket API (native) for bidirectional communication
 - **Build Tool**: Vite for fast development
 
 #### Key UI Components
@@ -799,7 +816,7 @@ class SessionRoom:
 #### Phase 1: Bridge Foundation (Weeks 1-2)
 - Create FastAPI bridge service
 - Implement stdio subprocess management
-- Add SSE transport for real-time updates
+- Add WebSocket transport for bidirectional real-time communication
 - Basic request/response routing
 
 #### Phase 2: AI Provider Integration (Weeks 2-3)
@@ -842,8 +859,9 @@ bridge:
   port: 8080
   
   transport:
-    type: "sse"  # or "websocket"
+    type: "websocket"  # Standardized on WebSocket for bidirectional communication
     heartbeat_interval: 30
+    reconnect_timeout: 5000  # Auto-reconnect after 5 seconds
     
   security:
     auth_required: true

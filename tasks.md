@@ -637,14 +637,15 @@
 - Implement viewport optimization
 - Create adaptive components
 
-### Task 21.2: Build Progressive Web App
+### Task 21.2: Build Progressive Web App (Limited Scope)
 **Requirements:** REQ-020
 **Status:** PLANNED
-- Implement service worker
-- Create offline storage
-- Build sync mechanism
-- Implement push notifications
+- Implement service worker for basic caching
+- Create offline storage for read-only access
+- Build simple cache-first strategy
+- Implement push notifications (optional)
 - Create app manifest
+**Note:** Full offline sync deferred to v2.0
 
 ### Task 21.3: Optimize Mobile Performance
 **Requirements:** REQ-020
@@ -696,6 +697,8 @@
 - Task 16.1, 16.3 - Security Basics
 - Task 17.1, 17.2 - Context Management
 - Task 18.1, 18.2 - Basic UI
+- Task 22.1 (Unit & Integration Tests) - Core Testing (develop alongside features)
+- Task 20.1, 20.2 (Caching & Response Optimization) - Core Performance
 
 ### Medium Priority (Enhanced Features)
 - Task 15.3 - Cost Optimization
@@ -703,12 +706,13 @@
 - Task 17.3 - Context Translation
 - Task 18.3, 18.4 - Advanced UI Features
 - Task 19.1, 19.2 - Collaborative Features
+- Task 22.2 (E2E & Load Tests) - Advanced Testing
+- Task 20.3 - Performance Monitoring
 
 ### Low Priority (Nice to Have)
 - Task 19.3 - Collaborative Tools
-- Task 20.1, 20.2, 20.3 - Performance Optimization
 - Task 21.1, 21.2, 21.3 - Mobile Support
-- Task 22.1, 22.2 - Comprehensive Testing
+- Task 22.2 (Documentation) - Can be done incrementally
 
 ## Risk Assessment
 

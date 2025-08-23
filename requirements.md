@@ -191,8 +191,12 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - WHEN accessing from mobile THEN the UI SHALL adapt to smaller screen sizes
 - WHEN using touch interfaces THEN the system SHALL provide appropriate touch controls
 - WHEN bandwidth is limited THEN the system SHALL implement progressive loading
-- IF connection is unstable THEN the system SHALL provide offline capabilities with sync
+- IF connection is unstable THEN the system SHALL provide basic offline read-only access to cached data (full offline sync deferred to future release)
 - WHEN switching devices THEN the system SHALL maintain session continuity
+
+**Note on Offline Capabilities:** 
+- **Initial Release (v1.0)**: Basic read-only access to recently viewed content cached in browser storage
+- **Future Release (v2.0)**: Full offline synchronization with conflict resolution will be designed and implemented as a separate major feature, requiring dedicated architecture documentation
 
 ## Non-Functional Requirements
 
