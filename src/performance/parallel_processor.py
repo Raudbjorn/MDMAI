@@ -111,9 +111,7 @@ class ParallelProcessor:
                 
                 # Create process pool for heavy CPU-bound tasks
                 # Use spawn context to avoid fork issues
-                ctx = mp.get_context('spawn')
-                self.async_executor = concurrent.futures.ProcessPoolExecutor(
-                    max_workers=min(self.limits.max_workers, 4),
+                    max_workers=self.limits.max_process_workers,
                     mp_context=ctx
                 )
             
@@ -269,8 +267,7 @@ class ParallelProcessor:
         generator = EmbeddingGenerator()
         chunks = data.get("chunks", [])
         
-        # Process embeddings in batches
-        batch_size = 10
+        batch_size = data.get("batch_size", 10)
         embeddings = []
         
         for i in range(0, len(chunks), batch_size):

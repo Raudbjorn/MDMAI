@@ -525,11 +525,12 @@ def register_parallel_tools(mcp_server):
                     "High memory usage detected. Consider processing smaller batches."
                 )
             
+            manager = ResourceManager()
             optimal_workers = {
-                "pdf_processing": max(1, cpu_count - 1),
-                "embedding_generation": max(1, cpu_count - 1),
-                "search": min(cpu_count * 2, 16),
-                "batch_operations": cpu_count,
+                "pdf_processing": manager.get_optimal_workers("pdf_processing"),
+                "embedding_generation": manager.get_optimal_workers("embedding_generation"),
+                "search": manager.get_optimal_workers("search"),
+                "batch_operations": manager.get_optimal_workers("batch_operations"),
             }
             
             stats["optimal_workers"] = optimal_workers

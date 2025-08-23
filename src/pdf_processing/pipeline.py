@@ -41,7 +41,7 @@ class PDFProcessingPipeline:
             import multiprocessing as mp
             self.parallel_processor = ParallelProcessor(
                 ResourceLimits(
-                    max_workers=max_workers or min(mp.cpu_count() - 1, 4),
+                    max_workers=max_workers or min(max(1, mp.cpu_count() - 1), 4),
                     max_memory_mb=2048,
                     task_timeout=600
                 )
@@ -331,11 +331,7 @@ class PDFProcessingPipeline:
             }
             
         finally:
-            await self.parallel_processor.shutdown()
-            # Reinitialize for future use
-            if self.enable_parallel:
-                self.parallel_processor = ParallelProcessor(
-                    ResourceLimits(max_workers=4)
+                    ResourceLimits(max_workers=self.max_workers)
                 )
     
     def _apply_adaptive_patterns(self, pdf_content: Dict[str, Any], system: str):
