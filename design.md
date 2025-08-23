@@ -642,14 +642,7 @@ The Web UI Integration enables users to connect their own AI provider accounts (
 A new component that bridges HTTP/SSE requests to the stdio MCP server, managing session state and request routing.
 
 ```python
-# src/bridge/mcp_bridge.py
-class MCPBridge:
-    """
-    Bridges HTTP/SSE requests to stdio MCP server.
-    Manages session state and request routing.
-    """
-    def __init__(self):
-        self.mcp_process = None
+        self.mcp_processes = {}  # Dict of session_id -> process
         self.sessions = {}  # Track user sessions
         self.request_queue = asyncio.Queue()
         
