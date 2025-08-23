@@ -625,17 +625,11 @@ def main():
                     pass  # Already logged
             
             # Cleanup database optimizer and monitor
-            if db and hasattr(db, 'optimizer') and db.optimizer:
+            if db and hasattr(db, 'cleanup'):
                 try:
-                    asyncio.run(db.optimizer.cleanup())
-                except Exception:
-                    pass
-            
-            if db and hasattr(db, 'monitor') and db.monitor:
-                try:
-                    asyncio.run(db.monitor.cleanup())
-                except Exception:
-                    pass
+                    asyncio.run(db.cleanup())
+                except Exception as e:
+                    logger.error("Error during database cleanup on exit", error=str(e))
         
         atexit.register(cleanup_resources)
         
