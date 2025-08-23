@@ -275,7 +275,11 @@ class DatabaseOptimizer:
     def _analyze_query(self, query: str) -> Dict[str, Any]:
         """Analyze a query for optimization opportunities."""
         # Validate and sanitize query
-        if not query or not isinstance(query, str):
+        if query is None:
+            return {"suggestions": ["Invalid query"], "length": 0, "word_count": 0, "has_special_chars": False}
+        if not isinstance(query, str):
+            return {"suggestions": ["Invalid query"], "length": 0, "word_count": 0, "has_special_chars": False}
+        if not query:
             return {"suggestions": ["Invalid query"], "length": 0, "word_count": 0, "has_special_chars": False}
         
         # Limit query length to prevent DOS
