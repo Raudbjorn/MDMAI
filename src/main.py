@@ -1,7 +1,7 @@
 """Main entry point for TTRPG Assistant MCP Server."""
 
-import atexit
 import asyncio
+import atexit
 import json
 import sys
 import uuid
@@ -10,38 +10,26 @@ from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
 
-from config.logging_config import setup_logging, get_logger
+from config.logging_config import get_logger, setup_logging
 from config.settings import settings
-from src.core.database import ChromaDBManager
-from src.pdf_processing.pipeline import PDFProcessingPipeline
-from src.search.search_service import SearchService
-from src.personality.personality_manager import PersonalityManager
-from src.personality.response_generator import ResponseGenerator
+from src.campaign import initialize_campaign_tools, register_campaign_tools
 from src.campaign.campaign_manager import CampaignManager
 from src.campaign.rulebook_linker import RulebookLinker
-from src.campaign import (
-    initialize_campaign_tools,
-    register_campaign_tools
-)
-from src.session import (
-    SessionManager,
-    initialize_session_tools,
-    register_session_tools
-)
-from src.character_generation import (
-    initialize_character_tools,
-    register_character_tools
-)
-from src.source_management import (
-    initialize_source_tools,
-    register_source_tools
-)
+from src.character_generation import initialize_character_tools, register_character_tools
+from src.core.database import ChromaDBManager
+from src.pdf_processing.pipeline import PDFProcessingPipeline
 from src.performance import (
     GlobalCacheManager,
     initialize_performance_tools,
-    register_performance_tools
+    register_performance_tools,
 )
 from src.performance.parallel_mcp_tools import register_parallel_tools
+from src.personality.personality_manager import PersonalityManager
+from src.personality.response_generator import ResponseGenerator
+from src.search.search_service import SearchService
+from src.session import SessionManager, initialize_session_tools, register_session_tools
+from src.source_management import initialize_source_tools, register_source_tools
+from src.utils.user_interaction import register_user_interaction_tools
 
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
@@ -86,7 +74,7 @@ async def search(
 ) -> Dict[str, Any]:
     """
     Search across TTRPG content with semantic and keyword matching.
-    
+
     Args:
         query: Search query string
         rulebook: Optional specific rulebook to search
@@ -95,7 +83,7 @@ async def search(
         max_results: Maximum number of results to return
         use_hybrid: Whether to use hybrid search (semantic + keyword)
         explain_results: Whether to include explanations for why results matched
-    
+
     Returns:
         Dictionary containing search results with content, sources, and relevance scores
     """
@@ -107,7 +95,7 @@ async def search(
             "query": query,
             "results": [],
         }
-    
+
     # Validate parameters
     if max_results < 1 or max_results > 100:
         return {
@@ -116,7 +104,7 @@ async def search(
             "query": query,
             "results": [],
         }
-    
+
     try:
         logger.info(
             "Search request",
@@ -125,7 +113,7 @@ async def search(
             source_type=source_type,
             max_results=max_results,
         )
-        
+
         # Use the search service
         result = await search_service.search(
             query=query,
@@ -136,7 +124,7 @@ async def search(
             use_hybrid=use_hybrid,
             explain_results=explain_results,
         )
-        
+
         return {
             "status": "success",
             "query": result["query"],
@@ -147,7 +135,7 @@ async def search(
             "suggestions": result["suggestions"],
             "filters_applied": result["filters_applied"],
         }
-        
+
     except Exception as e:
         logger.error("Search failed", error=str(e))
         return {
@@ -164,18 +152,20 @@ async def add_source(
     rulebook_name: str,
     system: str,
     source_type: str = "rulebook",
-) -> Dict[str, str]:
+    user_confirmed_large_file: bool = False,
+) -> Dict[str, Any]:
     """
     Add a new PDF source to the knowledge base.
-    
+
     Args:
         pdf_path: Path to the PDF file
         rulebook_name: Name of the rulebook
         system: Game system (e.g., "D&D 5e", "Pathfinder")
         source_type: Type of source ('rulebook' or 'flavor')
-    
+        user_confirmed_large_file: Whether user has confirmed processing a large file
+
     Returns:
-        Dictionary with status and source ID
+        Dictionary with status and source ID, or confirmation request for large files
     """
     # Check database initialization
     if db is None:
@@ -183,7 +173,7 @@ async def add_source(
             "status": "error",
             "error": "Database not initialized",
         }
-    
+
     try:
         logger.info(
             "Adding source",
@@ -192,7 +182,7 @@ async def add_source(
             system=system,
             source_type=source_type,
         )
-        
+
         # Process PDF through the pipeline
         result = await pdf_pipeline.process_pdf(
             pdf_path=pdf_path,
@@ -200,9 +190,20 @@ async def add_source(
             system=system,
             source_type=source_type,
             enable_adaptive_learning=settings.enable_adaptive_learning,
+            user_confirmed=user_confirmed_large_file,
         )
-        
-        if result["status"] == "success":
+
+        # Check if confirmation is required
+        if result.get("requires_confirmation"):
+            return {
+                "status": "confirmation_required",
+                "message": result.get("message"),
+                "confirmation_message": result.get("confirmation_message"),
+                "file_info": result.get("file_info"),
+                "instruction": "Please confirm with the user and call this tool again with user_confirmed_large_file=True",
+            }
+
+        if result.get("status") == "success" or result.get("success"):
             return {
                 "status": "success",
                 "message": f"Source '{rulebook_name}' added successfully",
@@ -221,7 +222,7 @@ async def add_source(
                 "status": "error",
                 "error": result.get("error", "Unknown error"),
             }
-        
+
     except Exception as e:
         logger.error("Failed to add source", error=str(e))
         return {
@@ -237,11 +238,11 @@ async def list_sources(
 ) -> List[Dict[str, Any]]:
     """
     List available sources in the system.
-    
+
     Args:
         system: Filter by game system
         source_type: Filter by source type ('rulebook' or 'flavor')
-    
+
     Returns:
         List of available sources with metadata
     """
@@ -249,25 +250,25 @@ async def list_sources(
     if db is None:
         logger.error("Database not initialized")
         return []
-    
+
     try:
         logger.info("Listing sources", system=system, source_type=source_type)
-        
+
         # Determine which collection to query
         collection_name = "flavor_sources" if source_type == "flavor" else "rulebooks"
-        
+
         # Build metadata filter
         metadata_filter = {}
         if system:
             metadata_filter["system"] = system
-        
+
         # Get unique sources from the collection (limit to reasonable number)
         documents = db.list_documents(
             collection_name=collection_name,
             limit=100,  # Limit to 100 to prevent memory issues
             metadata_filter=metadata_filter if metadata_filter else None,
         )
-        
+
         # Extract unique sources
         sources = {}
         for doc in documents:
@@ -283,9 +284,9 @@ async def list_sources(
                     }
                 else:
                     sources[source_id]["document_count"] += 1
-        
+
         return list(sources.values())
-        
+
     except Exception as e:
         logger.error("Failed to list sources", error=str(e))
         return []
@@ -304,7 +305,7 @@ async def list_sources(
 async def search_analytics() -> Dict[str, Any]:
     """
     Get search analytics and statistics.
-    
+
     Returns:
         Search analytics including popular queries and performance metrics
     """
@@ -326,7 +327,7 @@ async def search_analytics() -> Dict[str, Any]:
 async def clear_search_cache() -> Dict[str, str]:
     """
     Clear the search result cache.
-    
+
     Returns:
         Status message
     """
@@ -348,7 +349,7 @@ async def clear_search_cache() -> Dict[str, str]:
 async def update_search_indices() -> Dict[str, str]:
     """
     Update search indices for all collections.
-    
+
     Returns:
         Status message
     """
@@ -370,7 +371,7 @@ async def update_search_indices() -> Dict[str, str]:
 async def server_info() -> Dict[str, Any]:
     """
     Get information about the TTRPG Assistant server.
-    
+
     Returns:
         Server information and statistics
     """
@@ -379,7 +380,7 @@ async def server_info() -> Dict[str, Any]:
         if db is not None:
             for collection_name in db.collections.keys():
                 stats[collection_name] = db.get_collection_stats(collection_name)
-        
+
         return {
             "name": settings.app_name,
             "version": "0.1.0",
@@ -391,7 +392,7 @@ async def server_info() -> Dict[str, Any]:
             },
             "collections": stats,
         }
-        
+
     except Exception as e:
         logger.error("Failed to get server info", error=str(e))
         return {
@@ -411,13 +412,13 @@ async def create_personality_profile(
 ) -> Dict[str, Any]:
     """
     Create a new personality profile for response generation.
-    
+
     Args:
         name: Profile name
         system: Game system
         source_text: Optional text to extract personality from
         base_profile: Optional base profile name to build upon
-    
+
     Returns:
         Dictionary with profile information
     """
@@ -428,7 +429,7 @@ async def create_personality_profile(
             base = personality_manager.get_profile_by_name(base_profile, system)
             if base:
                 base_profile = base.profile_id
-        
+
         # Create profile
         profile = personality_manager.create_profile(
             name=name,
@@ -436,7 +437,7 @@ async def create_personality_profile(
             source_text=source_text,
             base_profile=base_profile,
         )
-        
+
         return {
             "status": "success",
             "profile_id": profile.profile_id,
@@ -446,7 +447,7 @@ async def create_personality_profile(
             "tone": profile.tone.get("dominant", "neutral"),
             "message": f"Personality profile '{name}' created successfully",
         }
-        
+
     except Exception as e:
         logger.error("Failed to create personality profile", error=str(e))
         return {
@@ -461,35 +462,41 @@ async def list_personality_profiles(
 ) -> Dict[str, Any]:
     """
     List available personality profiles.
-    
+
     Args:
         system: Optional game system filter
-    
+
     Returns:
         List of personality profiles
     """
     try:
         profiles = personality_manager.list_profiles(system)
-        
+
         profile_list = []
         for profile in profiles:
-            profile_list.append({
-                "profile_id": profile.profile_id,
-                "name": profile.name,
-                "system": profile.system,
-                "characteristics": profile.characteristics,
-                "tone": profile.tone.get("dominant", "neutral"),
-                "usage_count": profile.usage_count,
-                "is_default": profile.custom_traits.get("is_default", False),
-            })
-        
+            profile_list.append(
+                {
+                    "profile_id": profile.profile_id,
+                    "name": profile.name,
+                    "system": profile.system,
+                    "characteristics": profile.characteristics,
+                    "tone": profile.tone.get("dominant", "neutral"),
+                    "usage_count": profile.usage_count,
+                    "is_default": profile.custom_traits.get("is_default", False),
+                }
+            )
+
         return {
             "status": "success",
             "profiles": profile_list,
             "total": len(profile_list),
-            "active_profile": personality_manager.active_profile.name if personality_manager.active_profile else None,
+            "active_profile": (
+                personality_manager.active_profile.name
+                if personality_manager.active_profile
+                else None
+            ),
         }
-        
+
     except Exception as e:
         logger.error("Failed to list personality profiles", error=str(e))
         return {
@@ -505,27 +512,27 @@ async def set_active_personality(
 ) -> Dict[str, str]:
     """
     Set the active personality profile for responses.
-    
+
     Args:
         profile_name: Name of the profile to activate
         system: Optional system to search within
-    
+
     Returns:
         Status dictionary
     """
     try:
         # Find profile by name
         profile = personality_manager.get_profile_by_name(profile_name, system)
-        
+
         if not profile:
             return {
                 "status": "error",
                 "error": f"Profile '{profile_name}' not found",
             }
-        
+
         # Set as active
         success = personality_manager.set_active_profile(profile.profile_id)
-        
+
         if success:
             return {
                 "status": "success",
@@ -538,7 +545,7 @@ async def set_active_personality(
                 "status": "error",
                 "error": "Failed to set active profile",
             }
-        
+
     except Exception as e:
         logger.error("Failed to set active personality", error=str(e))
         return {
@@ -555,12 +562,12 @@ async def apply_personality(
 ) -> Dict[str, Any]:
     """
     Apply personality to content or enable for search results.
-    
+
     Args:
         content: Text content to transform
         profile_name: Optional specific profile to use (uses active if not specified)
         apply_to_search: Whether to apply personality to search results
-    
+
     Returns:
         Transformed content or status
     """
@@ -574,20 +581,26 @@ async def apply_personality(
                     "status": "error",
                     "error": f"Profile '{profile_name}' not found",
                 }
-        
+
         # Apply personality to content
         transformed = response_generator.generate_response(content, profile)
-        
+
         return {
             "status": "success",
             "original": content,
             "transformed": transformed,
-            "profile_used": profile.name if profile else (
-                personality_manager.active_profile.name if personality_manager.active_profile else "None"
+            "profile_used": (
+                profile.name
+                if profile
+                else (
+                    personality_manager.active_profile.name
+                    if personality_manager.active_profile
+                    else "None"
+                )
             ),
             "apply_to_search": apply_to_search,
         }
-        
+
     except Exception as e:
         logger.error("Failed to apply personality", error=str(e))
         return {
@@ -599,23 +612,23 @@ async def apply_personality(
 def main():
     """Main entry point for the MCP server."""
     global db, cache_manager
-    
+
     try:
         # Create necessary directories
         settings.create_directories()
-        
+
         # Initialize database manager
         db = ChromaDBManager()
-        
+
         # Initialize performance/cache management system
         cache_manager = GlobalCacheManager()
         initialize_performance_tools(
             cache_manager,
             cache_manager.invalidator,
             cache_manager.config,
-            db  # Pass database for optimizer and monitor
+            db,  # Pass database for optimizer and monitor
         )
-        
+
         # Register cleanup handler
         def cleanup_resources():
             # Cleanup cache manager
@@ -624,71 +637,75 @@ def main():
                     cache_manager.shutdown()
                 except Exception:
                     pass  # Already logged
-            
+
             # Cleanup database optimizer and monitor
-            if db and hasattr(db, 'cleanup'):
+            if db and hasattr(db, "cleanup"):
                 try:
                     asyncio.run(db.cleanup())
                 except Exception as e:
                     logger.error("Error during database cleanup on exit", error=str(e))
-        
+
         atexit.register(cleanup_resources)
-        
+
         # Register performance tools with MCP server
         register_performance_tools(mcp)
-        
+
         # Register parallel processing tools
         initialize_parallel_tools()
         register_parallel_tools(mcp)
-        
+
         # Initialize campaign management system
         global campaign_manager, rulebook_linker
         campaign_manager = CampaignManager(db)
         rulebook_linker = RulebookLinker(db)
         initialize_campaign_tools(db, campaign_manager, rulebook_linker)
-        
+
         # Register enhanced campaign tools with MCP server
         register_campaign_tools(mcp)
-        
+
         # Initialize session management system
         global session_manager
         session_manager = SessionManager(db)
         initialize_session_tools(session_manager, campaign_manager)
-        
+
         # Register session tools with MCP server
         register_session_tools(mcp)
-        
+
         # Initialize character generation system
         initialize_character_tools(db, personality_manager)
-        
+
         # Register character generation tools with MCP server
         register_character_tools(mcp)
-        
+
         # Initialize enhanced source management system
         initialize_source_tools(db, pdf_pipeline)
-        
+
         # Register enhanced source management tools with MCP server
         register_source_tools(mcp)
-        
+
+        # Register user interaction tools
+        register_user_interaction_tools(mcp)
+
         logger.info(
             "Starting TTRPG Assistant MCP Server",
             version="0.1.0",
             stdio_mode=settings.mcp_stdio_mode,
         )
-        
+
         if settings.mcp_stdio_mode:
             # Run in stdio mode for MCP
             mcp.run(transport="stdio")
         else:
             # Run as HTTP server for testing
             import uvicorn
+
             uvicorn.run(
                 mcp.get_app(),
                 host="127.0.0.1",
                 port=8000,
                 log_level=settings.log_level.lower(),
             )
-            
+
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
         if cache_manager:

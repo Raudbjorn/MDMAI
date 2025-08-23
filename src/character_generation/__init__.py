@@ -1,37 +1,34 @@
 """Character and NPC generation module for TTRPG Assistant."""
 
-from .character_generator import CharacterGenerator
 from .backstory_generator import BackstoryGenerator
-from .npc_generator import NPCGenerator
+from .character_generator import CharacterGenerator
+from .mcp_tools import initialize_character_tools, register_character_tools
 from .models import (
+    NPC,
+    Backstory,
     Character,
-    CharacterStats,
     CharacterClass,
     CharacterRace,
+    CharacterStats,
     Equipment,
-    Backstory,
-    NPC,
     NPCRole,
-    PersonalityTrait
+    PersonalityTrait,
 )
-from .mcp_tools import (
-    initialize_character_tools,
-    register_character_tools
-)
+from .npc_generator import NPCGenerator
 
 __all__ = [
-    'CharacterGenerator',
-    'BackstoryGenerator',
-    'NPCGenerator',
-    'Character',
-    'CharacterStats',
-    'CharacterClass',
-    'CharacterRace',
-    'Equipment',
-    'Backstory',
-    'NPC',
-    'NPCRole',
-    'PersonalityTrait',
-    'initialize_character_tools',
-    'register_character_tools'
+    "CharacterGenerator",
+    "BackstoryGenerator",
+    "NPCGenerator",
+    "Character",
+    "CharacterStats",
+    "CharacterClass",
+    "CharacterRace",
+    "Equipment",
+    "Backstory",
+    "NPC",
+    "NPCRole",
+    "PersonalityTrait",
+    "initialize_character_tools",
+    "register_character_tools",
 ]

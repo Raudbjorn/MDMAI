@@ -1,0 +1,13 @@
+# CPU-only requirements for TTRPG Assistant
+# This file installs PyTorch without GPU support for smaller downloads
+# Use this if you don't have an NVIDIA GPU or don't need GPU acceleration
+
+# Install PyTorch CPU-only version first
+--index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+
+# Then install the rest of the package
+-e .
+
+# For development dependencies, also run:
+# pip install -e ".[dev,test,docs]"
