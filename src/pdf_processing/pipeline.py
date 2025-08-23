@@ -9,11 +9,11 @@ import time
 from config.logging_config import get_logger
 from config.settings import settings
 from src.core.database import get_db_manager
-from src.pdf_processing.pdf_parser import PDFParser
+from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
 from src.pdf_processing.content_chunker import ContentChunker, ContentChunk
 from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
-from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
+from src.performance.parallel_processor import ParallelProcessor, ResourceLimits, TaskStatus
 
 logger = get_logger(__name__)
 
@@ -21,8 +21,13 @@ logger = get_logger(__name__)
 class PDFProcessingPipeline:
     """Orchestrates the complete PDF processing workflow."""
     
-    def __init__(self, enable_parallel: bool = True):
-        """Initialize the PDF processing pipeline."""
+    def __init__(self, enable_parallel: bool = True, max_workers: Optional[int] = None):
+        """Initialize the PDF processing pipeline.
+        
+        Args:
+            enable_parallel: Whether to enable parallel processing
+            max_workers: Maximum number of parallel workers
+        """
         self.parser = PDFParser()
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
@@ -30,10 +35,16 @@ class PDFProcessingPipeline:
         self.db = get_db_manager()
         self.enable_parallel = enable_parallel
         self.parallel_processor = None
+        self._initialized = False
         
         if enable_parallel:
+            import multiprocessing as mp
             self.parallel_processor = ParallelProcessor(
-                ResourceLimits(max_workers=4)
+                ResourceLimits(
+                    max_workers=max_workers or min(mp.cpu_count() - 1, 4),
+                    max_memory_mb=2048,
+                    task_timeout=600
+                )
             )
     
     async def process_pdf(
@@ -57,7 +68,20 @@ class PDFProcessingPipeline:
         Returns:
             Processing results and statistics
         """
+        start_time = time.time()
+        
         try:
+            # Validate inputs
+            pdf_path_obj = Path(pdf_path)
+            if not pdf_path_obj.exists():
+                raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+            
+            if not rulebook_name or not system:
+                raise ValueError("rulebook_name and system are required")
+            
+            if source_type not in ["rulebook", "flavor"]:
+                raise ValueError("source_type must be 'rulebook' or 'flavor'")
+            
             logger.info(
                 f"Starting PDF processing",
                 pdf=pdf_path,
@@ -67,7 +91,11 @@ class PDFProcessingPipeline:
             
             # Step 1: Extract content from PDF
             logger.info("Step 1: Extracting PDF content")
-            pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, pdf_path)
+            try:
+                pdf_content = await asyncio.to_thread(self.parser.extract_text_from_pdf, pdf_path)
+            except PDFProcessingError as e:
+                logger.error(f"Failed to extract PDF content: {e}")
+                raise
             
             # Check for duplicate
             if self._is_duplicate(pdf_content["file_hash"]):
@@ -119,6 +147,7 @@ class PDFProcessingPipeline:
             self._store_source_metadata(source_metadata)
             
             # Generate processing statistics
+            processing_time = time.time() - start_time
             stats = {
                 "status": "success",
                 "source_id": source_id,
@@ -130,6 +159,7 @@ class PDFProcessingPipeline:
                 "tables_extracted": len(pdf_content.get("tables", [])),
                 "embeddings_generated": len(embeddings),
                 "file_hash": pdf_content["file_hash"],
+                "processing_time_seconds": round(processing_time, 2),
             }
             
             logger.info(
@@ -139,12 +169,30 @@ class PDFProcessingPipeline:
             
             return stats
             
-        except Exception as e:
-            logger.error(f"PDF processing failed", error=str(e))
+        except FileNotFoundError as e:
+            logger.error(f"PDF file not found: {e}")
             return {
                 "status": "error",
                 "error": str(e),
+                "error_type": "file_not_found",
                 "pdf_path": pdf_path,
+            }
+        except PDFProcessingError as e:
+            logger.error(f"PDF processing error: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "error_type": "pdf_processing_error",
+                "pdf_path": pdf_path,
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error during PDF processing", error=str(e), exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "error_type": "unexpected_error",
+                "pdf_path": pdf_path,
+                "processing_time_seconds": round(time.time() - start_time, 2),
             }
     
     def _is_duplicate(self, file_hash: str) -> bool:
@@ -173,6 +221,7 @@ class PDFProcessingPipeline:
         self,
         pdf_files: List[Dict[str, str]],
         enable_adaptive_learning: bool = True,
+        max_workers: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Process multiple PDFs in parallel.
@@ -180,24 +229,54 @@ class PDFProcessingPipeline:
         Args:
             pdf_files: List of dicts with pdf_path, rulebook_name, system, source_type
             enable_adaptive_learning: Whether to use adaptive learning
+            max_workers: Maximum number of parallel workers
             
         Returns:
             Processing results for all PDFs
         """
+        start_time = time.time()
+        
+        if not pdf_files:
+            return {
+                "results": [],
+                "total": 0,
+                "successful": 0,
+                "failed": 0,
+                "method": "none",
+                "processing_time": 0,
+            }
+        
         if not self.enable_parallel or not self.parallel_processor:
             # Fall back to sequential processing
+            logger.info(f"Processing {len(pdf_files)} PDFs sequentially")
             results = []
+            successful = 0
+            failed = 0
+            
             for pdf_info in pdf_files:
-                result = await self.process_pdf(**pdf_info)
+                result = await self.process_pdf(
+                    **pdf_info,
+                    enable_adaptive_learning=enable_adaptive_learning
+                )
                 results.append(result)
+                if result.get("status") == "success":
+                    successful += 1
+                else:
+                    failed += 1
+            
             return {
                 "results": results,
                 "total": len(results),
-                "method": "sequential"
+                "successful": successful,
+                "failed": failed,
+                "method": "sequential",
+                "processing_time": round(time.time() - start_time, 2),
             }
         
-        # Initialize parallel processor
-        await self.parallel_processor.initialize()
+        # Initialize parallel processor if not already initialized
+        if not self._initialized:
+            await self.parallel_processor.initialize()
+            self._initialized = True
         
         try:
             start_time = time.time()

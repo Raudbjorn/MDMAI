@@ -10,6 +10,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import multiprocessing as mp
 from functools import partial
 import time
+import weakref
+from contextlib import asynccontextmanager
+import threading
 
 from config.logging_config import get_logger
 
@@ -83,33 +86,48 @@ class ParallelProcessor:
         self._shutdown = False
         self._workers = []
         self._monitor_task = None
+        self._task_lock = asyncio.Lock()
+        self._executor_lock = threading.Lock()
+        self._initialized = False
+        self._finalizer = weakref.finalize(self, self._cleanup_resources)
         
     async def initialize(self) -> None:
         """Initialize the parallel processing system."""
-        if self._shutdown:
-            raise RuntimeError("Processor has been shut down")
+        async with self._task_lock:
+            if self._initialized:
+                logger.debug("Processor already initialized")
+                return
+                
+            if self._shutdown:
+                raise RuntimeError("Processor has been shut down")
             
-        # Create thread pool for CPU-bound tasks
-        self.executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.limits.max_workers
-        )
-        
-        # Create process pool for heavy CPU-bound tasks
-        self.async_executor = concurrent.futures.ProcessPoolExecutor(
-            max_workers=min(self.limits.max_workers, 4)
-        )
-        
-        # Start worker tasks
-        for i in range(self.limits.max_workers):
-            worker = asyncio.create_task(self._worker(f"worker-{i}"))
-            self._workers.append(worker)
-        
-        # Start resource monitor
-        self._monitor_task = asyncio.create_task(self._resource_monitor())
-        
-        logger.info(
-            f"Parallel processor initialized with {self.limits.max_workers} workers"
-        )
+            with self._executor_lock:
+                # Create thread pool for CPU-bound tasks
+                self.executor = concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.limits.max_workers,
+                    thread_name_prefix="ttrpg-worker"
+                )
+                
+                # Create process pool for heavy CPU-bound tasks
+                # Use spawn context to avoid fork issues
+                ctx = mp.get_context('spawn')
+                self.async_executor = concurrent.futures.ProcessPoolExecutor(
+                    max_workers=min(self.limits.max_workers, 4),
+                    mp_context=ctx
+                )
+            
+            # Start worker tasks
+            for i in range(self.limits.max_workers):
+                worker = asyncio.create_task(self._worker(f"worker-{i}"))
+                self._workers.append(worker)
+            
+            # Start resource monitor
+            self._monitor_task = asyncio.create_task(self._resource_monitor())
+            
+            self._initialized = True
+            logger.info(
+                f"Parallel processor initialized with {self.limits.max_workers} workers"
+            )
     
     async def _worker(self, worker_id: str) -> None:
         """Worker task that processes items from the queue."""
@@ -121,13 +139,23 @@ class ParallelProcessor:
                     timeout=1.0
                 )
                 
-                # Process the task
-                await self._process_task(task, worker_id)
+                # Process the task with timeout
+                try:
+                    await asyncio.wait_for(
+                        self._process_task(task, worker_id),
+                        timeout=self.limits.task_timeout
+                    )
+                except asyncio.TimeoutError:
+                    task.status = TaskStatus.FAILED
+                    task.error = f"Task timed out after {self.limits.task_timeout} seconds"
+                    logger.error(f"Task {task.id} timed out")
                 
             except asyncio.TimeoutError:
                 continue  # Check shutdown flag
+            except asyncio.CancelledError:
+                break  # Worker cancelled
             except Exception as e:
-                logger.error(f"Worker {worker_id} error: {str(e)}")
+                logger.error(f"Worker {worker_id} error: {str(e)}", exc_info=True)
     
     async def _process_task(self, task: ProcessingTask, worker_id: str) -> None:
         """Process a single task."""
@@ -135,6 +163,10 @@ class ParallelProcessor:
         task.start_time = datetime.utcnow()
         
         try:
+            # Validate task data
+            if not task.data:
+                raise ValueError("Task data is empty")
+            
             # Determine processing method based on task type
             if task.type == "pdf_processing":
                 result = await self._process_pdf_task(task.data)
@@ -150,54 +182,76 @@ class ParallelProcessor:
             task.result = result
             task.status = TaskStatus.COMPLETED
             
+        except asyncio.CancelledError:
+            task.status = TaskStatus.CANCELLED
+            raise
         except Exception as e:
             task.error = str(e)
             task.retry_count += 1
             
             if task.retry_count < task.max_retries:
+                # Exponential backoff for retries
+                backoff = min(2 ** task.retry_count, 30)  # Max 30 seconds
+                await asyncio.sleep(backoff)
+                
                 # Retry the task
                 task.status = TaskStatus.PENDING
                 await self.task_queue.put(task)
                 logger.warning(
-                    f"Task {task.id} failed, retrying ({task.retry_count}/{task.max_retries})"
+                    f"Task {task.id} failed, retrying ({task.retry_count}/{task.max_retries}) after {backoff}s backoff"
                 )
             else:
                 task.status = TaskStatus.FAILED
-                logger.error(f"Task {task.id} failed after {task.max_retries} retries")
+                logger.error(f"Task {task.id} failed after {task.max_retries} retries: {e}")
         
         finally:
             task.end_time = datetime.utcnow()
     
     async def _process_pdf_task(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process PDF in parallel."""
-        from src.pdf_processing.pdf_parser import PDFParser
+        # Validate required fields
+        if "pdf_path" not in data:
+            raise ValueError("pdf_path is required for PDF processing")
+        
+        pdf_path = Path(data["pdf_path"])
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+        
+        from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
         from src.pdf_processing.content_chunker import ContentChunker
         
         loop = asyncio.get_event_loop()
         
-        # Parse PDF in thread pool
-        parser = PDFParser()
-        pdf_content = await loop.run_in_executor(
-            self.executor,
-            parser.parse_pdf,
-            data["pdf_path"]
-        )
-        
-        # Chunk content in parallel
-        chunker = ContentChunker()
-        chunks = await loop.run_in_executor(
-            self.executor,
-            chunker.chunk_content,
-            pdf_content["text"],
-            pdf_content.get("metadata", {})
-        )
-        
-        return {
-            "pdf_path": data["pdf_path"],
-            "chunks": len(chunks),
-            "pages": pdf_content.get("num_pages", 0),
-            "content": chunks,
-        }
+        try:
+            # Parse PDF in thread pool
+            parser = PDFParser()
+            pdf_content = await loop.run_in_executor(
+                self.executor,
+                parser.parse_pdf,
+                str(pdf_path)
+            )
+            
+            # Chunk content in parallel
+            chunker = ContentChunker()
+            chunks = await loop.run_in_executor(
+                self.executor,
+                chunker.chunk_content,
+                pdf_content["text"],
+                pdf_content.get("metadata", {})
+            )
+            
+            return {
+                "pdf_path": str(pdf_path),
+                "chunks": len(chunks),
+                "pages": pdf_content.get("num_pages", 0),
+                "content": chunks,
+            }
+        except PDFProcessingError as e:
+            logger.error(f"PDF processing error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error processing PDF: {e}")
+            raise
     
     async def _process_embedding_task(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate embeddings in parallel."""
@@ -308,26 +362,40 @@ class ParallelProcessor:
     
     async def _resource_monitor(self) -> None:
         """Monitor resource usage and adjust processing."""
-        import psutil
+        try:
+            import psutil
+        except ImportError:
+            logger.warning("psutil not available, resource monitoring disabled")
+            return
         
         process = psutil.Process()
+        consecutive_high_memory = 0
         
         while not self._shutdown:
             try:
                 # Check memory usage
                 memory_mb = process.memory_info().rss / (1024 * 1024)
+                cpu_percent = process.cpu_percent(interval=1)
                 
                 if memory_mb > self.limits.max_memory_mb:
+                    consecutive_high_memory += 1
                     logger.warning(
                         f"Memory usage ({memory_mb:.1f}MB) exceeds limit "
-                        f"({self.limits.max_memory_mb}MB)"
+                        f"({self.limits.max_memory_mb}MB) - occurrence {consecutive_high_memory}"
                     )
                     
-                    # Reduce worker count if memory is high
-                    if len(self._workers) > 1:
+                    # Reduce worker count if memory is consistently high
+                    if consecutive_high_memory >= 3 and len(self._workers) > 1:
                         worker = self._workers.pop()
                         worker.cancel()
-                        logger.info("Reduced worker count due to memory pressure")
+                        logger.info("Reduced worker count due to sustained memory pressure")
+                        consecutive_high_memory = 0
+                else:
+                    consecutive_high_memory = 0
+                
+                # Check CPU usage
+                if cpu_percent > 90:
+                    logger.warning(f"High CPU usage: {cpu_percent:.1f}%")
                 
                 # Check queue size
                 queue_size = self.task_queue.qsize()
@@ -336,8 +404,14 @@ class ParallelProcessor:
                         f"Task queue nearly full: {queue_size}/{self.limits.max_queue_size}"
                     )
                 
-                await asyncio.sleep(10)  # Check every 10 seconds
+                # Dynamic adjustment interval based on load
+                if queue_size > self.limits.max_queue_size * 0.5:
+                    await asyncio.sleep(5)  # Check more frequently under load
+                else:
+                    await asyncio.sleep(10)  # Normal interval
                 
+            except asyncio.CancelledError:
+                break
             except Exception as e:
                 logger.error(f"Resource monitor error: {str(e)}")
                 await asyncio.sleep(10)
@@ -449,33 +523,61 @@ class ParallelProcessor:
     
     async def shutdown(self) -> None:
         """Shutdown the parallel processor."""
-        if self._shutdown:
-            return
-        
-        self._shutdown = True
-        
-        # Cancel workers
-        for worker in self._workers:
-            worker.cancel()
-        
-        # Wait for workers to finish
-        await asyncio.gather(*self._workers, return_exceptions=True)
-        
-        # Cancel monitor
-        if self._monitor_task:
-            self._monitor_task.cancel()
+        async with self._task_lock:
+            if self._shutdown:
+                return
+            
+            self._shutdown = True
+            
+            # Cancel all pending tasks
+            for task in self.tasks.values():
+                if task.status in [TaskStatus.PENDING, TaskStatus.RUNNING]:
+                    task.status = TaskStatus.CANCELLED
+            
+            # Cancel workers
+            for worker in self._workers:
+                worker.cancel()
+            
+            # Wait for workers to finish with timeout
             try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-        
-        # Shutdown executors
-        if self.executor:
-            self.executor.shutdown(wait=True)
-        if self.async_executor:
-            self.async_executor.shutdown(wait=True)
-        
-        logger.info("Parallel processor shut down")
+                await asyncio.wait_for(
+                    asyncio.gather(*self._workers, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Workers did not shutdown gracefully")
+            
+            # Cancel monitor
+            if self._monitor_task:
+                self._monitor_task.cancel()
+                try:
+                    await asyncio.wait_for(self._monitor_task, timeout=1.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+            
+            # Shutdown executors
+            with self._executor_lock:
+                if self.executor:
+                    self.executor.shutdown(wait=True, cancel_futures=True)
+                if self.async_executor:
+                    self.async_executor.shutdown(wait=True, cancel_futures=True)
+            
+            self._initialized = False
+            logger.info("Parallel processor shut down")
+    
+    @staticmethod
+    def _cleanup_resources():
+        """Cleanup resources when object is garbage collected."""
+        logger.debug("Parallel processor resources cleaned up")
+    
+    @asynccontextmanager
+    async def managed_processor(self):
+        """Context manager for automatic initialization and cleanup."""
+        await self.initialize()
+        try:
+            yield self
+        finally:
+            await self.shutdown()
 
 
 class ParallelPDFProcessor:
