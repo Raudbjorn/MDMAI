@@ -50,6 +50,27 @@ def register_parallel_tools(mcp_server):
                     "error": "No PDF files provided",
                 }
             
+            # Validate PDF files list
+            if len(pdf_files) > 100:
+                return {
+                    "success": False,
+                    "error": "Too many PDF files (max 100)",
+                }
+            
+            # Validate each PDF file entry
+            for i, pdf_info in enumerate(pdf_files):
+                if not isinstance(pdf_info, dict):
+                    return {
+                        "success": False,
+                        "error": f"Invalid PDF info at index {i}: must be a dictionary",
+                    }
+                
+                if "pdf_path" not in pdf_info:
+                    return {
+                        "success": False,
+                        "error": f"Missing pdf_path at index {i}",
+                    }
+            
             # Use the PDF processing pipeline
             from src.pdf_processing.pipeline import PDFProcessingPipeline
             
@@ -101,6 +122,21 @@ def register_parallel_tools(mcp_server):
                     "success": False,
                     "error": "No queries provided",
                 }
+            
+            # Validate query count
+            if len(queries) > 50:
+                return {
+                    "success": False,
+                    "error": "Too many queries (max 50)",
+                }
+            
+            # Validate max_workers
+            if max_workers is not None:
+                if not isinstance(max_workers, int) or max_workers < 1 or max_workers > 16:
+                    return {
+                        "success": False,
+                        "error": "max_workers must be between 1 and 16",
+                    }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
             
@@ -170,6 +206,32 @@ def register_parallel_tools(mcp_server):
                     "success": False,
                     "error": "No texts provided",
                 }
+            
+            # Validate text count and batch size
+            if len(texts) > 1000:
+                return {
+                    "success": False,
+                    "error": "Too many texts (max 1000)",
+                }
+            
+            if batch_size < 1 or batch_size > 100:
+                return {
+                    "success": False,
+                    "error": "batch_size must be between 1 and 100",
+                }
+            
+            # Validate each text
+            for i, text in enumerate(texts):
+                if not isinstance(text, str):
+                    return {
+                        "success": False,
+                        "error": f"Invalid text at index {i}: must be a string",
+                    }
+                if len(text) > 10000:
+                    return {
+                        "success": False,
+                        "error": f"Text at index {i} is too long (max 10000 chars)",
+                    }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
             
@@ -241,6 +303,41 @@ def register_parallel_tools(mcp_server):
                     "success": False,
                     "error": "No operations provided",
                 }
+            
+            # Validate operation count and batch size
+            if len(operations) > 10000:
+                return {
+                    "success": False,
+                    "error": "Too many operations (max 10000)",
+                }
+            
+            if batch_size < 1 or batch_size > 1000:
+                return {
+                    "success": False,
+                    "error": "batch_size must be between 1 and 1000",
+                }
+            
+            # Validate each operation
+            allowed_types = {"add_document", "update_document", "delete_document"}
+            for i, op in enumerate(operations):
+                if not isinstance(op, dict):
+                    return {
+                        "success": False,
+                        "error": f"Invalid operation at index {i}: must be a dictionary",
+                    }
+                
+                op_type = op.get("type")
+                if op_type not in allowed_types:
+                    return {
+                        "success": False,
+                        "error": f"Invalid operation type at index {i}: {op_type}",
+                    }
+                
+                if "data" not in op:
+                    return {
+                        "success": False,
+                        "error": f"Missing data field at index {i}",
+                    }
             
             from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
             
