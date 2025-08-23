@@ -647,14 +647,8 @@ A new component that bridges HTTP/SSE requests to the stdio MCP server, managing
         self.request_queue = asyncio.Queue()
         
     async def start_mcp_server(self, session_id: str):
-        """Start a dedicated MCP server process for a session."""
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "src.main",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "MCP_STDIO_MODE": "true"}
         )
+        self.sessions[session_id] = process
         return process
 ```
 
