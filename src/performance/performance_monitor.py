@@ -135,7 +135,7 @@ class PerformanceMonitor:
                 # Collect system metrics
                 metrics = await self.collect_system_metrics()
                 self.system_metrics.append(metrics)
-                self._last_cpu_percent = metrics.get('cpu_percent', 0)
+                self._last_cpu_percent = metrics.cpu_percent
                 
                 # Check thresholds
                 self._check_thresholds(metrics)
