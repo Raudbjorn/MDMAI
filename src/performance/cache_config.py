@@ -329,6 +329,7 @@ class CacheConfiguration:
             
             logger.info(f"Loaded cache configuration from {self.config_file}")
         except (yaml.YAMLError, FileNotFoundError, PermissionError) as e:
+            logger.warning(f"Could not load cache configuration: {e}")
     
     def _save_config(self) -> None:
         """Save configuration to file."""

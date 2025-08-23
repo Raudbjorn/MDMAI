@@ -442,11 +442,11 @@ class CacheSystem:
         try:
             # Try pickling for accurate size
             return len(pickle.dumps(obj))
-        except:
+        except (pickle.PicklingError, TypeError, AttributeError):
             # Fallback to JSON for estimation
             try:
                 return len(json.dumps(obj, default=str).encode())
-            except:
+            except (TypeError, ValueError, RecursionError):
                 # Last resort: assume 1KB
                 return 1024
     
