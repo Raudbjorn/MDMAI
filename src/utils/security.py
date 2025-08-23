@@ -114,11 +114,20 @@ class PathValidator:
         
         # Additional security checks
         if resolved_path.is_symlink():
+            # Check for symlink cycles
+            if resolved_path in _visited:
+                raise PathTraversalError("Symlink cycle detected during path validation")
+            _visited.add(resolved_path)
             # Check if symlink target is also within allowed dirs
             target = resolved_path.readlink()
             if not target.is_absolute():
                 target = resolved_path.parent / target
-            self.validate_path(str(target), must_exist=False)
+            self.validate_path(
+                str(target),
+                must_exist=False,
+                _visited=_visited,
+                _depth=_depth + 1,
+            )
         
         return resolved_path
     
