@@ -258,8 +258,7 @@ class ParallelProcessor:
         generator = EmbeddingGenerator()
         chunks = data.get("chunks", [])
         
-        # Process embeddings in batches
-        batch_size = 10
+        batch_size = data.get("batch_size", 10)
         embeddings = []
         
         for i in range(0, len(chunks), batch_size):
