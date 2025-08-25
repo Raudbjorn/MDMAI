@@ -147,7 +147,9 @@ class TestSearchPerformance:
         await search_operation()
         
         # Benchmark
-        result = await benchmark(search_operation)
+        def sync_search():
+            return asyncio.get_event_loop().run_until_complete(search_operation())
+        result = benchmark(sync_search)
         
         assert len(result) > 0
         # Assert search completes in reasonable time
