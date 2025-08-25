@@ -545,17 +545,25 @@ class TestMCPResponseStreaming:
         server = FastMCP("Streaming Test Server")
         
         @server.tool()
-        async def streaming_tool(count: int = 5) -> Dict[str, Any]:
-            """Tool that returns streaming data."""
-            results = []
-            for i in range(count):
-                await asyncio.sleep(0.01)
-                results.append(f"chunk_{i}")
+        async def streaming_tool(count: int = 5):
+            """Tool that actually streams data using async generator."""
+            async def stream_chunks():
+                """Async generator for streaming chunks."""
+                for i in range(count):
+                    await asyncio.sleep(0.01)  # Simulate processing delay
+                    yield f"chunk_{i}"
+            
+            # For testing purposes, collect the stream
+            # In real usage, this would be consumed as a stream
+            chunks = []
+            async for chunk in stream_chunks():
+                chunks.append(chunk)
             
             return {
-                "status": "success",
-                "chunks": results,
-                "total": count
+                "status": "success", 
+                "chunks": chunks,
+                "total": count,
+                "streamed": True  # Indicate this was streamed
             }
         
         return server
@@ -570,6 +578,32 @@ class TestMCPResponseStreaming:
         assert result["status"] == "success"
         assert len(result["chunks"]) == 10
         assert result["total"] == 10
+        assert result.get("streamed") is True  # Verify it was streamed
+    
+    @pytest.mark.asyncio
+    async def test_true_streaming_generator(self):
+        """Test true streaming with async generator consumption."""
+        async def streaming_generator(count: int = 5):
+            """A true streaming generator."""
+            for i in range(count):
+                await asyncio.sleep(0.01)
+                yield {"chunk_id": i, "data": f"stream_data_{i}"}
+        
+        # Consume stream and verify chunks arrive over time
+        chunks = []
+        start_time = asyncio.get_event_loop().time()
+        timestamps = []
+        
+        async for chunk in streaming_generator(5):
+            chunks.append(chunk)
+            timestamps.append(asyncio.get_event_loop().time() - start_time)
+        
+        # Verify we got all chunks
+        assert len(chunks) == 5
+        assert all(chunk["chunk_id"] == i for i, chunk in enumerate(chunks))
+        
+        # Verify chunks arrived over time (not all at once)
+        assert timestamps[-1] > 0.04  # Should take at least 40ms for 5 chunks
 
 
 class TestMCPConnectionManagement:

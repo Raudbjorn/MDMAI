@@ -456,7 +456,8 @@ class TestConcurrentOperations:
         async def writer(db):
             """Write documents continuously."""
             for i in range(20):
-                db.add_document(
+                await asyncio.to_thread(
+                    db.add_document,
                     collection_name="sessions",
                     document_id=f"mixed_write_{i}",
                     content=f"Session data {i}",
@@ -468,14 +469,14 @@ class TestConcurrentOperations:
         async def reader(db):
             """Read documents continuously."""
             results = []
-            while not write_complete.is_set() or results[-1] if results else 0 < 15:
-                docs = db.list_documents("sessions", limit=50)
+            while not write_complete.is_set():
+                docs = await asyncio.to_thread(db.list_documents, "sessions", limit=50)
                 results.append(len(docs))
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.015)  # Read slightly slower than write to ensure interleaving
             return results
         
         # Run mixed operations
-        writer_task = asyncio.create_task(asyncio.to_thread(writer, concurrent_db))
+        writer_task = asyncio.create_task(writer(concurrent_db))
         reader_task = asyncio.create_task(reader(concurrent_db))
         
         await asyncio.gather(writer_task, reader_task)

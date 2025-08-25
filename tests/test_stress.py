@@ -14,6 +14,7 @@ This module provides comprehensive stress testing for:
 import asyncio
 import gc
 import json
+import logging
 import os
 import random
 import sys
@@ -22,7 +23,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
