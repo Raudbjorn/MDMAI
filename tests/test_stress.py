@@ -170,7 +170,7 @@ class ResourceMonitor:
                 
                 time.sleep(0.1)  # Sample every 100ms
             except Exception:
-                pass  # Ignore errors in monitoring
+                logging.exception("Exception occurred in ResourceMonitor._monitor_loop")
 
 
 class TestHighConcurrentLoad:
