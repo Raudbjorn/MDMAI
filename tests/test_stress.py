@@ -53,14 +53,8 @@ class StressTestMetrics:
     peak_memory_mb: float = 0
     peak_cpu_percent: float = 0
     peak_threads: int = 0
-    errors: List[str] = None
-    response_times: List[float] = None
-    
-    def __post_init__(self):
-        if self.errors is None:
-            self.errors = []
-        if self.response_times is None:
-            self.response_times = []
+    errors: List[str] = field(default_factory=list)
+    response_times: List[float] = field(default_factory=list)
     
     @property
     def duration(self) -> float:
