@@ -349,5 +349,7 @@ Now that you're set up:
 
 Continue with:
 - [Managing Campaigns](./campaigns.md)
+<!-- Note: The following guides are coming soon:
 - [Running Sessions](./sessions.md)
 - [Search Guide](./search.md)
+-->

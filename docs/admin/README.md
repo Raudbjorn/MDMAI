@@ -11,7 +11,7 @@ This guide covers installation, configuration, maintenance, and optimization of 
 5. [Backup and Recovery](./backup.md)
 6. [Security](./security.md)
 7. [Monitoring](./monitoring.md)
-8. [Troubleshooting](./troubleshooting.md)
+8. [Troubleshooting](../troubleshooting/README.md)
 
 ## System Architecture
 
