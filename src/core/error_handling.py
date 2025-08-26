@@ -266,7 +266,7 @@ class RetryConfig:
         exponential_base: float = 2.0,
         jitter: bool = True,
         retry_on: Optional[List[Type[Exception]]] = None,
-        ignore_on: Optional[Listremand[Type[Exception]]] = None,
+        ignore_on: Optional[List[Type[Exception]]] = None,
     ) -> None:
         """
         Initialize retry configuration.
