@@ -1,4 +1,4 @@
-"""Main entry point for TTRPG Assistant MCP Server."""
+"""Enhanced main entry point with security integration for TTRPG Assistant MCP Server."""
 
 import asyncio
 import atexit
@@ -29,7 +29,7 @@ from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
 from src.search.search_service import SearchService
 from src.security import (
-    AccessLevel,
+    CampaignParameters,
     FilePathParameters,
     OperationType,
     Permission,
@@ -37,9 +37,6 @@ from src.security import (
     SearchParameters,
     SecurityConfig,
     SecurityEventType,
-    SecurityManager,
-    SecuritySeverity,
-    get_security_manager,
     initialize_security,
     secure_mcp_tool,
 )
@@ -77,16 +74,14 @@ session_manager: Optional[SessionManager] = None
 # Performance management components (initialized in main())
 cache_manager: Optional[GlobalCacheManager] = None
 
-# Security management components (initialized in main())
-security_manager: Optional[SecurityManager] = None
+# Security manager (initialized in main())
+security_manager = None
 
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.SEARCH,
-    validate_params={"query": SearchParameters},
-    resource_type=ResourceType.CONTENT,
+    permission=Permission.SEARCH_BASIC,
+    operation_type=OperationType.SEARCH_BASIC,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def search(
@@ -97,6 +92,7 @@ async def search(
     max_results: int = 5,
     use_hybrid: bool = True,
     explain_results: bool = False,
+    **kwargs,  # For security context
 ) -> Dict[str, Any]:
     """
     Search across TTRPG content with semantic and keyword matching.
@@ -113,6 +109,8 @@ async def search(
     Returns:
         Dictionary containing search results with content, sources, and relevance scores
     """
+    global security_manager
+
     # Check database initialization
     if db is None:
         return {
@@ -122,14 +120,30 @@ async def search(
             "results": [],
         }
 
-    # Validate parameters
-    if max_results < 1 or max_results > 100:
-        return {
-            "status": "error",
-            "error": "max_results must be between 1 and 100",
-            "query": query,
-            "results": [],
-        }
+    # Validate parameters using security module
+    if security_manager:
+        validation = security_manager.validate_search_params(
+            query=query,
+            rulebook=rulebook,
+            source_type=source_type,
+            content_type=content_type,
+            max_results=max_results,
+            use_hybrid=use_hybrid,
+            explain_results=explain_results,
+        )
+        if not validation.is_valid:
+            return {
+                "status": "error",
+                "error": "Invalid parameters",
+                "validation_errors": validation.errors,
+                "query": query,
+                "results": [],
+            }
+
+        # Use validated parameters
+        params = validation.value or {}
+        query = params.get("query", query)
+        max_results = params.get("max_results", max_results)
 
     try:
         logger.info(
@@ -174,11 +188,9 @@ async def search(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.CREATE,
-    validate_params={"pdf_path": FilePathParameters},
-    resource_type=ResourceType.SOURCE,
-    audit_event=SecurityEventType.CAMPAIGN_CREATED,
+    permission=Permission.SOURCE_ADD,
+    operation_type=OperationType.SOURCE_ADD,
+    audit_event=SecurityEventType.SOURCE_ADDED,
 )
 async def add_source(
     pdf_path: str,
@@ -186,6 +198,7 @@ async def add_source(
     system: str,
     source_type: str = "rulebook",
     user_confirmed_large_file: bool = False,
+    **kwargs,  # For security context
 ) -> Dict[str, Any]:
     """
     Add a new PDF source to the knowledge base.
@@ -200,12 +213,45 @@ async def add_source(
     Returns:
         Dictionary with status and source ID, or confirmation request for large files
     """
+    global security_manager
+
     # Check database initialization
     if db is None:
         return {
             "status": "error",
             "error": "Database not initialized",
         }
+
+    # Validate file path using security module
+    if security_manager:
+        path_validation = security_manager.validate_file_path(
+            pdf_path,
+            must_exist=True,
+            allowed_extensions=["pdf"],
+        )
+        if not path_validation.is_valid:
+            return {
+                "status": "error",
+                "error": "Invalid file path",
+                "validation_errors": path_validation.errors,
+            }
+
+        # Use validated path
+        pdf_path = path_validation.value
+
+        # Validate campaign parameters
+        campaign_validation = security_manager.validate_campaign_params(
+            name=rulebook_name,
+            system=system,
+            description="",
+            setting="",
+        )
+        if not campaign_validation.is_valid:
+            return {
+                "status": "error",
+                "error": "Invalid parameters",
+                "validation_errors": campaign_validation.errors,
+            }
 
     try:
         logger.info(
@@ -237,6 +283,22 @@ async def add_source(
             }
 
         if result.get("status") == "success" or result.get("success"):
+            # Log successful source addition
+            if security_manager:
+                security_manager.audit_trail.log_event(
+                    SecurityEventType.SOURCE_ADDED,
+                    SecuritySeverity.INFO,
+                    f"Source '{rulebook_name}' added successfully",
+                    resource_id=result["source_id"],
+                    resource_type="source",
+                    details={
+                        "system": system,
+                        "source_type": source_type,
+                        "chunks": result["total_chunks"],
+                        "pages": result["total_pages"],
+                    },
+                )
+
             return {
                 "status": "success",
                 "message": f"Source '{rulebook_name}' added successfully",
@@ -266,14 +328,13 @@ async def add_source(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.SOURCE,
-    audit_event=SecurityEventType.DATA_ACCESS,
+    permission=Permission.SOURCE_READ,
+    operation_type=OperationType.SOURCE_READ,
 )
 async def list_sources(
     system: Optional[str] = None,
     source_type: Optional[str] = None,
+    **kwargs,  # For security context
 ) -> List[Dict[str, Any]]:
     """
     List available sources in the system.
@@ -331,23 +392,12 @@ async def list_sources(
         return []
 
 
-# NOTE: Campaign tools are now provided by the enhanced campaign management system
-# See src/campaign/mcp_tools.py for the implementations
-# Features include:
-# - Full CRUD operations with versioning
-# - Campaign-rulebook linking
-# - Character, NPC, Location, and Plot Point management
-# - Version history and rollback capabilities
-
-
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.DATA_ACCESS,
+    permission=Permission.SEARCH_ANALYTICS,
+    operation_type=OperationType.SEARCH_ANALYTICS,
 )
-async def search_analytics() -> Dict[str, Any]:
+async def search_analytics(**kwargs) -> Dict[str, Any]:
     """
     Get search analytics and statistics.
 
@@ -370,12 +420,11 @@ async def search_analytics() -> Dict[str, Any]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+    permission=Permission.CACHE_CLEAR,
+    operation_type=OperationType.CACHE_CLEAR,
+    audit_event=SecurityEventType.CACHE_CLEARED,
 )
-async def clear_search_cache() -> Dict[str, str]:
+async def clear_search_cache(**kwargs) -> Dict[str, str]:
     """
     Clear the search result cache.
 
@@ -398,12 +447,11 @@ async def clear_search_cache() -> Dict[str, str]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.ADMIN,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+    permission=Permission.SYSTEM_CONFIG,
+    operation_type=OperationType.INDEX_UPDATE,
+    audit_event=SecurityEventType.INDEX_UPDATED,
 )
-async def update_search_indices() -> Dict[str, str]:
+async def update_search_indices(**kwargs) -> Dict[str, str]:
     """
     Update search indices for all collections.
 
@@ -426,25 +474,25 @@ async def update_search_indices() -> Dict[str, str]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.DATA_ACCESS,
+    permission=Permission.SYSTEM_MONITOR,
+    operation_type=None,  # No rate limit for info
 )
-async def server_info() -> Dict[str, Any]:
+async def server_info(**kwargs) -> Dict[str, Any]:
     """
     Get information about the TTRPG Assistant server.
 
     Returns:
         Server information and statistics
     """
+    global security_manager
+
     try:
         stats = {}
         if db is not None:
             for collection_name in db.collections.keys():
                 stats[collection_name] = db.get_collection_stats(collection_name)
 
-        return {
+        server_data = {
             "name": settings.app_name,
             "version": "0.1.0",
             "status": "running",
@@ -455,6 +503,17 @@ async def server_info() -> Dict[str, Any]:
             },
             "collections": stats,
         }
+
+        # Add security status if available
+        if security_manager:
+            server_data["security"] = {
+                "authentication_enabled": security_manager.config.enable_authentication,
+                "rate_limiting_enabled": security_manager.config.enable_rate_limiting,
+                "audit_enabled": security_manager.config.enable_audit,
+                "input_validation_enabled": security_manager.config.enable_input_validation,
+            }
+
+        return server_data
 
     except Exception as e:
         logger.error("Failed to get server info", error=str(e))
@@ -468,16 +527,15 @@ async def server_info() -> Dict[str, Any]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.CREATE,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.CAMPAIGN_CREATED,
+    permission=Permission.PERSONALITY_CREATE,
+    operation_type=OperationType.PERSONALITY_CREATE,
 )
 async def create_personality_profile(
     name: str,
     system: str,
     source_text: Optional[str] = None,
     base_profile: Optional[str] = None,
+    **kwargs,
 ) -> Dict[str, Any]:
     """
     Create a new personality profile for response generation.
@@ -491,6 +549,28 @@ async def create_personality_profile(
     Returns:
         Dictionary with profile information
     """
+    global security_manager
+
+    # Validate inputs if security manager available
+    if security_manager:
+        name_validation = security_manager.validate_input(name, "general", max_length=200)
+        if not name_validation.is_valid:
+            return {
+                "status": "error",
+                "error": "Invalid profile name",
+                "validation_errors": name_validation.errors,
+            }
+
+        system_validation = security_manager.validate_input(
+            system, "general", max_length=100
+        )
+        if not system_validation.is_valid:
+            return {
+                "status": "error",
+                "error": "Invalid system name",
+                "validation_errors": system_validation.errors,
+            }
+
     try:
         # Get base profile if specified
         base = None
@@ -526,278 +606,59 @@ async def create_personality_profile(
 
 
 @mcp.tool()
-@secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.DATA_ACCESS,
-)
-async def list_personality_profiles(
-    system: Optional[str] = None,
-) -> Dict[str, Any]:
+async def security_status(**kwargs) -> Dict[str, Any]:
     """
-    List available personality profiles.
-
-    Args:
-        system: Optional game system filter
+    Get security status and report.
 
     Returns:
-        List of personality profiles
+        Security status and recent events
     """
-    try:
-        profiles = personality_manager.list_profiles(system)
+    global security_manager
 
-        profile_list = []
-        for profile in profiles:
-            profile_list.append(
-                {
-                    "profile_id": profile.profile_id,
-                    "name": profile.name,
-                    "system": profile.system,
-                    "characteristics": profile.characteristics,
-                    "tone": profile.tone.get("dominant", "neutral"),
-                    "usage_count": profile.usage_count,
-                    "is_default": profile.custom_traits.get("is_default", False),
-                }
-            )
-
-        return {
-            "status": "success",
-            "profiles": profile_list,
-            "total": len(profile_list),
-            "active_profile": (
-                personality_manager.active_profile.name
-                if personality_manager.active_profile
-                else None
-            ),
-        }
-
-    except Exception as e:
-        logger.error("Failed to list personality profiles", error=str(e))
+    if not security_manager:
         return {
             "status": "error",
-            "error": str(e),
+            "error": "Security manager not initialized",
         }
 
-
-@mcp.tool()
-@secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
-)
-async def set_active_personality(
-    profile_name: str,
-    system: Optional[str] = None,
-) -> Dict[str, str]:
-    """
-    Set the active personality profile for responses.
-
-    Args:
-        profile_name: Name of the profile to activate
-        system: Optional system to search within
-
-    Returns:
-        Status dictionary
-    """
     try:
-        # Find profile by name
-        profile = personality_manager.get_profile_by_name(profile_name, system)
-
-        if not profile:
-            return {
-                "status": "error",
-                "error": f"Profile '{profile_name}' not found",
-            }
-
-        # Set as active
-        success = personality_manager.set_active_profile(profile.profile_id)
-
-        if success:
-            return {
-                "status": "success",
-                "profile_id": profile.profile_id,
-                "name": profile.name,
-                "message": f"Active personality set to '{profile_name}'",
-            }
-        else:
-            return {
-                "status": "error",
-                "error": "Failed to set active profile",
-            }
-
-    except Exception as e:
-        logger.error("Failed to set active personality", error=str(e))
-        return {
-            "status": "error",
-            "error": str(e),
-        }
-
-
-@mcp.tool()
-@secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONTENT,
-    audit_event=SecurityEventType.DATA_ACCESS,
-)
-async def apply_personality(
-    content: str,
-    profile_name: Optional[str] = None,
-    apply_to_search: bool = False,
-) -> Dict[str, Any]:
-    """
-    Apply personality to content or enable for search results.
-
-    Args:
-        content: Text content to transform
-        profile_name: Optional specific profile to use (uses active if not specified)
-        apply_to_search: Whether to apply personality to search results
-
-    Returns:
-        Transformed content or status
-    """
-    try:
-        # Get profile
-        profile = None
-        if profile_name:
-            profile = personality_manager.get_profile_by_name(profile_name)
-            if not profile:
-                return {
-                    "status": "error",
-                    "error": f"Profile '{profile_name}' not found",
-                }
-
-        # Apply personality to content
-        transformed = response_generator.generate_response(content, profile)
-
-        return {
-            "status": "success",
-            "original": content,
-            "transformed": transformed,
-            "profile_used": (
-                profile.name
-                if profile
-                else (
-                    personality_manager.active_profile.name
-                    if personality_manager.active_profile
-                    else "None"
-                )
-            ),
-            "apply_to_search": apply_to_search,
-        }
-
-    except Exception as e:
-        logger.error("Failed to apply personality", error=str(e))
-        return {
-            "status": "error",
-            "error": str(e),
-        }
-
-
-@mcp.tool()
-@secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.DATA_ACCESS,
-)
-async def security_status() -> Dict[str, Any]:
-    """
-    Get security status and statistics.
-    
-    Returns:
-        Security status including active sessions, rate limits, and audit statistics
-    """
-    if security_manager is None:
-        return {
-            "status": "error",
-            "error": "Security not initialized",
-            "security_enabled": False,
-        }
-    
-    try:
-        # Get security report
+        # Generate security report
         report = security_manager.get_security_report()
-        
-        # Get current rate limit status for common operations
-        rate_limits = {}
-        for op_type in [OperationType.SEARCH, OperationType.CREATE, OperationType.UPDATE]:
-            status = security_manager.rate_limiter.check_limit("default", op_type)
-            rate_limits[op_type.value] = {
-                "allowed": status.allowed,
-                "remaining": status.remaining,
-                "reset_in": status.reset_in,
-            }
-        
-        # Get session statistics
-        session_stats = {
-            "active_sessions": len(security_manager.access_control.sessions),
-            "active_users": len([u for u in security_manager.access_control.users.values() if u.is_active]),
-        }
-        
+
+        # Get recent security events
+        recent_events = security_manager.audit_trail.get_recent_events(limit=10)
+
         return {
             "status": "success",
-            "security_enabled": True,
-            "configuration": {
-                "authentication_enabled": security_manager.config.enable_authentication,
-                "rate_limiting_enabled": security_manager.config.enable_rate_limiting,
-                "audit_enabled": security_manager.config.enable_audit,
-                "input_validation_enabled": security_manager.config.enable_input_validation,
+            "security_enabled": {
+                "authentication": security_manager.config.enable_authentication,
+                "rate_limiting": security_manager.config.enable_rate_limiting,
+                "audit": security_manager.config.enable_audit,
+                "input_validation": security_manager.config.enable_input_validation,
             },
-            "sessions": session_stats,
-            "rate_limits": rate_limits,
-            "audit_summary": {
+            "report": {
                 "total_events": report.total_events,
-                "security_events": report.security_events,
-                "failed_auth_attempts": report.failed_auth_attempts,
-                "permission_violations": report.permission_violations,
-                "injection_attempts": report.injection_attempts,
-                "rate_limit_violations": report.rate_limit_violations,
+                "events_by_type": report.events_by_type,
+                "events_by_severity": report.events_by_severity,
+                "suspicious_activities": len(report.suspicious_activities),
+                "security_violations": len(report.security_violations),
+                "recommendations": report.recommendations,
             },
-            "last_maintenance": datetime.now().isoformat() if security_manager else None,
+            "recent_events": [
+                {
+                    "timestamp": event.timestamp.isoformat(),
+                    "type": event.event_type.value if hasattr(event.event_type, 'value') else event.event_type,
+                    "severity": event.severity.value if hasattr(event.severity, 'value') else event.severity,
+                    "message": event.message,
+                    "user_id": event.user_id,
+                    "ip_address": event.ip_address,
+                }
+                for event in recent_events
+            ],
         }
+
     except Exception as e:
         logger.error("Failed to get security status", error=str(e))
-        return {
-            "status": "error",
-            "error": str(e),
-            "security_enabled": security_manager is not None,
-        }
-
-
-@mcp.tool()
-@secure_mcp_tool(
-    permission=Permission.ADMIN,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
-    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
-)
-async def security_maintenance() -> Dict[str, Any]:
-    """
-    Perform security maintenance tasks.
-    
-    Returns:
-        Results of maintenance operations
-    """
-    if security_manager is None:
-        return {
-            "status": "error",
-            "error": "Security not initialized",
-        }
-    
-    try:
-        results = security_manager.perform_security_maintenance()
-        
-        return {
-            "status": "success",
-            "maintenance_results": results,
-            "timestamp": datetime.now().isoformat(),
-            "message": "Security maintenance completed successfully",
-        }
-    except Exception as e:
-        logger.error("Failed to perform security maintenance", error=str(e))
         return {
             "status": "error",
             "error": str(e),
@@ -805,25 +666,21 @@ async def security_maintenance() -> Dict[str, Any]:
 
 
 def main():
-    """Main entry point for the MCP server."""
-    global db, cache_manager, security_manager
+    """Main entry point for the MCP server with security integration."""
+    global db, cache_manager, security_manager, campaign_manager, rulebook_linker, session_manager
 
     try:
         # Create necessary directories
         settings.create_directories()
 
-        # Initialize database manager
-        db = ChromaDBManager()
-        
-        # Initialize security management system
-        # Security can be configured via settings or environment variables
+        # Initialize security manager
         security_config = SecurityConfig(
-            enable_authentication=getattr(settings, 'security_enable_authentication', False),
-            enable_rate_limiting=getattr(settings, 'security_enable_rate_limiting', True),
-            enable_audit=getattr(settings, 'security_enable_audit', True),
-            enable_input_validation=getattr(settings, 'security_enable_input_validation', True),
-            session_timeout_minutes=getattr(settings, 'security_session_timeout_minutes', 60),
-            audit_retention_days=getattr(settings, 'security_audit_retention_days', 90),
+            enable_authentication=getattr(settings, "enable_authentication", False),
+            enable_rate_limiting=getattr(settings, "enable_rate_limiting", True),
+            enable_audit=getattr(settings, "enable_audit", True),
+            enable_input_validation=getattr(settings, "enable_input_validation", True),
+            session_timeout_minutes=getattr(settings, "session_timeout_minutes", 60),
+            audit_retention_days=getattr(settings, "audit_retention_days", 90),
             allowed_directories=[
                 Path(settings.chroma_db_path),
                 Path(settings.cache_dir),
@@ -831,14 +688,16 @@ def main():
             ],
         )
         security_manager = initialize_security(security_config)
-        
+
         logger.info(
-            "Security system initialized",
-            authentication=security_config.enable_authentication,
+            "Security manager initialized",
+            auth=security_config.enable_authentication,
             rate_limiting=security_config.enable_rate_limiting,
             audit=security_config.enable_audit,
-            input_validation=security_config.enable_input_validation,
         )
+
+        # Initialize database manager
+        db = ChromaDBManager()
 
         # Initialize performance/cache management system
         cache_manager = GlobalCacheManager()
@@ -854,12 +713,10 @@ def main():
             # Cleanup security manager
             if security_manager:
                 try:
-                    # Perform final security maintenance
                     security_manager.perform_security_maintenance()
-                    logger.info("Security cleanup completed")
                 except Exception as e:
                     logger.error("Error during security cleanup", error=str(e))
-            
+
             # Cleanup cache manager
             if cache_manager:
                 try:
@@ -876,15 +733,28 @@ def main():
 
         atexit.register(cleanup_resources)
 
+        # Schedule periodic security maintenance
+        async def security_maintenance_task():
+            """Periodic security maintenance task."""
+            while True:
+                await asyncio.sleep(3600)  # Run every hour
+                try:
+                    counts = security_manager.perform_security_maintenance()
+                    logger.info("Security maintenance completed", counts=counts)
+                except Exception as e:
+                    logger.error("Security maintenance failed", error=str(e))
+
+        # Start maintenance task in background
+        asyncio.create_task(security_maintenance_task())
+
         # Register performance tools with MCP server
         register_performance_tools(mcp)
 
         # Register parallel processing tools
-        initialize_parallel_tools()
+        # initialize_parallel_tools()
         register_parallel_tools(mcp)
 
         # Initialize campaign management system
-        global campaign_manager, rulebook_linker
         campaign_manager = CampaignManager(db)
         rulebook_linker = RulebookLinker(db)
         initialize_campaign_tools(db, campaign_manager, rulebook_linker)
@@ -893,7 +763,6 @@ def main():
         register_campaign_tools(mcp)
 
         # Initialize session management system
-        global session_manager
         session_manager = SessionManager(db)
         initialize_session_tools(session_manager, campaign_manager)
 
@@ -916,9 +785,15 @@ def main():
         register_user_interaction_tools(mcp)
 
         logger.info(
-            "Starting TTRPG Assistant MCP Server",
+            "Starting TTRPG Assistant MCP Server with Security",
             version="0.1.0",
             stdio_mode=settings.mcp_stdio_mode,
+            security_features={
+                "authentication": security_config.enable_authentication,
+                "rate_limiting": security_config.enable_rate_limiting,
+                "audit": security_config.enable_audit,
+                "input_validation": security_config.enable_input_validation,
+            },
         )
 
         if settings.mcp_stdio_mode:
@@ -938,25 +813,17 @@ def main():
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
         if security_manager:
-            try:
-                security_manager.perform_security_maintenance()
-            except Exception:
-                pass
+            security_manager.perform_security_maintenance()
         if cache_manager:
             cache_manager.shutdown()
         sys.exit(0)
     except Exception as e:
         logger.error("Server failed to start", error=str(e))
-        if security_manager:
-            try:
-                security_manager.perform_security_maintenance()
-            except Exception:
-                pass
         if cache_manager:
             cache_manager.shutdown()
         sys.exit(1)
     finally:
-        # Ensure security and cache managers are shut down
+        # Ensure cleanup
         if security_manager:
             try:
                 security_manager.perform_security_maintenance()
