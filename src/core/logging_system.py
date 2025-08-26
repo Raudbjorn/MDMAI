@@ -59,7 +59,7 @@ class LogConfig:
 
     def __init__(
         self,
-        log_dir: str = "/var/log/mdmai",
+        log_dir: Optional[str] = None,
         log_level: str = "INFO",
         enable_console: bool = True,
         enable_file: bool = True,
@@ -74,7 +74,7 @@ class LogConfig:
         Initialize logging configuration.
 
         Args:
-            log_dir: Directory for log files
+            log_dir: Directory for log files (defaults to ~/.mdmai/logs or ./logs)
             log_level: Default log level
             enable_console: Enable console output
             enable_file: Enable file output
@@ -85,7 +85,19 @@ class LogConfig:
             enable_performance: Enable performance logging
             enable_audit: Enable audit logging
         """
-        self.log_dir = Path(log_dir)
+        if log_dir is None:
+            # Try user home directory first, fall back to local directory
+            home_log_dir = Path.home() / ".mdmai" / "logs"
+            local_log_dir = Path("./logs")
+            
+            # Use home directory if writable, otherwise use local directory
+            try:
+                home_log_dir.mkdir(parents=True, exist_ok=True)
+                self.log_dir = home_log_dir
+            except (OSError, PermissionError):
+                self.log_dir = local_log_dir
+        else:
+            self.log_dir = Path(log_dir)
         self.log_level = getattr(logging, log_level.upper(), logging.INFO)
         self.enable_console = enable_console
         self.enable_file = enable_file

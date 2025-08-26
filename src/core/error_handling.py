@@ -304,6 +304,55 @@ class RetryConfig:
         return any(isinstance(exception, exc_type) for exc_type in self.retry_on)
 
 
+def _handle_retry_attempt(
+    config: RetryConfig,
+    func_name: str,
+    exception: Exception,
+    attempt: int,
+) -> tuple[bool, Optional[float]]:
+    """
+    Handle retry attempt logic.
+    
+    Args:
+        config: Retry configuration
+        func_name: Function name for logging
+        exception: Exception that occurred
+        attempt: Current attempt number (0-indexed)
+    
+    Returns:
+        Tuple of (should_continue, delay_seconds)
+    """
+    if not config.should_retry(exception):
+        logger.error(
+            f"Non-retryable error in {func_name}: {exception}",
+            extra={"attempt": attempt + 1, "function": func_name},
+        )
+        return False, None
+    
+    if attempt < config.max_attempts - 1:
+        delay = config.calculate_delay(attempt)
+        logger.warning(
+            f"Retry attempt {attempt + 1}/{config.max_attempts} "
+            f"for {func_name} after {delay:.2f}s delay. Error: {exception}",
+            extra={
+                "attempt": attempt + 1,
+                "max_attempts": config.max_attempts,
+                "delay": delay,
+                "function": func_name,
+            },
+        )
+        return True, delay
+    else:
+        logger.error(
+            f"Max retries ({config.max_attempts}) exceeded for {func_name}",
+            extra={
+                "max_attempts": config.max_attempts,
+                "function": func_name,
+            },
+        )
+        return True, None
+
+
 def retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[P, T]], Callable[P, T]]:
     """
     Decorator for retry logic with exponential backoff.
@@ -327,35 +376,15 @@ def retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[P, T]], Ca
                     return func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
+                    should_continue, delay = _handle_retry_attempt(
+                        config, func.__name__, e, attempt
+                    )
                     
-                    if not config.should_retry(e):
-                        logger.error(
-                            f"Non-retryable error in {func.__name__}: {e}",
-                            extra={"attempt": attempt + 1, "function": func.__name__},
-                        )
+                    if not should_continue:
                         raise
                     
-                    if attempt < config.max_attempts - 1:
-                        delay = config.calculate_delay(attempt)
-                        logger.warning(
-                            f"Retry attempt {attempt + 1}/{config.max_attempts} "
-                            f"for {func.__name__} after {delay:.2f}s delay. Error: {e}",
-                            extra={
-                                "attempt": attempt + 1,
-                                "max_attempts": config.max_attempts,
-                                "delay": delay,
-                                "function": func.__name__,
-                            },
-                        )
+                    if delay is not None:
                         time.sleep(delay)
-                    else:
-                        logger.error(
-                            f"Max retries ({config.max_attempts}) exceeded for {func.__name__}",
-                            extra={
-                                "max_attempts": config.max_attempts,
-                                "function": func.__name__,
-                            },
-                        )
             
             if last_exception:
                 raise last_exception
@@ -370,35 +399,15 @@ def retry(config: Optional[RetryConfig] = None) -> Callable[[Callable[P, T]], Ca
                     return await func(*args, **kwargs)  # type: ignore
                 except Exception as e:
                     last_exception = e
+                    should_continue, delay = _handle_retry_attempt(
+                        config, func.__name__, e, attempt
+                    )
                     
-                    if not config.should_retry(e):
-                        logger.error(
-                            f"Non-retryable error in {func.__name__}: {e}",
-                            extra={"attempt": attempt + 1, "function": func.__name__},
-                        )
+                    if not should_continue:
                         raise
                     
-                    if attempt < config.max_attempts - 1:
-                        delay = config.calculate_delay(attempt)
-                        logger.warning(
-                            f"Retry attempt {attempt + 1}/{config.max_attempts} "
-                            f"for {func.__name__} after {delay:.2f}s delay. Error: {e}",
-                            extra={
-                                "attempt": attempt + 1,
-                                "max_attempts": config.max_attempts,
-                                "delay": delay,
-                                "function": func.__name__,
-                            },
-                        )
+                    if delay is not None:
                         await asyncio.sleep(delay)
-                    else:
-                        logger.error(
-                            f"Max retries ({config.max_attempts}) exceeded for {func.__name__}",
-                            extra={
-                                "max_attempts": config.max_attempts,
-                                "function": func.__name__,
-                            },
-                        )
             
             if last_exception:
                 raise last_exception

@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Set, Union
 
 from cryptography.fernet import Fernet
 
+logger = logging.getLogger(__name__)
+
 
 class AuditEventType(Enum):
     """Types of audit events."""
@@ -129,7 +131,7 @@ class AuditLogger:
 
     def __init__(
         self,
-        log_dir: Path = Path("/var/log/mdmai/audit"),
+        log_dir: Optional[Path] = None,
         encryption_key: Optional[bytes] = None,
         retention_days: int = 90,
         enable_console: bool = False,
@@ -138,12 +140,25 @@ class AuditLogger:
         Initialize audit logger.
 
         Args:
-            log_dir: Directory for audit logs
+            log_dir: Directory for audit logs (defaults to ~/.mdmai/audit or ./logs/audit)
             encryption_key: Optional encryption key for sensitive data
             retention_days: Number of days to retain logs
             enable_console: Enable console output
         """
-        self.log_dir = log_dir
+        if log_dir is None:
+            # Try user home directory first, fall back to local directory
+            home_audit_dir = Path.home() / ".mdmai" / "audit"
+            local_audit_dir = Path("./logs/audit")
+            
+            # Use home directory if writable, otherwise use local directory
+            try:
+                home_audit_dir.mkdir(parents=True, exist_ok=True)
+                self.log_dir = home_audit_dir
+            except (OSError, PermissionError):
+                local_audit_dir.mkdir(parents=True, exist_ok=True)
+                self.log_dir = local_audit_dir
+        else:
+            self.log_dir = log_dir
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
         self.retention_days = retention_days
@@ -415,7 +430,22 @@ class AuditLogger:
             with open(log_file, "r") as f:
                 for line in f:
                     try:
-                        event = json.loads(line.split(" - ", 2)[-1])
+                        # More robust parsing - try multiple formats
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
+                        # Try to parse as pure JSON first
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            # Try to extract JSON from log format (timestamp - JSON)
+                            # Look for the first '{' character to find JSON start
+                            json_start = line.find('{')
+                            if json_start != -1:
+                                event = json.loads(line[json_start:])
+                            else:
+                                continue
                         
                         # Apply filters
                         if start_time and datetime.fromisoformat(event["timestamp"]) < start_time:
@@ -434,7 +464,9 @@ class AuditLogger:
                         if len(results) >= limit:
                             return results
                             
-                    except (json.JSONDecodeError, KeyError):
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        # Log parsing errors for debugging but continue processing
+                        logger.debug(f"Failed to parse log line: {e}")
                         continue
         
         return results

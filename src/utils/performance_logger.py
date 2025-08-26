@@ -420,6 +420,18 @@ def measure_performance(
                     tags={**(tags or {}), "success": str(success)},
                 )
                 
+                # Record in global monitor if available (create async task for sync context)
+                if hasattr(performance_monitor, "collector"):
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            asyncio.create_task(performance_monitor.collector.record(metric))
+                        else:
+                            loop.run_until_complete(performance_monitor.collector.record(metric))
+                    except RuntimeError:
+                        # No event loop available, log the metric instead
+                        pass
+                
                 # Log if threshold exceeded
                 if threshold_ms and timer.elapsed_ms > threshold_ms:
                     import logging
@@ -492,6 +504,26 @@ def performance_context(
         yield timer
     finally:
         timer.stop()
+        
+        # Record in global monitor if available (sync context)
+        metric = PerformanceMetric(
+            name=name,
+            type=MetricType.DURATION,
+            value=timer.elapsed_ms,
+            tags=tags or {},
+            metadata={"checkpoints": timer.checkpoints},
+        )
+        
+        if hasattr(performance_monitor, "collector"):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(performance_monitor.collector.record(metric))
+                else:
+                    loop.run_until_complete(performance_monitor.collector.record(metric))
+            except RuntimeError:
+                # No event loop available, just log the metric
+                pass
         
         # Log performance
         import logging

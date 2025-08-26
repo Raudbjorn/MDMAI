@@ -462,25 +462,76 @@ def create_user_friendly_error(
     """
     builder = ErrorMessageBuilder()
     
-    # Determine error category from exception type
-    error_type = type(error).__name__
+    # Import error classes for isinstance checks
+    from ..core.error_handling import (
+        BaseError, ValidationError, NetworkError,
+        DatabaseError, AuthenticationError, ServiceError,
+        ResourceError, ConfigurationError
+    )
     
-    if "NotFound" in error_type:
+    # Use isinstance checks for proper error categorization
+    if isinstance(error, BaseError):
+        # Use the category from the BaseError
+        try:
+            category_name = error.category.name.lower()
+            error_category = ErrorMessageCategory(category_name)
+        except (AttributeError, ValueError):
+            error_category = ErrorMessageCategory.SYSTEM
+            
+        builder.with_template(error_category)
+        if hasattr(error, 'context') and error.context:
+            builder.with_context(**error.context)
+    # Check standard library exceptions
+    elif isinstance(error, FileNotFoundError):
         builder.with_template(
             ErrorMessageCategory.NOT_FOUND,
             resource or "default",
             name=resource or "resource",
         )
-    elif "Permission" in error_type or "Authorization" in error_type:
+    elif isinstance(error, PermissionError):
         builder.with_template(ErrorMessageCategory.PERMISSION)
-    elif "Validation" in error_type:
+    elif isinstance(error, (ValueError, TypeError)):
         builder.with_template(ErrorMessageCategory.VALIDATION)
-    elif "Network" in error_type or "Connection" in error_type:
+    elif isinstance(error, (ConnectionError, TimeoutError)):
         builder.with_template(ErrorMessageCategory.NETWORK)
-    elif "Database" in error_type:
-        builder.with_template(ErrorMessageCategory.DATABASE)
+    elif isinstance(error, OSError):
+        # OSError can be many things, check errno if available
+        if hasattr(error, 'errno'):
+            import errno
+            if error.errno in (errno.EACCES, errno.EPERM):
+                builder.with_template(ErrorMessageCategory.PERMISSION)
+            elif error.errno == errno.ENOENT:
+                builder.with_template(
+                    ErrorMessageCategory.NOT_FOUND,
+                    resource or "default",
+                    name=resource or "resource",
+                )
+            elif error.errno in (errno.ECONNREFUSED, errno.ENETUNREACH):
+                builder.with_template(ErrorMessageCategory.NETWORK)
+            else:
+                builder.with_template(ErrorMessageCategory.SYSTEM)
+        else:
+            builder.with_template(ErrorMessageCategory.SYSTEM)
     else:
-        builder.with_template(ErrorMessageCategory.SYSTEM)
+        # Fall back to string matching only for unknown exception types
+        error_type = type(error).__name__
+        
+        if "NotFound" in error_type or "404" in str(error):
+            builder.with_template(
+                ErrorMessageCategory.NOT_FOUND,
+                resource or "default",
+                name=resource or "resource",
+            )
+        elif "Permission" in error_type or "Authorization" in error_type or "403" in str(error):
+            builder.with_template(ErrorMessageCategory.PERMISSION)
+        elif "Validation" in error_type or "Invalid" in error_type:
+            builder.with_template(ErrorMessageCategory.VALIDATION)
+        elif "Network" in error_type or "Connection" in error_type:
+            builder.with_template(ErrorMessageCategory.NETWORK)
+        elif "Database" in error_type or "SQL" in error_type:
+            builder.with_template(ErrorMessageCategory.DATABASE)
+        else:
+            builder.with_template(ErrorMessageCategory.SYSTEM)
     
     if operation:
         builder.add_detail(f"Failed during: {operation}")
