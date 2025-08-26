@@ -1,0 +1,88 @@
+# Deployment dependencies for TTRPG Assistant MCP Server
+
+# Core deployment tools
+packaging>=23.0
+wheel>=0.40.0
+setuptools>=68.0.0
+twine>=4.0.0  # For PyPI uploads
+
+# Environment and configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+jsonschema>=4.18.0
+configparser>=6.0.0
+
+# System monitoring
+psutil>=5.9.0
+py-cpuinfo>=9.0.0
+
+# Backup and compression
+tarfile  # Built-in
+zipfile  # Built-in
+zstandard>=0.21.0  # For better compression
+
+# Migration tools
+alembic>=1.11.0  # Database migrations
+click>=8.1.0  # CLI interface
+
+# Security and validation
+cryptography>=41.0.0
+certifi>=2023.5.0
+validators>=0.20.0
+
+# Network and connectivity
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Process management
+supervisor>=4.2.5  # Process supervisor
+circus>=0.18.0  # Alternative process manager
+
+# Docker support
+docker>=6.1.0
+docker-compose>=1.29.0
+
+# Cloud deployment (optional)
+boto3>=1.28.0  # AWS
+azure-storage-blob>=12.17.0  # Azure
+google-cloud-storage>=2.10.0  # GCP
+
+# Monitoring and metrics
+prometheus-client>=0.17.0
+statsd>=4.0.0
+
+# Documentation generation
+sphinx>=7.0.0
+sphinx-rtd-theme>=1.3.0
+myst-parser>=2.0.0
+
+# Testing deployment
+pytest-deployment>=0.1.0
+testinfra>=9.0.0  # Infrastructure testing
+
+# Health checks
+healthcheck>=1.3.3
+py-healthcheck>=1.10.0
+
+# Logging aggregation
+python-json-logger>=2.0.0
+fluent-logger>=0.10.0
+
+# Performance profiling
+memory-profiler>=0.61.0
+line-profiler>=4.1.0
+
+# Database management
+sqlalchemy>=2.0.0
+pymongo>=4.4.0  # For MongoDB support
+redis>=4.6.0  # For Redis support
+
+# Orchestration
+ansible>=8.0.0  # Infrastructure automation
+fabric>=3.1.0  # Remote execution
+
+# Development dependencies for deployment scripts
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.4.0
+pylint>=2.17.0

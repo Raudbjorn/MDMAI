@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  ttrpg-assistant:
+    image: ttrpg-assistant:latest
+    container_name: ttrpg-assistant
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - PYTHON_VERSION=3.9
+        - GPU_SUPPORT=none
+    
+    # Environment configuration
+    env_file:
+      - {{CONFIG_DIR}}/.env
+    
+    environment:
+      - CHROMA_DB_PATH=/data/chromadb
+      - CACHE_DIR=/data/cache
+      - LOG_FILE=/logs/ttrpg-assistant.log
+      - SECURITY_LOG_FILE=/logs/security.log
+    
+    # Volume mounts
+    volumes:
+      - {{DATA_DIR}}:/data
+      - {{CONFIG_DIR}}:/config
+      - {{LOG_DIR}}:/logs
+      - ./src:/app/src:ro
+    
+    # Network configuration
+    ports:
+      - "8000:8000"
+      - "9090:9090"  # Metrics port
+    
+    networks:
+      - ttrpg-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Optional: ChromaDB as separate service
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ttrpg-chromadb
+    
+    volumes:
+      - {{DATA_DIR}}/chromadb:/chroma/chroma
+    
+    ports:
+      - "8001:8000"
+    
+    networks:
+      - ttrpg-network
+    
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+      - PERSIST_DIRECTORY=/chroma/chroma
+    
+    restart: unless-stopped
+    
+    profiles:
+      - external-db
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: ttrpg-redis
+    
+    volumes:
+      - {{DATA_DIR}}/redis:/data
+    
+    ports:
+      - "6379:6379"
+    
+    networks:
+      - ttrpg-network
+    
+    command: redis-server --appendonly yes
+    
+    restart: unless-stopped
+    
+    profiles:
+      - redis-cache
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: ttrpg-nginx
+    
+    volumes:
+      - ./deploy/config/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./deploy/config/ssl:/etc/nginx/ssl:ro
+    
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    networks:
+      - ttrpg-network
+    
+    depends_on:
+      - ttrpg-assistant
+    
+    restart: unless-stopped
+    
+    profiles:
+      - with-proxy
+
+networks:
+  ttrpg-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  ttrpg-data:
+    driver: local
+  ttrpg-logs:
+    driver: local
