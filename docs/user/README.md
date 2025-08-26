@@ -6,11 +6,13 @@ Welcome to the TTRPG Assistant MCP Server! This guide will help you get started 
 
 1. [Getting Started](./getting_started.md)
 2. [Managing Campaigns](./campaigns.md)
+<!-- Note: The following guides are coming soon:
 3. [Running Sessions](./sessions.md)
 4. [Character Creation](./characters.md)
 5. [Using Search](./search.md)
 6. [Managing Sources](./sources.md)
 7. [Tips and Tricks](./tips.md)
+-->
 
 ## What is TTRPG Assistant?
 
@@ -178,6 +180,8 @@ All campaign data is versioned:
 Ready to dive deeper? Check out:
 1. [Getting Started Guide](./getting_started.md) for detailed setup
 2. [Campaign Management](./campaigns.md) for organizing your game
+<!-- Note: The following guide is coming soon:
 3. [Search Guide](./search.md) for mastering queries
+-->
 
 Happy gaming!

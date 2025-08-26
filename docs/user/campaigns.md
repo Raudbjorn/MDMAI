@@ -471,6 +471,8 @@ backup = await export_campaign(
 
 ## Next Steps
 
+<!-- Note: The following guides are coming soon:
 - [Running Sessions](./sessions.md) - Learn session management
 - [Character Creation](./characters.md) - Master character generation
 - [Search Guide](./search.md) - Find information quickly
+-->
