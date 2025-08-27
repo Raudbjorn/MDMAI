@@ -490,8 +490,10 @@ class CampaignManager:
             return Ok(related_data)
         except Exception as e:
             logger.warning(f"Error fetching related data: {e}")
-            # Return partial data on error
-            return Ok(related_data)
+            # Propagate the error instead of returning partial data as a success.
+            # The caller can decide how to handle the partial data if needed.
+            return Err(database_error(f"Failed to fetch related data: {str(e)}", partial_data=related_data))
+
     
     async def _store_character(self, character: Character) -> Result[None, AppError]:
         """Store character in database."""
