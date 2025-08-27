@@ -155,7 +155,7 @@ class UsageRecord:
     
     request_id: str
     session_id: Optional[str] = None
-    provider_type: ProviderType = None
+    provider_type: ProviderType
     model: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
