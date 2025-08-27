@@ -724,7 +724,7 @@ async def security_status() -> Dict[str, Any]:
         # Get current rate limit status for common operations
         rate_limits = {}
         for op_type in [OperationType.SEARCH, OperationType.CREATE, OperationType.UPDATE]:
-            status = security_manager.rate_limiter.check_limit("default", op_type)
+            status = security_manager.rate_limiter.check_rate_limit("default", op_type, consume=False)
             rate_limits[op_type.value] = {
                 "allowed": status.allowed,
                 "remaining": status.remaining,
