@@ -375,7 +375,7 @@ deploy-package:
 	@rm -rf dist/
 	@mkdir -p dist/
 	@python setup.py sdist bdist_wheel
-	@tar czf dist/ttrpg-assistant-$(shell python -c "import setup; print(setup.version)").tar.gz \
+	@tar czf dist/ttrpg-assistant-$(shell python deploy/scripts/get_version.py).tar.gz \
 		--exclude='.git' --exclude='venv' --exclude='__pycache__' \
 		--exclude='*.pyc' --exclude='.pytest_cache' \
 		--exclude='htmlcov' --exclude='dist' \

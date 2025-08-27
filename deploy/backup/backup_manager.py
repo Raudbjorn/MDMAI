@@ -57,8 +57,10 @@ class BackupManager:
             try:
                 with open(self.registry_file) as f:
                     return json.load(f)
-            except Exception as e:
-                logger.error(f"Error loading registry: {e}")
+            except (IOError, OSError) as e:
+                logger.error(f"Error reading registry file: {e}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing registry JSON: {e}")
                 
         return {
             'backups': [],
@@ -74,8 +76,10 @@ class BackupManager:
         try:
             with open(self.registry_file, 'w') as f:
                 json.dump(self.registry, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving registry: {e}")
+        except (IOError, OSError) as e:
+            logger.error(f"Error writing registry file: {e}")
+        except TypeError as e:
+            logger.error(f"Error serializing registry data: {e}")
             
     def create_backup(self, backup_type: str = 'manual', 
                      description: str = '') -> Optional[str]:
@@ -155,8 +159,14 @@ class BackupManager:
             
             return backup_id
             
-        except Exception as e:
-            logger.error(f"Backup creation failed: {e}")
+        except (IOError, OSError) as e:
+            logger.error(f"File system error during backup creation: {e}")
+            # Clean up partial backup
+            if 'backup_file' in locals() and backup_file.exists():
+                backup_file.unlink()
+            return None
+        except tarfile.TarError as e:
+            logger.error(f"Archive error during backup creation: {e}")
             # Clean up partial backup
             if 'backup_file' in locals() and backup_file.exists():
                 backup_file.unlink()
@@ -360,6 +370,60 @@ class BackupManager:
                 
         return None
         
+    def delete_backup(self, backup_id: str, force: bool = False) -> bool:
+        """Delete a specific backup.
+        
+        Args:
+            backup_id: Backup ID to delete
+            force: Skip confirmation
+            
+        Returns:
+            True if successful
+        """
+        # Find backup in registry
+        backup_to_delete = None
+        backup_index = -1
+        
+        for i, backup in enumerate(self.registry['backups']):
+            if backup['id'] == backup_id:
+                backup_to_delete = backup
+                backup_index = i
+                break
+        
+        if not backup_to_delete:
+            logger.error(f"Backup not found: {backup_id}")
+            return False
+        
+        backup_file = Path(backup_to_delete['file'])
+        
+        # Confirm deletion unless forced
+        if not force:
+            logger.info(f"Backup to delete: {backup_id}")
+            logger.info(f"  Date: {backup_to_delete['timestamp']}")
+            logger.info(f"  Type: {backup_to_delete['type']}")
+            logger.info(f"  Description: {backup_to_delete.get('description', 'N/A')}")
+            if backup_file.exists():
+                size_mb = backup_file.stat().st_size / (1024**2)
+                logger.info(f"  Size: {size_mb:.1f} MB")
+        
+        try:
+            # Delete backup file
+            if backup_file.exists():
+                backup_file.unlink()
+                logger.info(f"Deleted backup file: {backup_file}")
+            else:
+                logger.warning(f"Backup file not found: {backup_file}")
+            
+            # Remove from registry
+            del self.registry['backups'][backup_index]
+            self._save_registry()
+            
+            logger.info(f"Backup {backup_id} deleted successfully")
+            return True
+            
+        except (IOError, OSError) as e:
+            logger.error(f"Error deleting backup: {e}")
+            return False
 
 def main():
     """Main entry point for backup manager."""
@@ -426,6 +490,18 @@ def main():
         help='Get backup information'
     )
     
+    parser.add_argument(
+        '--delete',
+        type=str,
+        help='Delete a backup by ID'
+    )
+    
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Force operation without confirmation'
+    )
+    
     args = parser.parse_args()
     
     # Initialize backup manager
@@ -475,6 +551,20 @@ def main():
             print(json.dumps(info, indent=2))
         else:
             print(f"Backup {args.info} not found")
+            sys.exit(1)
+    
+    elif args.delete:
+        # Confirm deletion if not forced
+        if not args.force:
+            response = input(f"Delete backup {args.delete}? This cannot be undone. [y/N]: ")
+            if response.lower() != 'y':
+                print("Deletion cancelled")
+                sys.exit(0)
+        
+        if manager.delete_backup(args.delete, force=args.force):
+            print(f"Backup {args.delete} deleted successfully")
+        else:
+            print(f"Failed to delete backup {args.delete}")
             sys.exit(1)
             
     else:

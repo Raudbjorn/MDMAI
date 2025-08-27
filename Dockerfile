@@ -23,18 +23,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt requirements-cpu.txt ./
-COPY setup.py pyproject.toml ./
-
-# Create virtual environment
+# Create virtual environment first (rarely changes)
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip
+# Upgrade pip (changes occasionally)
 RUN pip install --upgrade pip setuptools wheel
 
-# Install PyTorch based on GPU support
+# Copy only requirements files first (for better caching)
+COPY requirements.txt ./
+COPY setup.py pyproject.toml ./
+
+# Install PyTorch based on GPU support (heavy layer, cache separately)
 RUN if [ "$GPU_SUPPORT" = "cuda" ]; then \
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121; \
     elif [ "$GPU_SUPPORT" = "rocm" ]; then \
@@ -43,9 +43,12 @@ RUN if [ "$GPU_SUPPORT" = "cuda" ]; then \
         pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu; \
     fi
 
-# Install Python dependencies
+# Install base dependencies first (changes less frequently)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code and install package
 COPY . /build/
-RUN pip install -e .
+RUN pip install -e . --no-deps
 
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
@@ -72,8 +75,8 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application code
-COPY --chown=ttrpg:ttrpg . /app/
+# Copy application code from builder stage
+COPY --from=builder --chown=ttrpg:ttrpg /build/ /app/
 
 # Create necessary directories
 RUN mkdir -p /data /config /logs && \

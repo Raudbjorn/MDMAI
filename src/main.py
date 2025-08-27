@@ -818,12 +818,12 @@ def main():
         # Initialize security management system
         # Security can be configured via settings or environment variables
         security_config = SecurityConfig(
-            enable_authentication=getattr(settings, 'security_enable_authentication', False),
-            enable_rate_limiting=getattr(settings, 'security_enable_rate_limiting', True),
-            enable_audit=getattr(settings, 'security_enable_audit', True),
-            enable_input_validation=getattr(settings, 'security_enable_input_validation', True),
-            session_timeout_minutes=getattr(settings, 'security_session_timeout_minutes', 60),
-            audit_retention_days=getattr(settings, 'security_audit_retention_days', 90),
+            enable_authentication=settings.enable_authentication,
+            enable_rate_limiting=settings.enable_rate_limiting,
+            enable_audit=settings.enable_audit,
+            enable_input_validation=settings.enable_input_validation,
+            session_timeout_minutes=settings.session_timeout_minutes,
+            audit_retention_days=settings.audit_retention_days,
             allowed_directories=[
                 Path(settings.chroma_db_path),
                 Path(settings.cache_dir),

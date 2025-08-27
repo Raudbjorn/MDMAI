@@ -310,11 +310,21 @@ configure_application() {
     cp "$INSTALL_DIR/deploy/config/.env.template" "$CONFIG_DIR/.env"
     cp "$INSTALL_DIR/deploy/config/config.yaml.template" "$CONFIG_DIR/config.yaml"
     
-    # Update configuration paths
-    sed -i "s|CHROMA_DB_PATH=.*|CHROMA_DB_PATH=$DATA_DIR/chromadb|" "$CONFIG_DIR/.env"
-    sed -i "s|CACHE_DIR=.*|CACHE_DIR=$DATA_DIR/cache|" "$CONFIG_DIR/.env"
-    sed -i "s|LOG_FILE=.*|LOG_FILE=$LOG_DIR/ttrpg-assistant.log|" "$CONFIG_DIR/.env"
-    sed -i "s|SECURITY_LOG_FILE=.*|SECURITY_LOG_FILE=$LOG_DIR/security.log|" "$CONFIG_DIR/.env"
+    # Update configuration paths - portable sed usage
+    # Use different syntax for macOS vs Linux
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS requires backup extension with -i
+        sed -i '' "s|CHROMA_DB_PATH=.*|CHROMA_DB_PATH=$DATA_DIR/chromadb|" "$CONFIG_DIR/.env"
+        sed -i '' "s|CACHE_DIR=.*|CACHE_DIR=$DATA_DIR/cache|" "$CONFIG_DIR/.env"
+        sed -i '' "s|LOG_FILE=.*|LOG_FILE=$LOG_DIR/ttrpg-assistant.log|" "$CONFIG_DIR/.env"
+        sed -i '' "s|SECURITY_LOG_FILE=.*|SECURITY_LOG_FILE=$LOG_DIR/security.log|" "$CONFIG_DIR/.env"
+    else
+        # Linux doesn't require backup extension
+        sed -i "s|CHROMA_DB_PATH=.*|CHROMA_DB_PATH=$DATA_DIR/chromadb|" "$CONFIG_DIR/.env"
+        sed -i "s|CACHE_DIR=.*|CACHE_DIR=$DATA_DIR/cache|" "$CONFIG_DIR/.env"
+        sed -i "s|LOG_FILE=.*|LOG_FILE=$LOG_DIR/ttrpg-assistant.log|" "$CONFIG_DIR/.env"
+        sed -i "s|SECURITY_LOG_FILE=.*|SECURITY_LOG_FILE=$LOG_DIR/security.log|" "$CONFIG_DIR/.env"
+    fi
     
     # Set proper permissions
     chmod 640 "$CONFIG_DIR/.env"
@@ -337,6 +347,7 @@ install_systemd_service() {
     fi
     
     # Create service file from template
+    # Use a more portable approach that doesn't rely on sed -i
     cat "$INSTALL_DIR/deploy/config/systemd.service.template" | \
         sed "s|{{INSTALL_DIR}}|$INSTALL_DIR|g" | \
         sed "s|{{SERVICE_USER}}|$SERVICE_USER|g" | \
@@ -365,10 +376,18 @@ setup_docker() {
     # Copy Docker Compose template
     cp "$INSTALL_DIR/deploy/config/docker-compose.yaml.template" "$INSTALL_DIR/docker-compose.yaml"
     
-    # Update paths in docker-compose.yaml
-    sed -i "s|{{DATA_DIR}}|$DATA_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
-    sed -i "s|{{CONFIG_DIR}}|$CONFIG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
-    sed -i "s|{{LOG_DIR}}|$LOG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+    # Update paths in docker-compose.yaml - portable sed usage
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        # macOS requires backup extension with -i
+        sed -i '' "s|{{DATA_DIR}}|$DATA_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+        sed -i '' "s|{{CONFIG_DIR}}|$CONFIG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+        sed -i '' "s|{{LOG_DIR}}|$LOG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+    else
+        # Linux doesn't require backup extension
+        sed -i "s|{{DATA_DIR}}|$DATA_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+        sed -i "s|{{CONFIG_DIR}}|$CONFIG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+        sed -i "s|{{LOG_DIR}}|$LOG_DIR|g" "$INSTALL_DIR/docker-compose.yaml"
+    fi
     
     # Build Docker image
     cd "$INSTALL_DIR"

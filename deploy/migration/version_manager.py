@@ -5,11 +5,12 @@ Handles version tracking, comparison, and migration paths.
 """
 
 import json
-import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 import logging
+from packaging import version
+from packaging.version import Version, InvalidVersion
 
 logger = logging.getLogger(__name__)
 
@@ -105,48 +106,53 @@ class VersionManager:
         self._save_version_info()
         logger.info(f"Version updated from {old_version} to {new_version}")
         
-    def is_valid_version(self, version: str) -> bool:
+    def is_valid_version(self, version_str: str) -> bool:
         """Check if version string is valid.
         
         Args:
-            version: Version string to validate
+            version_str: Version string to validate
             
         Returns:
             True if valid
         """
-        # Semantic versioning pattern
-        pattern = r'^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?(\+[a-zA-Z0-9.-]+)?$'
-        return bool(re.match(pattern, version))
+        try:
+            Version(version_str)
+            return True
+        except InvalidVersion:
+            return False
         
-    def parse_version(self, version: str) -> Tuple[int, int, int, str, str]:
+    def parse_version(self, version_str: str) -> Tuple[int, int, int, str, str]:
         """Parse version string into components.
         
         Args:
-            version: Version string
+            version_str: Version string
             
         Returns:
             Tuple of (major, minor, patch, prerelease, build)
         """
-        if not self.is_valid_version(version):
-            raise ValueError(f"Invalid version: {version}")
+        try:
+            v = Version(version_str)
+        except InvalidVersion:
+            raise ValueError(f"Invalid version: {version_str}")
             
-        # Parse semantic version
-        match = re.match(
-            r'^(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9.-]+))?(?:\+([a-zA-Z0-9.-]+))?$',
-            version
-        )
+        # Extract components from packaging.version.Version
+        major = v.major
+        minor = v.minor if v.minor is not None else 0
+        patch = v.micro if v.micro is not None else 0
         
-        if match:
-            major, minor, patch, prerelease, build = match.groups()
-            return (
-                int(major),
-                int(minor),
-                int(patch),
-                prerelease or '',
-                build or ''
-            )
-        else:
-            raise ValueError(f"Cannot parse version: {version}")
+        # Handle prerelease and build metadata
+        prerelease = ''
+        if v.pre:
+            # Format prerelease (alpha, beta, rc, etc.)
+            phase, number = v.pre
+            prerelease = f"{phase}{number}"
+        elif v.dev is not None:
+            prerelease = f"dev{v.dev}"
+        
+        # Local version identifier acts as build metadata
+        build = v.local if v.local else ''
+        
+        return (major, minor, patch, prerelease, build)
             
     def compare_versions(self, version1: str, version2: str) -> int:
         """Compare two versions.
@@ -158,25 +164,18 @@ class VersionManager:
         Returns:
             -1 if version1 < version2, 0 if equal, 1 if version1 > version2
         """
-        v1 = self.parse_version(version1)
-        v2 = self.parse_version(version2)
+        try:
+            v1 = Version(version1)
+            v2 = Version(version2)
+        except InvalidVersion as e:
+            raise ValueError(f"Invalid version for comparison: {e}")
         
-        # Compare major, minor, patch
-        for i in range(3):
-            if v1[i] < v2[i]:
-                return -1
-            elif v1[i] > v2[i]:
-                return 1
-                
-        # Compare prerelease (empty is greater than any prerelease)
-        if v1[3] and not v2[3]:
+        if v1 < v2:
             return -1
-        elif not v1[3] and v2[3]:
+        elif v1 > v2:
             return 1
-        elif v1[3] != v2[3]:
-            return -1 if v1[3] < v2[3] else 1
-            
-        return 0
+        else:
+            return 0
         
     def get_migration_path(self, from_version: str, to_version: str) -> List[str]:
         """Get migration path between versions.

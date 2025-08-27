@@ -16,6 +16,16 @@ from datetime import datetime
 from typing import Dict, Optional
 import hashlib
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.platform_utils import (
+    manage_service,
+    set_file_permissions,
+    set_owner,
+    is_unix_like,
+    is_windows
+)
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -53,8 +63,10 @@ class RestoreManager:
             try:
                 with open(self.registry_file) as f:
                     return json.load(f)
-            except Exception as e:
-                logger.error(f"Error loading registry: {e}")
+            except (IOError, OSError) as e:
+                logger.error(f"Error reading registry file: {e}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing registry JSON: {e}")
                 
         return {'backups': []}
         
@@ -160,8 +172,20 @@ class RestoreManager:
                 
             return True
             
-        except Exception as e:
-            logger.error(f"Restoration failed: {e}")
+        except (IOError, OSError) as e:
+            logger.error(f"File system error during restoration: {e}")
+            
+            # Cleanup on failure
+            if 'temp_dir' in locals() and temp_dir.exists():
+                shutil.rmtree(temp_dir)
+        except tarfile.TarError as e:
+            logger.error(f"Archive error during restoration: {e}")
+            
+            # Cleanup on failure
+            if 'temp_dir' in locals() and temp_dir.exists():
+                shutil.rmtree(temp_dir)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing backup metadata: {e}")
             
             # Cleanup on failure
             if 'temp_dir' in locals() and temp_dir.exists():
@@ -203,8 +227,11 @@ class RestoreManager:
         try:
             with tarfile.open(backup_file, 'r:gz') as tar:
                 tar.getmembers()
-        except Exception as e:
+        except tarfile.TarError as e:
             logger.error(f"Archive verification failed: {e}")
+            return False
+        except (IOError, OSError) as e:
+            logger.error(f"Error reading archive file: {e}")
             return False
             
         logger.info("Backup verification passed")
@@ -244,51 +271,66 @@ class RestoreManager:
                 backup_type='pre-restore',
                 description='Automatic backup before restoration'
             )
-        except Exception as e:
-            logger.warning(f"Could not create pre-restore backup: {e}")
+        except ImportError as e:
+            logger.warning(f"Could not import backup manager module: {e}")
+            return None
+        except (IOError, OSError) as e:
+            logger.warning(f"File system error creating pre-restore backup: {e}")
             return None
             
     def _stop_services(self):
         """Stop running services."""
         try:
-            # Check if systemd service exists
-            import subprocess
-            result = subprocess.run(
-                ['systemctl', 'is-active', 'ttrpg-assistant'],
-                capture_output=True,
-                text=True
-            )
-            
-            if result.returncode == 0:
-                logger.info("Stopping ttrpg-assistant service")
-                subprocess.run(['systemctl', 'stop', 'ttrpg-assistant'])
-        except Exception as e:
+            logger.info("Stopping ttrpg-assistant service")
+            if manage_service('ttrpg-assistant', 'stop'):
+                logger.info("Service stopped successfully")
+            else:
+                logger.warning("Service may not be running or not installed as a service")
+        except (ImportError, OSError) as e:
             logger.warning(f"Could not stop services: {e}")
             
     def _start_services(self):
         """Start services after restoration."""
         try:
-            import subprocess
             logger.info("Starting ttrpg-assistant service")
-            subprocess.run(['systemctl', 'start', 'ttrpg-assistant'])
-        except Exception as e:
+            if manage_service('ttrpg-assistant', 'start'):
+                logger.info("Service started successfully")
+            else:
+                logger.warning("Could not start service - may need manual start")
+        except (ImportError, OSError) as e:
             logger.warning(f"Could not start services: {e}")
             
     def _set_permissions(self):
         """Set appropriate permissions on restored files."""
         try:
-            import subprocess
-            
-            # Set ownership
-            subprocess.run(['chown', '-R', 'ttrpg:ttrpg', str(self.data_dir)])
-            subprocess.run(['chown', '-R', 'ttrpg:ttrpg', str(self.config_dir)])
-            
-            # Set permissions
-            subprocess.run(['chmod', '750', str(self.data_dir)])
-            subprocess.run(['chmod', '750', str(self.config_dir)])
-            
-            logger.info("Permissions set successfully")
-        except Exception as e:
+            # Only set ownership and permissions on Unix-like systems
+            if is_unix_like():
+                # Set ownership (only on Unix-like systems)
+                for directory in [self.data_dir, self.config_dir]:
+                    if directory.exists():
+                        # Recursively set ownership
+                        for path in directory.rglob('*'):
+                            set_owner(path, user='ttrpg', group='ttrpg')
+                        set_owner(directory, user='ttrpg', group='ttrpg')
+                
+                # Set permissions
+                set_file_permissions(self.data_dir, 0o750)
+                set_file_permissions(self.config_dir, 0o750)
+                
+                # Set file permissions recursively
+                for directory in [self.data_dir, self.config_dir]:
+                    for path in directory.rglob('*'):
+                        if path.is_dir():
+                            set_file_permissions(path, 0o750)
+                        else:
+                            set_file_permissions(path, 0o640)
+                
+                logger.info("Permissions set successfully")
+            elif is_windows():
+                logger.info("Running on Windows - skipping Unix-style permissions")
+            else:
+                logger.warning("Unknown platform - skipping permissions")
+        except (OSError, PermissionError) as e:
             logger.warning(f"Could not set permissions: {e}")
             
 
