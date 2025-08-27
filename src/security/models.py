@@ -208,9 +208,7 @@ class WebSession(BaseModel):
         
         return False
 
-    def update_activity(self) -> None:
-        """Update last activity timestamp."""
-        self.last_activity_at = datetime.utcnow()
+        self.last_activity_at = datetime.now(timezone.utc)
 
 
 class ApiKey(BaseModel):
