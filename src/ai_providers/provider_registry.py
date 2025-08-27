@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from structlog import get_logger
 
 from .abstract_provider import AbstractProvider
+from .latency_tracker import LatencyTracker
 from .models import (
     AIRequest,
     ProviderCapability,
@@ -27,6 +28,7 @@ class ProviderRegistry:
         self._provider_priorities: Dict[ProviderType, int] = {}
         self._health_check_interval = 300  # 5 minutes
         self._health_check_task: Optional[asyncio.Task] = None
+        self._latency_tracker = LatencyTracker()
         self._selection_strategies: Dict[str, callable] = {
             "round_robin": self._round_robin_strategy,
             "priority": self._priority_strategy,
@@ -35,6 +37,7 @@ class ProviderRegistry:
             "load_balanced": self._load_balanced_strategy,
             "failover": self._failover_strategy,
             "random": self._random_strategy,
+            "speed": self._speed_optimized_strategy,
         }
         self._round_robin_counter = 0
         self._load_tracker: Dict[ProviderType, int] = {}
@@ -201,6 +204,9 @@ class ProviderRegistry:
             self._load_tracker[selected.provider_type] = \
                 self._load_tracker.get(selected.provider_type, 0) + 1
             
+            # Record latency for this request (will be updated when response completes)
+            # This helps track provider selection patterns
+            
             logger.debug(
                 "Selected provider",
                 provider=selected.provider_type.value,
@@ -223,6 +229,9 @@ class ProviderRegistry:
         if interval:
             self._health_check_interval = interval
         
+        # Start latency tracker
+        await self._latency_tracker.start()
+        
         self._health_check_task = asyncio.create_task(self._health_monitoring_loop())
         logger.info(
             "Started health monitoring",
@@ -238,6 +247,9 @@ class ProviderRegistry:
             except asyncio.CancelledError:
                 pass
             logger.info("Stopped health monitoring")
+        
+        # Stop latency tracker
+        await self._latency_tracker.stop()
     
     async def perform_health_check(self) -> Dict[ProviderType, ProviderHealth]:
         """Perform health check on all providers.
@@ -445,6 +457,37 @@ class ProviderRegistry:
         
         import random
         return random.choice(providers)
+    
+    def _speed_optimized_strategy(
+        self, providers: List[AbstractProvider], request: AIRequest
+    ) -> Optional[AbstractProvider]:
+        """Speed-optimized selection using real latency metrics."""
+        if not providers:
+            return None
+        
+        # Get provider types from available providers
+        provider_types = [p.provider_type for p in providers]
+        
+        # Get fastest provider based on real latency
+        fastest = self._latency_tracker.get_fastest_provider(
+            provider_types, 
+            model=request.model,
+            min_success_rate=0.9
+        )
+        
+        if fastest:
+            for provider in providers:
+                if provider.provider_type == fastest:
+                    logger.debug(
+                        "Selected provider based on latency",
+                        provider=fastest.value,
+                        model=request.model,
+                    )
+                    return provider
+        
+        # Fallback to priority if no latency data
+        logger.debug("No latency data available, falling back to priority")
+        return self._priority_strategy(providers, request)
     
     # Helper methods
     

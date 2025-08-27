@@ -136,7 +136,10 @@ class AIProviderManager:
             AIProviderError: If request cannot be processed
         """
         if not self._initialized:
-            raise RuntimeError("AI Provider Manager not initialized")
+            raise NoProviderAvailableError(
+                "AI Provider Manager not initialized",
+                details={"action": "Call initialize() before making requests"}
+            )
         
         logger.info(
             "Processing AI request",
@@ -148,7 +151,14 @@ class AIProviderManager:
         # Select optimal provider
         provider = await self.registry.select_provider(request, selection, strategy)
         if not provider:
-            raise RuntimeError("No suitable AI provider available")
+            raise NoProviderAvailableError(
+                "No suitable AI provider available for the request",
+                details={
+                    "model": request.model,
+                    "strategy": strategy,
+                    "available_providers": len(self.registry.get_available_providers())
+                }
+            )
         
         # Translate tools if provided
         if tools:
@@ -163,7 +173,14 @@ class AIProviderManager:
         )
         
         if not budget_ok:
-            raise RuntimeError(f"Budget limits exceeded: {', '.join(violations)}")
+            raise BudgetExceededError(
+                f"Budget limits exceeded: {', '.join(violations)}",
+                details={
+                    "estimated_cost": estimated_cost,
+                    "violations": violations,
+                    "provider": provider.provider_type.value
+                }
+            )
         
         # Execute request with error handling and retry logic
         response = await self.error_handler.retry_with_strategy(
@@ -210,7 +227,10 @@ class AIProviderManager:
             AIProviderError: If streaming cannot be started
         """
         if not self._initialized:
-            raise RuntimeError("AI Provider Manager not initialized")
+            raise NoProviderAvailableError(
+                "AI Provider Manager not initialized",
+                details={"action": "Call initialize() before making requests"}
+            )
         
         logger.info(
             "Starting AI request stream",
@@ -230,7 +250,14 @@ class AIProviderManager:
         # Select optimal provider
         provider = await self.registry.select_provider(request, selection, strategy)
         if not provider:
-            raise RuntimeError("No suitable streaming AI provider available")
+            raise NoProviderAvailableError(
+                "No suitable streaming AI provider available",
+                details={
+                    "model": request.model,
+                    "strategy": strategy,
+                    "streaming_required": True
+                }
+            )
         
         # Translate tools if provided
         if tools:
@@ -244,7 +271,14 @@ class AIProviderManager:
         )
         
         if not budget_ok:
-            raise RuntimeError(f"Budget limits exceeded: {', '.join(violations)}")
+            raise BudgetExceededError(
+                f"Budget limits exceeded: {', '.join(violations)}",
+                details={
+                    "estimated_cost": estimated_cost,
+                    "violations": violations,
+                    "provider": provider.provider_type.value
+                }
+            )
         
         try:
             # Create streaming generator with error handling
@@ -327,7 +361,10 @@ class AIProviderManager:
             AIProviderError: If streaming cannot be started
         """
         if not self._initialized:
-            raise RuntimeError("AI Provider Manager not initialized")
+            raise NoProviderAvailableError(
+                "AI Provider Manager not initialized",
+                details={"action": "Call initialize() before making requests"}
+            )
         
         logger.info(
             "Processing streaming AI request",
@@ -347,7 +384,14 @@ class AIProviderManager:
         # Select optimal provider
         provider = await self.registry.select_provider(request, selection, strategy)
         if not provider:
-            raise RuntimeError("No suitable streaming AI provider available")
+            raise NoProviderAvailableError(
+                "No suitable streaming AI provider available",
+                details={
+                    "model": request.model,
+                    "strategy": strategy,
+                    "streaming_required": True
+                }
+            )
         
         # Translate tools if provided
         if tools:
@@ -361,7 +405,14 @@ class AIProviderManager:
         )
         
         if not budget_ok:
-            raise RuntimeError(f"Budget limits exceeded: {', '.join(violations)}")
+            raise BudgetExceededError(
+                f"Budget limits exceeded: {', '.join(violations)}",
+                details={
+                    "estimated_cost": estimated_cost,
+                    "violations": violations,
+                    "provider": provider.provider_type.value
+                }
+            )
         
         # Create error-handled stream generator
         async def error_handled_stream():
@@ -537,7 +588,10 @@ class AIProviderManager:
         """
         provider = await self.registry.select_provider(request, selection, strategy)
         if not provider:
-            raise RuntimeError("No suitable provider available")
+            raise NoProviderAvailableError(
+                "No suitable provider available",
+                details={"model": request.model, "strategy": strategy}
+            )
         
         if tools:
             request.tools = tools
@@ -570,7 +624,10 @@ class AIProviderManager:
         """
         provider = await self.registry.select_provider(request, selection, strategy)
         if not provider:
-            raise RuntimeError("No suitable provider available")
+            raise NoProviderAvailableError(
+                "No suitable provider available",
+                details={"model": request.model, "strategy": strategy}
+            )
         
         if tools:
             request.tools = tools

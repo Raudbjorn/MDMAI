@@ -348,6 +348,19 @@ class ContextPersistenceLayer:
             
             # Store in database
             async with self._get_async_connection() as conn:
+                # Prepare metadata without duplicating fields stored separately
+                metadata_to_store = context.metadata.copy() if context.metadata else {}
+                
+                # Remove fields that are stored in dedicated columns to avoid duplication
+                fields_to_exclude = {
+                    'title', 'description', 'owner_id', 'collaborators', 
+                    'permissions', 'state', 'expires_at', 'auto_archive_days',
+                    'context_type', 'current_version', 'version_history'
+                }
+                
+                for field in fields_to_exclude:
+                    metadata_to_store.pop(field, None)
+                
                 result = await conn.fetchrow("""
                     INSERT INTO contexts (
                         context_id, context_type, title, description,
@@ -364,7 +377,7 @@ class ContextPersistenceLayer:
                     context.title,
                     context.description,
                     context.data,
-                    context.metadata,
+                    metadata_to_store,  # Use filtered metadata
                     context.current_version,
                     context.version_history,
                     context.owner_id,

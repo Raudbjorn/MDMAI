@@ -346,7 +346,18 @@ class AnthropicProvider(AbstractProvider):
                     request_id=request.request_id,
                     content=delta.get("text", ""),
                 )
+        elif event_type == "message_delta":
+            # Check for stop_reason in message_delta
+            delta = data.get("delta", {})
+            stop_reason = delta.get("stop_reason")
+            if stop_reason:
+                return StreamingChunk(
+                    request_id=request.request_id,
+                    is_complete=True,
+                    finish_reason=stop_reason,
+                )
         elif event_type == "message_stop":
+            # Fallback to message_stop for completion
             return StreamingChunk(
                 request_id=request.request_id,
                 is_complete=True,

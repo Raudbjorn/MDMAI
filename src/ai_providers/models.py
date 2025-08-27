@@ -100,7 +100,7 @@ class ProviderTool(BaseModel):
     
     name: str
     description: str 
-    parameters: Dict[str, Any]
+    input_schema: Dict[str, Any]  # Changed from parameters to match MCPTool's inputSchema
     provider_type: ProviderType
 
 
@@ -154,8 +154,8 @@ class UsageRecord:
     """Usage tracking record."""
     
     request_id: str
-    session_id: Optional[str] = None
     provider_type: ProviderType
+    session_id: Optional[str] = None
     model: str = ""
     input_tokens: int = 0
     output_tokens: int = 0

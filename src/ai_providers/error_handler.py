@@ -92,6 +92,13 @@ class BudgetExceededError(AIProviderError):
         super().__init__(message, retryable=False, **kwargs)
 
 
+class NoProviderAvailableError(AIProviderError):
+    """No suitable provider available error."""
+    
+    def __init__(self, message: str, **kwargs):
+        super().__init__(message, retryable=False, **kwargs)
+
+
 class RetryStrategy(Enum):
     """Retry strategy types."""
     

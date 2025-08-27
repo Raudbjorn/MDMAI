@@ -3,6 +3,7 @@
 import asyncio
 import os
 import resource
+import shutil
 import signal
 import subprocess
 import sys
@@ -331,7 +332,6 @@ class ProcessSandbox:
         finally:
             # Cleanup
             if self.config.filesystem_policy.cleanup_temp:
-                import shutil
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as e:
@@ -501,4 +501,3 @@ class ProcessSandbox:
         }
 
 
-import shutil  # Add at top with other imports

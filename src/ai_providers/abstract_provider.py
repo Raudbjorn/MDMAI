@@ -7,6 +7,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from structlog import get_logger
 
+from .token_estimator import TokenEstimator
 from .models import (
     AIRequest,
     AIResponse,
@@ -45,6 +46,7 @@ class AbstractProvider(ABC):
         self._models: Dict[str, ModelSpec] = {}
         self._client = None
         self._initialized = False
+        self._token_estimator = TokenEstimator()
         
     @property
     def health(self) -> ProviderHealth:
@@ -378,13 +380,17 @@ class AbstractProvider(ABC):
         Returns:
             int: Estimated token count
         """
-        # Simple estimation: 4 characters per token
-        total_chars = 0
-        for message in messages:
-            if isinstance(message.get("content"), str):
-                total_chars += len(message["content"])
+        # Use advanced token estimator for accurate counts
+        # Get the model from the first available model if not specified
+        model = None
+        if self._models:
+            model = next(iter(self._models.keys()))
         
-        return total_chars // 4
+        return self._token_estimator.estimate_tokens(
+            content=messages,
+            provider_type=self.provider_type,
+            model=model
+        )
     
     def _update_health_success(self, latency_ms: float) -> None:
         """Update health metrics after a successful request."""

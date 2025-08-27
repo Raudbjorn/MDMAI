@@ -287,16 +287,30 @@ class GoogleProvider(AbstractProvider):
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert messages to Google format."""
         contents = []
+        system_content = ""
         
+        # First pass: collect system messages
+        for message in messages:
+            if message.get("role") == "system":
+                if system_content:
+                    system_content += "\n\n"
+                system_content += message.get("content", "")
+        
+        # Second pass: convert messages
+        first_user_message = True
         for message in messages:
             role = message.get("role")
-            content = message.get("content")
+            content = message.get("content", "")
             
             if role == "system":
-                # Google doesn't have system messages, prepend to first user message
+                # Already collected
                 continue
             elif role == "user":
                 google_role = "user"
+                # Prepend system content to first user message
+                if first_user_message and system_content:
+                    content = f"{system_content}\n\n{content}"
+                    first_user_message = False
             elif role == "assistant":
                 google_role = "model"
             else:
@@ -305,6 +319,13 @@ class GoogleProvider(AbstractProvider):
             contents.append({
                 "role": google_role,
                 "parts": [{"text": content}],
+            })
+        
+        # If no user messages but we have system content, create a user message
+        if system_content and not contents:
+            contents.append({
+                "role": "user",
+                "parts": [{"text": system_content}],
             })
         
         return contents

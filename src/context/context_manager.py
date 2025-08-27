@@ -696,31 +696,84 @@ class ContextManager:
         # Only owner can delete by default
         return context.owner_id == user_id
     
-    def get_performance_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """Get comprehensive performance statistics."""
         stats = {
             "context_manager": self._performance_stats,
         }
         
+        # Gather stats from all components asynchronously
+        tasks = []
+        components = []
+        
         if self.persistence:
-            stats["persistence"] = asyncio.create_task(self.persistence.get_performance_stats())
+            tasks.append(self.persistence.get_performance_stats())
+            components.append("persistence")
         
         if self.event_bus:
-            stats["event_bus"] = self.event_bus.get_performance_stats()
+            # If event_bus has async method, await it
+            if hasattr(self.event_bus.get_performance_stats, '__call__'):
+                if asyncio.iscoroutinefunction(self.event_bus.get_performance_stats):
+                    tasks.append(self.event_bus.get_performance_stats())
+                    components.append("event_bus")
+                else:
+                    stats["event_bus"] = self.event_bus.get_performance_stats()
         
         if self.sync_manager:
-            stats["sync_manager"] = self.sync_manager.get_performance_stats()
+            if hasattr(self.sync_manager, 'get_performance_stats'):
+                if asyncio.iscoroutinefunction(self.sync_manager.get_performance_stats):
+                    tasks.append(self.sync_manager.get_performance_stats())
+                    components.append("sync_manager")
+                else:
+                    stats["sync_manager"] = self.sync_manager.get_performance_stats()
         
         if self.translator:
-            stats["translator"] = self.translator.get_performance_stats()
+            if hasattr(self.translator, 'get_performance_stats'):
+                if asyncio.iscoroutinefunction(self.translator.get_performance_stats):
+                    tasks.append(self.translator.get_performance_stats())
+                    components.append("translator")
+                else:
+                    stats["translator"] = self.translator.get_performance_stats()
         
         if self.validator:
-            stats["validator"] = self.validator.get_performance_stats()
+            if hasattr(self.validator, 'get_performance_stats'):
+                if asyncio.iscoroutinefunction(self.validator.get_performance_stats):
+                    tasks.append(self.validator.get_performance_stats())
+                    components.append("validator")
+                else:
+                    stats["validator"] = self.validator.get_performance_stats()
         
         if self.version_manager:
-            stats["version_manager"] = self.version_manager.get_performance_stats()
+            if hasattr(self.version_manager, 'get_performance_stats'):
+                if asyncio.iscoroutinefunction(self.version_manager.get_performance_stats):
+                    tasks.append(self.version_manager.get_performance_stats())
+                    components.append("version_manager")
+                else:
+                    stats["version_manager"] = self.version_manager.get_performance_stats()
+        
+        # Await all async stats gathering
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for component, result in zip(components, results):
+                if not isinstance(result, Exception):
+                    stats[component] = result
+                else:
+                    logger.warning(f"Failed to get stats from {component}: {result}")
+                    stats[component] = {"error": str(result)}
         
         return stats
+    
+    # Keep the old method for backwards compatibility but mark as deprecated
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get performance statistics (deprecated - use get_stats() instead)."""
+        import warnings
+        warnings.warn("get_performance_stats() is deprecated, use get_stats() instead", DeprecationWarning)
+        
+        # Return synchronous stats only
+        return {
+            "context_manager": self._performance_stats,
+            "warning": "This method is deprecated and returns partial stats. Use get_stats() for complete async stats."
+        }
     
     async def cleanup(self) -> None:
         """Clean up all resources."""
