@@ -6,6 +6,7 @@ import json
 import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -27,6 +28,21 @@ from src.performance.parallel_mcp_tools import register_parallel_tools
 from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
 from src.search.search_service import SearchService
+from src.security import (
+    AccessLevel,
+    FilePathParameters,
+    OperationType,
+    Permission,
+    ResourceType,
+    SearchParameters,
+    SecurityConfig,
+    SecurityEventType,
+    SecurityManager,
+    SecuritySeverity,
+    get_security_manager,
+    initialize_security,
+    secure_mcp_tool,
+)
 from src.session import SessionManager, initialize_session_tools, register_session_tools
 from src.source_management import initialize_source_tools, register_source_tools
 from src.utils.user_interaction import register_user_interaction_tools
@@ -61,8 +77,18 @@ session_manager: Optional[SessionManager] = None
 # Performance management components (initialized in main())
 cache_manager: Optional[GlobalCacheManager] = None
 
+# Security management components (initialized in main())
+security_manager: Optional[SecurityManager] = None
+
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.SEARCH,
+    validate_params={"query": SearchParameters},
+    resource_type=ResourceType.CONTENT,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def search(
     query: str,
     rulebook: Optional[str] = None,
@@ -147,6 +173,13 @@ async def search(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.WRITE,
+    operation_type=OperationType.CREATE,
+    validate_params={"pdf_path": FilePathParameters},
+    resource_type=ResourceType.SOURCE,
+    audit_event=SecurityEventType.CAMPAIGN_CREATED,
+)
 async def add_source(
     pdf_path: str,
     rulebook_name: str,
@@ -232,6 +265,12 @@ async def add_source(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.SOURCE,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def list_sources(
     system: Optional[str] = None,
     source_type: Optional[str] = None,
@@ -302,6 +341,12 @@ async def list_sources(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def search_analytics() -> Dict[str, Any]:
     """
     Get search analytics and statistics.
@@ -324,6 +369,12 @@ async def search_analytics() -> Dict[str, Any]:
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.WRITE,
+    operation_type=OperationType.UPDATE,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+)
 async def clear_search_cache() -> Dict[str, str]:
     """
     Clear the search result cache.
@@ -346,6 +397,12 @@ async def clear_search_cache() -> Dict[str, str]:
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.ADMIN,
+    operation_type=OperationType.UPDATE,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+)
 async def update_search_indices() -> Dict[str, str]:
     """
     Update search indices for all collections.
@@ -368,6 +425,12 @@ async def update_search_indices() -> Dict[str, str]:
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def server_info() -> Dict[str, Any]:
     """
     Get information about the TTRPG Assistant server.
@@ -404,6 +467,12 @@ async def server_info() -> Dict[str, Any]:
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.WRITE,
+    operation_type=OperationType.CREATE,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.CAMPAIGN_CREATED,
+)
 async def create_personality_profile(
     name: str,
     system: str,
@@ -457,6 +526,12 @@ async def create_personality_profile(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def list_personality_profiles(
     system: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -506,6 +581,12 @@ async def list_personality_profiles(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.WRITE,
+    operation_type=OperationType.UPDATE,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+)
 async def set_active_personality(
     profile_name: str,
     system: Optional[str] = None,
@@ -555,6 +636,12 @@ async def set_active_personality(
 
 
 @mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.CONTENT,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
 async def apply_personality(
     content: str,
     profile_name: Optional[str] = None,
@@ -609,9 +696,117 @@ async def apply_personality(
         }
 
 
+@mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.READ,
+    operation_type=OperationType.READ,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.DATA_ACCESS,
+)
+async def security_status() -> Dict[str, Any]:
+    """
+    Get security status and statistics.
+    
+    Returns:
+        Security status including active sessions, rate limits, and audit statistics
+    """
+    if security_manager is None:
+        return {
+            "status": "error",
+            "error": "Security not initialized",
+            "security_enabled": False,
+        }
+    
+    try:
+        # Get security report
+        report = security_manager.get_security_report()
+        
+        # Get current rate limit status for common operations
+        rate_limits = {}
+        for op_type in [OperationType.SEARCH, OperationType.CREATE, OperationType.UPDATE]:
+            status = security_manager.rate_limiter.check_rate_limit("default", op_type, consume=False)
+            rate_limits[op_type.value] = {
+                "allowed": status.allowed,
+                "remaining": status.remaining,
+                "reset_in": status.reset_in,
+            }
+        
+        # Get session statistics
+        session_stats = {
+            "active_sessions": len(security_manager.access_control.sessions),
+            "active_users": len([u for u in security_manager.access_control.users.values() if u.is_active]),
+        }
+        
+        return {
+            "status": "success",
+            "security_enabled": True,
+            "configuration": {
+                "authentication_enabled": security_manager.config.enable_authentication,
+                "rate_limiting_enabled": security_manager.config.enable_rate_limiting,
+                "audit_enabled": security_manager.config.enable_audit,
+                "input_validation_enabled": security_manager.config.enable_input_validation,
+            },
+            "sessions": session_stats,
+            "rate_limits": rate_limits,
+            "audit_summary": {
+                "total_events": report.total_events,
+                "security_events": report.security_events,
+                "failed_auth_attempts": report.failed_auth_attempts,
+                "permission_violations": report.permission_violations,
+                "injection_attempts": report.injection_attempts,
+                "rate_limit_violations": report.rate_limit_violations,
+            },
+            "last_maintenance": datetime.now().isoformat() if security_manager else None,
+        }
+    except Exception as e:
+        logger.error("Failed to get security status", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+            "security_enabled": security_manager is not None,
+        }
+
+
+@mcp.tool()
+@secure_mcp_tool(
+    permission=Permission.ADMIN,
+    operation_type=OperationType.UPDATE,
+    resource_type=ResourceType.CONFIG,
+    audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
+)
+async def security_maintenance() -> Dict[str, Any]:
+    """
+    Perform security maintenance tasks.
+    
+    Returns:
+        Results of maintenance operations
+    """
+    if security_manager is None:
+        return {
+            "status": "error",
+            "error": "Security not initialized",
+        }
+    
+    try:
+        results = security_manager.perform_security_maintenance()
+        
+        return {
+            "status": "success",
+            "maintenance_results": results,
+            "timestamp": datetime.now().isoformat(),
+            "message": "Security maintenance completed successfully",
+        }
+    except Exception as e:
+        logger.error("Failed to perform security maintenance", error=str(e))
+        return {
+            "status": "error",
+            "error": str(e),
+        }
+
+
 def main():
     """Main entry point for the MCP server."""
-    global db, cache_manager
+    global db, cache_manager, security_manager
 
     try:
         # Create necessary directories
@@ -619,6 +814,31 @@ def main():
 
         # Initialize database manager
         db = ChromaDBManager()
+        
+        # Initialize security management system
+        # Security can be configured via settings or environment variables
+        security_config = SecurityConfig(
+            enable_authentication=settings.enable_authentication,
+            enable_rate_limiting=settings.enable_rate_limiting,
+            enable_audit=settings.enable_audit,
+            enable_input_validation=settings.enable_input_validation,
+            session_timeout_minutes=settings.session_timeout_minutes,
+            audit_retention_days=settings.audit_retention_days,
+            allowed_directories=[
+                Path(settings.chroma_db_path),
+                Path(settings.cache_dir),
+                Path("/tmp"),
+            ],
+        )
+        security_manager = initialize_security(security_config)
+        
+        logger.info(
+            "Security system initialized",
+            authentication=security_config.enable_authentication,
+            rate_limiting=security_config.enable_rate_limiting,
+            audit=security_config.enable_audit,
+            input_validation=security_config.enable_input_validation,
+        )
 
         # Initialize performance/cache management system
         cache_manager = GlobalCacheManager()
@@ -631,6 +851,15 @@ def main():
 
         # Register cleanup handler
         def cleanup_resources():
+            # Cleanup security manager
+            if security_manager:
+                try:
+                    # Perform final security maintenance
+                    security_manager.perform_security_maintenance()
+                    logger.info("Security cleanup completed")
+                except Exception as e:
+                    logger.error("Error during security cleanup", error=str(e))
+            
             # Cleanup cache manager
             if cache_manager:
                 try:
@@ -708,16 +937,31 @@ def main():
 
     except KeyboardInterrupt:
         logger.info("Server shutdown requested")
+        if security_manager:
+            try:
+                security_manager.perform_security_maintenance()
+            except Exception:
+                pass
         if cache_manager:
             cache_manager.shutdown()
         sys.exit(0)
     except Exception as e:
         logger.error("Server failed to start", error=str(e))
+        if security_manager:
+            try:
+                security_manager.perform_security_maintenance()
+            except Exception:
+                pass
         if cache_manager:
             cache_manager.shutdown()
         sys.exit(1)
     finally:
-        # Ensure cache manager is shut down
+        # Ensure security and cache managers are shut down
+        if security_manager:
+            try:
+                security_manager.perform_security_maintenance()
+            except Exception:
+                pass
         if cache_manager:
             try:
                 cache_manager.shutdown()

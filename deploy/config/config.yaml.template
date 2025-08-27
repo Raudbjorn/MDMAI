@@ -1,0 +1,335 @@
+# TTRPG Assistant MCP Server - Configuration Template
+# This file provides structured configuration for the application
+
+server:
+  name: "TTRPG Assistant MCP Server"
+  version: "1.0.0"
+  description: "MCP server for TTRPG assistance with rule lookup and AI content generation"
+  
+  # Server settings
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  
+  # MCP specific settings
+  mcp:
+    stdio_mode: true
+    protocol_version: "1.0"
+    capabilities:
+      - search
+      - character_generation
+      - campaign_management
+      - source_management
+      - session_tracking
+
+database:
+  # ChromaDB configuration
+  chromadb:
+    path: "/var/lib/ttrpg-assistant/chromadb"
+    collection_prefix: "ttrpg_"
+    implementation: "duckdb+parquet"
+    persist_directory: true
+    anonymized_telemetry: false
+  
+  # Connection pool settings
+  connection_pool:
+    size: 10
+    max_overflow: 20
+    timeout: 30
+    recycle: 3600
+
+search:
+  # Search engine configuration
+  engine:
+    type: "hybrid"  # hybrid, semantic, keyword
+    default_limit: 5
+    max_limit: 50
+  
+  # Hybrid search weights
+  weights:
+    semantic: 0.7
+    keyword: 0.3
+  
+  # Semantic search settings
+  semantic:
+    model: "all-MiniLM-L6-v2"
+    similarity_threshold: 0.5
+    rerank_enabled: true
+    rerank_top_k: 20
+  
+  # Keyword search settings
+  keyword:
+    algorithm: "bm25"
+    tokenizer: "standard"
+    stop_words: "english"
+
+pdf_processing:
+  # Document processing settings
+  chunking:
+    max_size: 1000
+    overlap: 200
+    separator: "\n\n"
+  
+  # Extraction settings
+  extraction:
+    enable_ocr: false
+    extract_images: true
+    extract_tables: true
+    extract_metadata: true
+  
+  # Adaptive learning
+  adaptive_learning:
+    enabled: true
+    confidence_threshold: 0.8
+    feedback_weight: 0.2
+
+embeddings:
+  # Embedding generation settings
+  model: "all-MiniLM-L6-v2"
+  batch_size: 32
+  max_length: 512
+  normalize: true
+  
+  # Model cache
+  cache:
+    enabled: true
+    max_size_mb: 500
+    ttl_hours: 24
+
+cache:
+  # General cache settings
+  directory: "/var/lib/ttrpg-assistant/cache"
+  max_size_mb: 100
+  ttl_seconds: 3600
+  
+  # Specific cache configurations
+  search:
+    enabled: true
+    size: 1000
+    ttl_seconds: 1800
+  
+  embeddings:
+    enabled: true
+    size: 5000
+    ttl_seconds: 86400
+  
+  results:
+    enabled: true
+    size: 500
+    ttl_seconds: 3600
+
+security:
+  # Authentication settings
+  authentication:
+    enabled: false
+    type: "jwt"  # jwt, api_key, oauth2
+    secret_key: "CHANGE_THIS_SECRET_KEY"
+    algorithm: "HS256"
+    token_expiry_minutes: 60
+  
+  # Authorization settings
+  authorization:
+    enabled: false
+    rbac_enabled: false
+    default_role: "user"
+  
+  # Rate limiting
+  rate_limiting:
+    enabled: true
+    requests_per_minute: 60
+    burst_size: 10
+  
+  # Security features
+  features:
+    input_validation: true
+    output_sanitization: true
+    audit_logging: true
+    encryption_at_rest: false
+  
+  # Audit settings
+  audit:
+    enabled: true
+    log_file: "/var/log/ttrpg-assistant/audit.log"
+    retention_days: 90
+    include_request_body: false
+    include_response_body: false
+
+performance:
+  # Performance optimization settings
+  parallel_processing:
+    enabled: true
+    max_workers: 4
+    chunk_size: 100
+  
+  # Resource limits
+  limits:
+    max_memory_mb: 2048
+    max_cpu_percent: 80
+    request_timeout_seconds: 300
+  
+  # Monitoring
+  monitoring:
+    enabled: true
+    metrics_enabled: true
+    metrics_port: 9090
+    health_check_enabled: true
+    health_check_interval: 60
+
+logging:
+  # Logging configuration
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "json"  # json, text
+  
+  # File logging
+  file:
+    enabled: true
+    path: "/var/log/ttrpg-assistant/app.log"
+    max_size_mb: 100
+    backup_count: 5
+    rotation: "daily"
+  
+  # Console logging
+  console:
+    enabled: true
+    colorized: true
+  
+  # Structured logging
+  structured:
+    enabled: true
+    include_context: true
+    include_traceback: true
+
+features:
+  # Feature flags
+  campaign_management:
+    enabled: true
+    max_campaigns_per_user: 10
+    auto_save_interval: 300
+  
+  character_generation:
+    enabled: true
+    allow_custom_races: true
+    allow_custom_classes: true
+    stat_generation_methods:
+      - standard_array
+      - point_buy
+      - dice_roll
+  
+  personality_system:
+    enabled: true
+    extract_from_sources: true
+    adaptive_responses: true
+  
+  source_management:
+    enabled: true
+    max_sources: 100
+    supported_formats:
+      - pdf
+      - txt
+      - md
+      - html
+    max_file_size_mb: 50
+  
+  session_tracking:
+    enabled: true
+    session_timeout_minutes: 60
+    max_concurrent_sessions: 100
+
+backup:
+  # Backup configuration
+  enabled: false
+  schedule: "0 2 * * *"  # Cron expression (daily at 2 AM)
+  retention_days: 30
+  
+  # Backup destinations
+  destinations:
+    local:
+      enabled: true
+      path: "/var/lib/ttrpg-assistant/backup"
+    
+    s3:
+      enabled: false
+      bucket: "ttrpg-assistant-backups"
+      region: "us-east-1"
+      access_key: ""
+      secret_key: ""
+  
+  # What to backup
+  include:
+    database: true
+    cache: false
+    logs: false
+    config: true
+    user_data: true
+
+export:
+  # Data export settings
+  directory: "/var/lib/ttrpg-assistant/export"
+  formats:
+    - json
+    - csv
+    - yaml
+    - markdown
+  
+  limits:
+    max_size_mb: 100
+    max_records: 10000
+  
+  # Export templates
+  templates:
+    character_sheet: true
+    campaign_summary: true
+    session_notes: true
+
+gpu:
+  # GPU configuration
+  enabled: false
+  type: "auto"  # auto, cuda, rocm, cpu
+  
+  # CUDA settings
+  cuda:
+    device_id: 0
+    memory_fraction: 0.8
+    allow_growth: true
+  
+  # ROCm settings
+  rocm:
+    device_id: 0
+    memory_fraction: 0.8
+
+development:
+  # Development settings (disable in production)
+  debug: false
+  hot_reload: false
+  profile_enabled: false
+  sql_echo: false
+  
+  # Testing
+  testing:
+    enabled: false
+    mock_external_services: true
+    seed_data: false
+
+# Environment-specific overrides
+environments:
+  development:
+    server:
+      host: "127.0.0.1"
+    logging:
+      level: "DEBUG"
+    development:
+      debug: true
+      hot_reload: true
+  
+  production:
+    server:
+      workers: 8
+    security:
+      authentication:
+        enabled: true
+      rate_limiting:
+        requests_per_minute: 120
+    logging:
+      level: "WARNING"
+    development:
+      debug: false

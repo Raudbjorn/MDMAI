@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     # MCP Server
     mcp_stdio_mode: bool = Field(default=True, env="MCP_STDIO_MODE")
     
+    # Security Settings
+    enable_authentication: bool = Field(default=False, env="ENABLE_AUTHENTICATION")
+    enable_rate_limiting: bool = Field(default=True, env="ENABLE_RATE_LIMITING")
+    enable_audit: bool = Field(default=True, env="ENABLE_AUDIT")
+    enable_input_validation: bool = Field(default=True, env="ENABLE_INPUT_VALIDATION")
+    session_timeout_minutes: int = Field(default=60, env="SESSION_TIMEOUT_MINUTES")
+    audit_retention_days: int = Field(default=90, env="AUDIT_RETENTION_DAYS")
+    security_log_file: Optional[str] = Field(default=None, env="SECURITY_LOG_FILE")
+    
     class Config:
         """Pydantic configuration."""
         env_file = ".env"

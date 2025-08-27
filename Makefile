@@ -344,3 +344,91 @@ pre-commit-install:
 	else \
 		pre-commit install; \
 	fi
+
+# Deployment Commands
+deploy-install:
+	@echo "Installing TTRPG Assistant MCP Server..."
+	@sudo bash deploy/scripts/install.sh
+
+deploy-configure:
+	@echo "Running configuration wizard..."
+	@python deploy/scripts/configure.py
+
+deploy-check:
+	@echo "Checking deployment prerequisites..."
+	@python deploy/scripts/setup_environment.py --json-output
+
+deploy-migrate:
+	@echo "Running database migration..."
+	@python deploy/migration/migrate.py $(VERSION)
+
+deploy-backup:
+	@echo "Creating backup..."
+	@python deploy/backup/backup_manager.py --create
+
+deploy-restore:
+	@echo "Restoring from backup..."
+	@python deploy/backup/restore_manager.py --restore $(BACKUP_ID)
+
+deploy-package:
+	@echo "Creating deployment package..."
+	@rm -rf dist/
+	@mkdir -p dist/
+	@python setup.py sdist bdist_wheel
+	@tar czf dist/ttrpg-assistant-$(shell python deploy/scripts/get_version.py).tar.gz \
+		--exclude='.git' --exclude='venv' --exclude='__pycache__' \
+		--exclude='*.pyc' --exclude='.pytest_cache' \
+		--exclude='htmlcov' --exclude='dist' \
+		.
+	@echo "✓ Deployment package created in dist/"
+
+deploy-docker-build:
+	@echo "Building Docker image with deployment tools..."
+	@docker build -f Dockerfile -t ttrpg-assistant:latest \
+		--build-arg GPU_SUPPORT=$(GPU_SUPPORT) .
+	@echo "✓ Docker image built: ttrpg-assistant:latest"
+
+deploy-docker-push:
+	@echo "Pushing Docker image to registry..."
+	@docker tag ttrpg-assistant:latest $(REGISTRY)/ttrpg-assistant:latest
+	@docker push $(REGISTRY)/ttrpg-assistant:latest
+	@echo "✓ Docker image pushed to $(REGISTRY)"
+
+deploy-systemd:
+	@echo "Installing systemd service..."
+	@sudo cp deploy/config/systemd.service.template /etc/systemd/system/ttrpg-assistant.service
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable ttrpg-assistant.service
+	@echo "✓ Systemd service installed"
+
+deploy-status:
+	@echo "Checking deployment status..."
+	@systemctl status ttrpg-assistant || true
+	@echo ""
+	@echo "Version Information:"
+	@python -c "from deploy.migration.version_manager import VersionManager; \
+		import json; \
+		vm = VersionManager('.'); \
+		print(json.dumps(vm.get_version_info(), indent=2))"
+
+deploy-health-check:
+	@echo "Running health checks..."
+	@curl -f http://localhost:8000/health || echo "Health check failed"
+
+deploy-logs:
+	@echo "Viewing deployment logs..."
+	@if [ -f /var/log/ttrpg-assistant/ttrpg-assistant.log ]; then \
+		tail -f /var/log/ttrpg-assistant/ttrpg-assistant.log; \
+	elif [ -f logs/ttrpg-assistant.log ]; then \
+		tail -f logs/ttrpg-assistant.log; \
+	else \
+		echo "No log file found"; \
+	fi
+
+deploy-uninstall:
+	@echo "Uninstalling TTRPG Assistant MCP Server..."
+	@if [ -f /opt/ttrpg-assistant/uninstall.sh ]; then \
+		sudo /opt/ttrpg-assistant/uninstall.sh; \
+	else \
+		echo "Uninstall script not found"; \
+	fi
