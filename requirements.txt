@@ -1,77 +1,145 @@
-# Core MCP dependencies
-mcp>=1.0.0
-fastmcp>=0.1.0
+# TTRPG Assistant MCP Server - Python Requirements
+# Python 3.11+ required
+# Last updated: 2024
 
-# Database
-chromadb>=0.4.0
+# ============================================
+# Core Framework & MCP
+# ============================================
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+mcp==1.0.0  # Or latest stable version
+fastmcp==0.1.5  # FastMCP framework
 
-# PDF Processing
-pypdf2>=3.0.0
-pdfplumber>=0.10.0
-python-magic>=0.4.27
+# ============================================
+# Database & Storage
+# ============================================
+chromadb==0.4.22  # Vector database for semantic search
+sqlalchemy==2.0.25  # Optional relational DB support
+alembic==1.13.0  # Database migrations
+asyncpg==0.29.0  # PostgreSQL async driver (optional)
 
-# NLP and Embeddings
-sentence-transformers>=2.2.0
-transformers>=4.30.0
-torch>=2.0.0
-spacy>=3.5.0
-textblob>=0.17.1
+# ============================================
+# PDF Processing (Modernized)
+# ============================================
+pypdf==3.17.0  # Modern fork of PyPDF2, actively maintained
+pdfplumber==0.10.3  # Table extraction and advanced parsing
+pikepdf==8.10.0  # Robust PDF handling with QPDF backend
+pymupdf==1.23.0  # Fast PDF processing (optional)
+python-magic==0.4.27  # File type detection
 
-# Search
-rank-bm25>=0.2.2
+# ============================================
+# AI/ML & Embeddings
+# ============================================
+sentence-transformers==2.3.0
+transformers==4.36.0
+torch==2.1.0
+spacy==3.7.0
+tiktoken==0.5.0  # Token counting for OpenAI models
+instructor==0.5.0  # Structured LLM outputs
 
-# Web Server (for development/testing and bridge)
-uvicorn>=0.23.0
-fastapi>=0.100.0
-websockets>=11.0.0
-httpx>=0.24.0  # For HTTP client testing and AI provider requests
+# ============================================
+# AI Provider SDKs
+# ============================================
+anthropic==0.15.0
+openai==1.10.0
+google-generativeai==0.3.0
 
+# ============================================
+# Search & Information Retrieval
+# ============================================
+rank-bm25==0.2.2  # BM25 ranking for keyword search
+
+# ============================================
+# HTTP & Async (Modernized)
+# ============================================
+httpx==0.26.0  # Modern async HTTP client (replaces requests)
+aiohttp==3.9.0  # Alternative async HTTP
+tenacity==8.2.0  # Retry logic with exponential backoff
+aiofiles==23.2.0  # Async file operations
+websockets==12.0  # WebSocket support
+python-socketio==5.10.0  # Socket.IO support
+
+# ============================================
+# Error Handling & Patterns
+# ============================================
+returns==0.22.0  # Result/Either pattern for errors as values
+
+# ============================================
+# Authentication & Security
+# ============================================
+python-jose[cryptography]==3.3.0  # JWT tokens
+passlib[bcrypt]==1.7.4  # Password hashing
+python-multipart==0.0.6  # Form data parsing
+authlib==1.3.0  # OAuth2 support
+cryptography==41.0.0  # Encryption utilities
+
+# ============================================
 # Utilities
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-aiofiles>=23.0.0
-tqdm>=4.65.0
-pyyaml>=6.0.0
+# ============================================
+structlog==24.1.0  # Structured logging
+python-dotenv==1.0.0  # Environment variables
+click==8.1.0  # CLI interface
+rich==13.0.0  # Beautiful terminal output
+humanize==4.0.0  # Human-readable values
+orjson==3.9.0  # Fast JSON serialization
 
-# Logging and Monitoring
-structlog>=23.0.0
-rich>=13.0.0
-psutil>=5.9.0
+# ============================================
+# Data Processing
+# ============================================
+pandas==2.1.0  # Data manipulation (optional)
+numpy==1.26.0  # Numerical operations
+textblob==0.17.1  # Text processing utilities
 
+# ============================================
 # Testing
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-pytest-cov>=4.1.0
-pytest-mock>=3.11.0
+# ============================================
+pytest==7.4.0
+pytest-asyncio==0.21.0
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+factory-boy==3.3.0  # Test data factories
+faker==20.0.0  # Fake data generation
 
-# Development
-black>=23.0.0
-flake8>=6.0.0
-mypy>=1.4.0
-pre-commit>=3.3.0
+# ============================================
+# Development Tools
+# ============================================
+mypy==1.7.0  # Static type checking
+ruff==0.1.0  # Fast all-in-one linter (replaces black, flake8, isort)
+pre-commit==3.5.0  # Git hooks for code quality
+ipython==8.18.0  # Enhanced Python REPL
+ipdb==0.13.0  # Python debugger
 
-# Security - OAuth2 and JWT
-authlib>=1.3.0  # OAuth2 client library
-oauthlib>=3.2.0  # OAuth2 implementation
-python-jose[cryptography]>=3.3.0  # JWT implementation
-pyjwt>=2.8.0  # JWT tokens
-cryptography>=41.0.0  # Cryptographic operations
-passlib[bcrypt]>=1.7.4  # Password hashing
-python-multipart>=0.0.6  # For OAuth2 forms
+# ============================================
+# Monitoring & Observability (Optional)
+# ============================================
+prometheus-client==0.19.0  # Metrics collection
+opentelemetry-api==1.21.0  # Distributed tracing
+opentelemetry-sdk==1.21.0
+opentelemetry-instrumentation-fastapi==0.42b0
 
-# Security - Session Management
-redis>=5.0.0  # Redis client for session storage
-hiredis>=2.2.0  # Redis performance optimization
+# ============================================
+# Documentation (Optional)
+# ============================================
+mkdocs==1.5.0  # Documentation site generator
+mkdocs-material==9.5.0  # Material theme for MkDocs
+mkdocstrings[python]==0.24.0  # Auto-generate docs from docstrings
 
-# Security - MFA
-pyotp>=2.9.0  # TOTP/HOTP for 2FA
-qrcode>=7.4.0  # QR code generation for 2FA
+# ============================================
+# Background Tasks (Optional)
+# ============================================
+# celery==5.3.0  # Uncomment if using Celery for background tasks
+# redis==5.0.0  # Uncomment if using Redis as Celery broker
 
-# Security - Process Isolation (Linux only)
-# Note: These are optional and platform-specific
-# firejail  # Install via system package manager (apt/yum)
-# docker  # Install via system package manager
-
-# Security - Monitoring
-prometheus-client>=0.19.0  # Metrics export
-python-dateutil>=2.8.0  # Date handling
+# ============================================
+# Notes on Modernization:
+# ============================================
+# 1. Replaced PyPDF2 with pypdf (actively maintained fork)
+# 2. Replaced requests with httpx (async support, better performance)
+# 3. Added returns library for Result/Either pattern
+# 4. Using ruff instead of separate black/flake8/isort
+# 5. Added structured logging with structlog
+# 6. Included modern AI provider SDKs
+# 7. Added security libraries for OAuth2 and JWT
+# 8. Included monitoring and observability tools
