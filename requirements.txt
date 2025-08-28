@@ -83,7 +83,7 @@ python-dotenv==1.0.0  # Environment variables
 click==8.1.0  # CLI interface
 rich==13.0.0  # Beautiful terminal output
 humanize==4.0.0  # Human-readable values
-orjson==3.9.0  # Fast JSON serialization
+orjson==3.9.15  # Fast JSON serialization
 
 # ============================================
 # Data Processing
