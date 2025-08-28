@@ -65,9 +65,7 @@
   function startAutoRefresh() {
     if (!autoRefresh) return;
     
-    refreshInterval = window.setInterval(() => {
-      refreshData();
-    }, 2000); // Refresh every 2 seconds
+    }, 10000); // Refresh every 10 seconds
   }
 
   function stopAutoRefresh() {
