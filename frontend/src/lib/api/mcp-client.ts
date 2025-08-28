@@ -1,4 +1,7 @@
 import type { Tool, ToolResult } from './types';
+import { CacheManager } from '$lib/cache/cache-manager';
+import { MetricsCollector } from '$lib/performance/metrics-collector';
+import { WebSocketPool } from '$lib/performance/request-optimizer';
 
 export interface MCPSession {
 	id: string;
@@ -17,17 +20,44 @@ export interface MCPMessage {
 
 export class MCPClient {
 	private ws: WebSocket | null = null;
+	private wsPool: WebSocketPool | null = null;
 	private eventSource: EventSource | null = null;
 	private session: MCPSession | null = null;
 	private messageHandlers: Set<(msg: MCPMessage) => void> = new Set();
 	private baseUrl: string;
+	private cacheManager: CacheManager;
+	private metricsCollector: MetricsCollector;
+	private pendingRequests: Map<string, Promise<any>> = new Map();
 
 	constructor(baseUrl: string = '') {
 		this.baseUrl = baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000');
+		this.cacheManager = new CacheManager();
+		this.metricsCollector = new MetricsCollector();
 	}
 
 	async connect(userId: string, provider: string, apiKey: string): Promise<MCPSession> {
+		const start = performance.now();
+		
 		try {
+			// Check cache for existing session
+			const cacheKey = `session:${userId}:${provider}`;
+			const cachedSession = await this.cacheManager.get<MCPSession>(cacheKey);
+			
+			if (cachedSession && cachedSession.status === 'connected') {
+				this.session = cachedSession;
+				this.connectWebSocket();
+				this.connectSSE();
+				
+				this.metricsCollector.recordMetric({
+					name: 'session_cache_hit',
+					value: performance.now() - start,
+					timestamp: Date.now(),
+					unit: 'ms'
+				});
+				
+				return cachedSession;
+			}
+
 			// Initialize session via HTTP
 			const response = await fetch(`${this.baseUrl}/api/bridge/session`, {
 				method: 'POST',
@@ -46,15 +76,42 @@ export class MCPClient {
 			}
 
 			this.session = await response.json();
+			
+			// Cache the session
+			await this.cacheManager.set(cacheKey, this.session, {
+				ttl: 3600000, // 1 hour
+				persistent: true
+			});
+
+			// Initialize WebSocket pool for better connection management
+			this.wsPool = new WebSocketPool({
+				maxConnections: 3,
+				url: `${this.baseUrl.replace('http', 'ws')}/api/bridge/ws/${this.session.id}`,
+				reconnectDelay: 1000
+			});
 
 			// Connect WebSocket for bidirectional communication
 			this.connectWebSocket();
 
 			// Connect SSE for server-pushed updates
 			this.connectSSE();
+			
+			this.metricsCollector.recordMetric({
+				name: 'session_connect_time',
+				value: performance.now() - start,
+				timestamp: Date.now(),
+				unit: 'ms'
+			});
 
 			return this.session;
 		} catch (error) {
+			this.metricsCollector.recordMetric({
+				name: 'session_connect_error',
+				value: 1,
+				timestamp: Date.now(),
+				tags: { error: error instanceof Error ? error.message : 'Unknown' }
+			});
+			
 			console.error('Failed to connect to MCP bridge:', error);
 			throw error;
 		}
@@ -116,11 +173,41 @@ export class MCPClient {
 	}
 
 	async callTool(toolName: string, params: Record<string, any>): Promise<ToolResult> {
+		const start = performance.now();
+		const cacheKey = `tool:${toolName}:${JSON.stringify(params)}`;
+		
+		// Check for deduplicated request
+		if (this.pendingRequests.has(cacheKey)) {
+			this.metricsCollector.recordMetric({
+				name: 'tool_call_deduplicated',
+				value: 1,
+				timestamp: Date.now(),
+				tags: { tool: toolName }
+			});
+			return this.pendingRequests.get(cacheKey)!;
+		}
+		
+		// Check cache for idempotent tools
+		const idempotentTools = ['search_rules', 'get_character', 'get_campaign', 'list_systems'];
+		if (idempotentTools.includes(toolName)) {
+			const cached = await this.cacheManager.get<ToolResult>(cacheKey);
+			if (cached !== null) {
+				this.metricsCollector.recordMetric({
+					name: 'tool_cache_hit',
+					value: performance.now() - start,
+					timestamp: Date.now(),
+					unit: 'ms',
+					tags: { tool: toolName }
+				});
+				return cached;
+			}
+		}
+
 		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
 			throw new Error('WebSocket not connected');
 		}
 
-		return new Promise((resolve, reject) => {
+		const promise = new Promise<ToolResult>((resolve, reject) => {
 			const requestId = `${Date.now()}-${Math.random()}`;
 
 			const handler = (msg: MCPMessage) => {
@@ -136,7 +223,7 @@ export class MCPClient {
 
 			this.messageHandlers.add(handler);
 
-			this.ws.send(JSON.stringify({
+			this.ws!.send(JSON.stringify({
 				type: 'tool_call',
 				tool: toolName,
 				params,
@@ -148,7 +235,44 @@ export class MCPClient {
 				this.messageHandlers.delete(handler);
 				reject(new Error('Tool call timed out'));
 			}, 30000);
+		}).then(async (result) => {
+			// Cache result for idempotent tools
+			if (idempotentTools.includes(toolName)) {
+				await this.cacheManager.set(cacheKey, result, {
+					ttl: 600000, // 10 minutes
+					persistent: true
+				});
+			}
+			
+			this.metricsCollector.recordMetric({
+				name: 'tool_call_success',
+				value: performance.now() - start,
+				timestamp: Date.now(),
+				unit: 'ms',
+				tags: { tool: toolName }
+			});
+			
+			this.pendingRequests.delete(cacheKey);
+			return result;
+		}).catch((error) => {
+			this.metricsCollector.recordMetric({
+				name: 'tool_call_error',
+				value: 1,
+				timestamp: Date.now(),
+				tags: { 
+					tool: toolName,
+					error: error instanceof Error ? error.message : 'Unknown'
+				}
+			});
+			
+			this.pendingRequests.delete(cacheKey);
+			throw error;
 		});
+		
+		// Store pending request for deduplication
+		this.pendingRequests.set(cacheKey, promise);
+		
+		return promise;
 	}
 
 	private handleMessage(message: MCPMessage) {
@@ -177,15 +301,70 @@ export class MCPClient {
 			this.ws.close();
 			this.ws = null;
 		}
+		if (this.wsPool) {
+			this.wsPool.close();
+			this.wsPool = null;
+		}
 		if (this.eventSource) {
 			this.eventSource.close();
 			this.eventSource = null;
 		}
 		this.session = null;
 		this.messageHandlers.clear();
+		this.pendingRequests.clear();
 	}
 
 	getSession(): MCPSession | null {
 		return this.session;
+	}
+	
+	/**
+	 * Prefetch and cache tool results
+	 */
+	async prefetchTools(tools: Array<{ name: string; params: Record<string, any> }>): Promise<void> {
+		const promises = tools.map(tool => 
+			this.callTool(tool.name, tool.params).catch(error => {
+				console.error(`Failed to prefetch ${tool.name}:`, error);
+			})
+		);
+		
+		await Promise.all(promises);
+	}
+	
+	/**
+	 * Clear cache for specific tools or all tools
+	 */
+	async clearCache(toolName?: string): Promise<number> {
+		if (toolName) {
+			return this.cacheManager.invalidate(`tool:${toolName}:*`);
+		}
+		return this.cacheManager.invalidate(/^tool:/);
+	}
+	
+	/**
+	 * Get performance metrics
+	 */
+	getMetrics() {
+		return {
+			performance: this.metricsCollector.generateReport(),
+			cache: this.cacheManager.getStats(),
+			webSocket: this.wsPool?.getStats() || null
+		};
+	}
+	
+	/**
+	 * Warm cache with common queries
+	 */
+	async warmCache(): Promise<void> {
+		const commonQueries = [
+			{ name: 'list_systems', params: {} },
+			{ name: 'get_campaign', params: { id: 'default' } }
+		];
+		
+		await this.cacheManager.warmCache({
+			resources: commonQueries.map(q => `tool:${q.name}:${JSON.stringify(q.params)}`),
+			priority: 'high',
+			schedule: 'background'
+		});
 	}
 }
