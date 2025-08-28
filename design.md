@@ -16,6 +16,14 @@ The project follows a phased approach to ensure incremental delivery and testing
 6. **Phase 6**: Session Management - Game session tracking, initiative
 7. **Phase 7**: Character Generation - PC/NPC generation with personalities
 8. **Phase 8**: Testing & Optimization - Performance tuning, test coverage
+9. **Phase 9-13**: Advanced Features - Tools, monitoring, security, deployment
+10. **Phase 14**: Bridge Service - MCP to web integration
+11. **Phase 15**: AI Provider Integration - Multi-provider support
+12. **Phase 16**: Security & Authentication - OAuth2, JWT, sandboxing
+13. **Phase 17**: Context Management - Distributed state management
+14. **Phase 18**: Frontend Development - SvelteKit responsive web application
+15. **Phase 19**: Integration Testing - End-to-end testing
+16. **Phase 20**: Performance Optimization - Final optimizations
 
 Each phase builds on the previous ones, with clear interfaces between components.
 
@@ -66,7 +74,7 @@ register_campaign_tools(mcp)
   - `personalities`: System-specific personality profiles
 
 #### 3. PDF Processing Pipeline
-- **Extraction**: PyPDF2 or pdfplumber for text extraction
+- **Extraction**: pypdf or pdfplumber for text extraction (modern, maintained packages)
 - **Structure Preservation**:
   - Table detection and formatting
   - Section hierarchy maintenance
@@ -607,7 +615,7 @@ async def test_create_campaign(mock_db):
 - **Plugin System**: Extensible architecture for custom tools
 - **Real-time Collaboration**: Multiple DMs sharing a campaign (See Collaborative Features below)
 - **AI-powered Content Generation**: Generate NPCs, quests, and encounters
-- **Mobile Companion App**: Access campaign data on mobile devices
+- **Progressive Web App**: Installable web app with offline capabilities
 
 ## Web UI Integration Architecture
 
@@ -618,15 +626,15 @@ The Web UI Integration enables users to connect their own AI provider accounts (
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│    Web UI       │────│  Orchestrator    │────│ MCP Server      │
-│   (React)       │ WS │   (FastAPI)      │stdio│  (Existing)     │
+│    Web UI       │────│  Bridge Service  │────│ MCP Server      │
+│  (SvelteKit)    │ WS │   (FastAPI)      │stdio│  (FastMCP)      │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │                       │                       │
          │              ┌────────┴────────┐              │
          │              │                 │              │
     ┌────▼────┐    ┌────▼────┐      ┌─────▼─────┐       │
-    │ Auth    │    │ AI      │      │ Session   │       │
-    │ Service │    │Providers│      │ Manager   │       │
+    │  SSR    │    │ AI      │      │ Session   │       │
+    │ Routes  │    │Providers│      │ Manager   │       │
     └─────────┘    └─────────┘      └───────────┘       │
                         │                               │
                ┌────────┼────────┐                      │
@@ -706,6 +714,8 @@ class UnifiedAIClient:
 - **Session Isolation**: Each user gets isolated MCP process
 - **Tool Permissions**: Granular control over tool access per user
 - **Rate Limiting**: Per-user and per-tool rate limits
+- **Result Pattern**: Error-as-values for secure error handling
+- **SSR Security**: Server-side validation and sanitization
 
 ```python
 class AuthenticationManager:
@@ -799,17 +809,18 @@ class SessionRoom:
 ### Frontend Architecture
 
 #### Technology Stack
-- **Framework**: React 18+ with TypeScript
-- **State Management**: Zustand for lightweight real-time updates
-- **UI Components**: Shadcn/ui + Tailwind CSS
-- **Real-time**: WebSocket API (native) for bidirectional communication
-- **Build Tool**: Vite for fast development
+- **Framework**: SvelteKit 2.x with TypeScript
+- **State Management**: Built-in Svelte stores for reactive state
+- **UI Components**: Tailwind CSS + DaisyUI/Skeleton UI
+- **Real-time**: WebSocket API (native) + Server-Sent Events (SSE)
+- **Build Tool**: Vite (integrated with SvelteKit)
 
 #### Key UI Components
-- **Campaign Dashboard**: Overview of active campaigns and sessions
-- **Tool Result Visualizer**: Rich visualization for different tool outputs
-- **Collaborative Canvas**: Shared workspace for maps and notes
-- **AI Provider Selector**: Dynamic provider switching interface
+- **Campaign Dashboard**: SSR-optimized overview of active campaigns
+- **Tool Result Visualizer**: Progressive enhancement for tool outputs
+- **Collaborative Canvas**: Real-time shared workspace with CRDT support
+- **AI Provider Selector**: Server-side provider routing with client fallback
+- **Responsive Design**: Mobile-first approach (no separate mobile app)
 
 ### Implementation Phases
 
@@ -838,10 +849,11 @@ class SessionRoom:
 - Conflict resolution
 
 #### Phase 5: UI Development (Weeks 5-7)
-- React frontend setup
-- Component development
-- Real-time features
-- Tool visualization
+- SvelteKit application setup with TypeScript
+- SSR/CSR hybrid components for optimal performance
+- WebSocket/SSE integration for real-time updates
+- Progressive enhancement with form actions
+- Responsive design system (mobile-first, no separate app)
 
 #### Phase 6: Testing & Optimization (Weeks 7-8)
 - Load testing
@@ -908,3 +920,240 @@ bridge:
 - **Tracing**: OpenTelemetry
 - **Logging**: Structured logging with correlation IDs
 - **Alerting**: PagerDuty integration for critical issues
+
+## Technology Stack Updates (2024)
+
+### Frontend Migration: React → SvelteKit
+
+#### Architecture Changes
+- **Framework**: SvelteKit with TypeScript for full-stack web application
+- **Routing**: File-based routing with +page.svelte and +layout.svelte
+- **State Management**: Native Svelte stores replacing Redux/Zustand
+- **Styling**: TailwindCSS with mobile-first responsive design
+- **Build**: Vite with @sveltejs/vite-plugin-svelte
+
+#### SvelteKit Project Structure
+```
+frontend/
+├── src/
+│   ├── routes/              # File-based routing
+│   │   ├── +layout.svelte   # Root layout
+│   │   ├── +page.svelte     # Home page
+│   │   ├── api/             # API endpoints
+│   │   │   └── mcp/         # MCP bridge endpoints
+│   │   ├── campaigns/       # Campaign management
+│   │   └── session/         # Game sessions
+│   ├── lib/                 # Shared code
+│   │   ├── components/      # Reusable components
+│   │   ├── stores/          # Global state stores
+│   │   ├── mcp/            # MCP client
+│   │   └── utils/          # Utilities
+│   └── app.html            # App template
+├── static/                 # Static assets
+└── vite.config.js         # Build configuration
+```
+
+#### MCP Integration Pattern
+```typescript
+// Server-side MCP communication
+// src/routes/api/mcp/+server.ts
+export async function POST({ request }) {
+    const { tool, params } = await request.json();
+    const result = await mcpBridge.executeTool(tool, params);
+    return json(result);
+}
+
+// Client-side store
+// src/lib/stores/mcp.ts
+export const mcpStore = writable<MCPState>({
+    connected: false,
+    tools: [],
+    resources: []
+});
+```
+
+### Python Modernization
+
+#### Core Dependencies Update
+```txt
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database & Storage
+chromadb==0.4.22
+sqlalchemy==2.0.25
+alembic==1.13.0
+
+# PDF Processing
+pypdf==3.17.0           # Replacing PyPDF2
+pdfplumber==0.10.3
+pikepdf==8.10.0         # For robust PDF handling
+
+# AI/ML
+sentence-transformers==2.3.0
+instructor==0.5.0       # Structured LLM outputs
+
+# HTTP & Async
+httpx==0.26.0          # Replacing requests
+tenacity==8.2.0        # Retry logic
+
+# Error Handling (New)
+returns==0.22.0        # Result/Either pattern
+
+# Utilities
+structlog==24.1.0      # Structured logging
+python-multipart==0.0.6
+
+# Development Tools
+pytest==7.4.0
+pytest-asyncio==0.21.0
+mypy==1.7.0
+ruff==0.1.0            # Fast Python linter
+```
+
+#### Error-as-Values Pattern
+```python
+# New pattern throughout codebase using returns library
+from returns.result import Result, Success, Failure
+from src.core.result_pattern import AppError, ErrorKind, with_result
+
+@with_result(error_kind=ErrorKind.PARSING)
+async def process_document(pdf_path: str) -> Result[Document, AppError]:
+    """Process with Result pattern instead of exceptions."""
+    content = await extract_pdf_content(pdf_path)
+    if not content:
+        return Failure(AppError(
+            kind=ErrorKind.PARSING,
+            message="Empty document",
+            recovery_hint="Check if the PDF contains extractable text"
+        ))
+    
+    chunks = await chunk_content(content)
+    embeddings = await generate_embeddings(chunks)
+    
+    return Success(Document(
+        content=content,
+        chunks=chunks,
+        embeddings=embeddings
+    ))
+
+# Usage
+result = await process_document("rulebook.pdf")
+match result:
+    case Success(document):
+        await store_document(document)
+    case Failure(error):
+        logger.error(f"Processing failed: {error}")
+```
+
+### Web-First Approach
+
+#### Responsive Design Strategy
+- **Mobile-First**: Design for mobile, enhance for desktop
+- **Progressive Enhancement**: Core functionality works without JS
+- **Single Codebase**: No separate mobile app (removed Phase 21)
+- **Touch Optimized**: Touch gestures and mobile interactions
+- **Offline Support**: Service workers for offline functionality
+
+#### Key Benefits
+1. **Simplified Maintenance**: One codebase for all platforms
+2. **Faster Development**: No React Native complexity
+3. **Better Performance**: SvelteKit's optimizations
+4. **Consistent Experience**: Same features across devices
+5. **Lower Cost**: No app store fees or native development
+
+### Integration Architecture
+
+#### Bridge Service Updates
+```python
+# Updated for SvelteKit SSR
+class MCPBridge:
+    async def handle_svelte_request(self, request: dict) -> Result[dict, BridgeError]:
+        """Handle SvelteKit server-side requests."""
+        # Validate request
+        validation = self.validate_request(request)
+        if isinstance(validation, Failure):
+            return validation
+        
+        # Execute MCP tool
+        result = await self.execute_tool(
+            request["tool"],
+            request["params"]
+        )
+        
+        # Transform for SvelteKit
+        return self.transform_for_svelte(result)
+```
+
+#### WebSocket Manager
+```typescript
+// SvelteKit WebSocket handling
+// src/lib/mcp/websocket.ts
+export class MCPWebSocket {
+    private ws: WebSocket;
+    private reconnectAttempts = 0;
+    
+    connect() {
+        this.ws = new WebSocket('/api/mcp/ws');
+        
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            mcpStore.update(state => ({
+                ...state,
+                ...data
+            }));
+        };
+        
+        this.ws.onerror = () => {
+            this.reconnect();
+        };
+    }
+    
+    private reconnect() {
+        if (this.reconnectAttempts < 5) {
+            setTimeout(() => this.connect(), 
+                Math.pow(2, this.reconnectAttempts) * 1000);
+            this.reconnectAttempts++;
+        }
+    }
+}
+```
+
+### Migration Timeline
+
+#### Phase 1: Documentation & Planning (Week 1)
+- Update all documentation for new stack
+- Create migration guides
+- Set up development environment
+
+#### Phase 2: Backend Updates (Weeks 2-3)
+- Update Python dependencies
+- Implement Result pattern
+- Add SvelteKit-compatible endpoints
+
+#### Phase 3: Frontend Development (Weeks 4-6)
+- Initialize SvelteKit project
+- Port components to Svelte
+- Implement MCP integration
+
+#### Phase 4: Integration & Testing (Weeks 7-8)
+- Connect frontend to backend
+- End-to-end testing
+- Performance optimization
+
+### Performance Targets
+
+#### Frontend Metrics
+- **First Contentful Paint**: < 1.5s
+- **Time to Interactive**: < 3.5s
+- **Bundle Size**: < 200KB (JS)
+- **Lighthouse Score**: > 90
+
+#### Backend Metrics
+- **API Response Time**: < 100ms (p95)
+- **PDF Processing**: < 5s per document
+- **Search Latency**: < 50ms
+- **WebSocket Latency**: < 10ms

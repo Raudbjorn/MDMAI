@@ -11,13 +11,18 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - **Personality System**: Adapts responses to match game system tone
 - **Character/NPC Generation**: Create characters with appropriate stats and backstories
 - **Adaptive Learning**: Improves PDF processing accuracy over time
+- **Web Interface**: Responsive SvelteKit application (works on all devices)
+- **AI Provider Integration**: Support for Anthropic, OpenAI, and Google Gemini
+- **Security**: OAuth2, JWT tokens, and sandboxed process execution
+- **Real-time Collaboration**: WebSocket-based multi-user sessions
 
 ## Installation
 
 ### Prerequisites
 
-- Python 3.9 or higher
-- pip package manager
+- Python 3.11 or higher
+- pip package manager (or uv for faster installs)
+- Node.js 18+ and npm (for SvelteKit frontend)
 
 ### Setup
 
@@ -130,21 +135,54 @@ Get information about the server status and configuration.
 await server_info()
 ```
 
+## Technology Stack
+
+### Backend
+- **Python 3.11+** - Core language
+- **FastMCP** - Model Context Protocol server
+- **FastAPI** - Web framework for bridge service
+- **ChromaDB** - Vector database for semantic search
+- **pypdf/pdfplumber** - PDF processing
+- **SQLAlchemy 2.0** - Relational data (optional)
+- **Result pattern** - Error handling as values
+
+### Frontend
+- **SvelteKit** - Full-stack web framework
+- **TypeScript** - Type safety
+- **TailwindCSS** - Responsive styling
+- **Vite** - Build tooling
+- **WebSockets/SSE** - Real-time updates
+
+### Infrastructure
+- **Docker** - Containerization
+- **systemd** - Process management
+- **NGINX** - Reverse proxy
+- **PostgreSQL** - Persistent storage (optional)
+
 ## Project Structure
 
 ```
 MDMAI/
-├── src/
+├── src/                # Python backend
 │   ├── core/           # Core functionality
 │   ├── pdf_processing/ # PDF extraction and parsing
 │   ├── search/         # Search engine implementation
 │   ├── campaign/       # Campaign management
 │   ├── session/        # Session tracking
 │   ├── personality/    # Personality system
-│   ├── models/         # Data models
+│   ├── bridge/         # MCP-to-web bridge
+│   ├── ai_providers/   # AI provider integrations
+│   ├── security/       # Auth and security
+│   ├── context/        # Context management
 │   └── utils/          # Utility functions
+├── frontend/           # SvelteKit application
+│   ├── src/
+│   │   ├── routes/     # File-based routing
+│   │   └── lib/        # Components and stores
+│   └── static/         # Static assets
 ├── config/             # Configuration files
 ├── tests/              # Test suite
+├── deploy/             # Deployment scripts
 ├── data/               # Data storage
 │   ├── chromadb/       # Vector database
 │   └── cache/          # Cache directory

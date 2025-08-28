@@ -12,13 +12,31 @@ This is a Model Context Protocol (MCP) server for assisting with Tabletop Role-P
 - **Character/NPC Generation**: Creates characters with appropriate stats and backstories
 - **Adaptive Learning**: Improves PDF processing accuracy over time
 
-## Technology Stack
-- **Language**: Python
+## Technology Stack (Updated 2024)
+
+### Backend
+- **Language**: Python 3.11+
 - **MCP Framework**: FastMCP
+- **Web Framework**: FastAPI (for bridge service)
 - **Database**: ChromaDB (embedded vector database)
-- **Communication**: stdin/stdout (local operations)
-- **PDF Processing**: PyPDF2/pdfplumber
+- **Communication**: stdin/stdout (MCP) + WebSocket/SSE (web)
+- **PDF Processing**: pypdf/pdfplumber (modern, maintained packages)
 - **Search**: Hybrid approach with vector embeddings and BM25
+- **Error Handling**: Result/Either pattern (returns library)
+
+### Frontend
+- **Framework**: SvelteKit (replacing React)
+- **Language**: TypeScript
+- **Styling**: TailwindCSS (responsive, mobile-first)
+- **State Management**: Native Svelte stores
+- **Build Tool**: Vite
+- **Real-time**: WebSockets and Server-Sent Events
+
+### Key Patterns
+- **Error as Values**: Using Result types instead of exceptions
+- **Responsive Web**: Single codebase for all devices (no separate mobile app)
+- **SSR**: Server-side rendering for optimal performance
+- **Type Safety**: End-to-end type safety with TypeScript and Python type hints
 
 ## Project Structure
 ```
@@ -116,18 +134,30 @@ Each game system has a unique personality:
 
 ## Common Commands
 ```bash
-# Install dependencies
-pip install fastmcp chromadb pypdf2 sentence-transformers
+# Backend Setup
+pip install -r requirements.txt  # Install Python dependencies
+python src/main.py  # Run the MCP server
 
-# Run the MCP server
-python ttrpg_server.py
+# Frontend Setup
+cd frontend
+npm install  # Install Node dependencies
+npm run dev  # Start SvelteKit dev server
+npm run build  # Build for production
+npm run preview  # Preview production build
 
-# Run tests
-pytest tests/
+# Testing
+pytest tests/  # Run Python tests
+cd frontend && npm test  # Run frontend tests
 
-# Check code style
-flake8 .
-black . --check
+# Code Quality
+ruff check .  # Lint Python code (replaces flake8, black, isort)
+ruff format .  # Format Python code
+mypy src/  # Type check Python
+cd frontend && npm run check  # Type check TypeScript
+
+# Development
+pre-commit install  # Set up git hooks
+docker-compose up  # Run with Docker
 ```
 
 ## Next Steps

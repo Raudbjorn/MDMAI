@@ -184,11 +184,14 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF a user sets budget limits THEN the system SHALL track and enforce spending caps
 - WHEN providing cost data THEN the system SHALL show real-time usage and projection analytics
 
-### REQ-020: Mobile Responsiveness
-**User Story:** As a player, I want to access the TTRPG Assistant from my mobile device, so that I can play from anywhere.
+### REQ-020: Responsive Web Design
+**User Story:** As a player, I want to access the TTRPG Assistant from any device (desktop, tablet, or mobile), so that I can play from anywhere with a consistent experience.
 
 **Acceptance Criteria:**
-- WHEN accessing from mobile THEN the UI SHALL adapt to smaller screen sizes
+- WHEN accessing from any device THEN the UI SHALL adapt responsively to the screen size
+- WHEN using mobile devices THEN touch interactions SHALL be properly supported
+- WHEN offline THEN core functionality SHALL remain available through service workers
+- IF on a slow connection THEN the app SHALL provide progressive loading and feedback
 - WHEN using touch interfaces THEN the system SHALL provide appropriate touch controls
 - WHEN bandwidth is limited THEN the system SHALL implement progressive loading
 - IF connection is unstable THEN the system SHALL provide basic offline read-only access to cached data (full offline sync deferred to future release)
@@ -221,3 +224,17 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - The system SHALL provide search results within reasonable response times for interactive gameplay
 - The system SHALL efficiently handle large PDF documents and multiple rulebooks
 - The system SHALL cache processed data for faster subsequent access
+
+### NFR-005: Frontend Technology Stack (Updated 2024)
+- The system SHALL use SvelteKit as the frontend framework for optimal performance and developer experience
+- The system SHALL implement server-side rendering (SSR) for improved SEO and initial load times
+- The system SHALL use TypeScript for type safety throughout the frontend codebase
+- The system SHALL follow responsive web design principles (no separate mobile app)
+- The system SHALL use native Svelte stores for state management
+
+### NFR-006: Python Modernization (Updated 2024)
+- The system SHALL use modern, maintained Python packages (pypdf instead of PyPDF2, httpx instead of requests)
+- The system SHALL implement error-as-values pattern using Result types for graceful error handling
+- The system SHALL use structured logging with correlation IDs for debugging
+- The system SHALL implement retry logic with exponential backoff for external services
+- The system SHALL use type hints and static type checking with mypy
