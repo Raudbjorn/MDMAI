@@ -8,9 +8,11 @@ export interface MCPSession {
 }
 
 export interface MCPMessage {
-	type: 'tool_call' | 'tool_result' | 'error' | 'status';
+	type: 'tool_call' | 'tool_result' | 'error' | 'status' | 'collaboration';
 	data: any;
 	timestamp: number;
+	room_id?: string;
+	sender_id?: string;
 }
 
 export class MCPClient {
