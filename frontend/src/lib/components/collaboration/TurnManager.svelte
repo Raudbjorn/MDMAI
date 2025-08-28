@@ -66,7 +66,7 @@
 		if (!newEntryName.trim() || !currentRoom) return;
 		
 		const newEntry: InitiativeEntry = {
-			id: `init-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			id: crypto.randomUUID(),
 			name: newEntryName.trim(),
 			initiative: newEntryInitiative,
 			is_player: newEntryIsPlayer,
