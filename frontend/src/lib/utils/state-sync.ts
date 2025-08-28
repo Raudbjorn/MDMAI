@@ -297,8 +297,10 @@ export class DebouncedSync {
 	 * Schedule a flush of pending updates
 	 */
 	private scheduleFlush(): void {
+		// Clear existing timer before setting a new one
 		if (this.timer !== null) {
 			clearTimeout(this.timer);
+			this.timer = null;
 		}
 
 		this.timer = window.setTimeout(() => {
@@ -428,8 +430,60 @@ export function calculateStateDiff(oldState: any, newState: any, path: string[] 
 		return updates;
 	}
 
-	// Handle arrays
-	if (Array.isArray(oldState) || Array.isArray(newState)) {
+	// Handle arrays with more efficient diffing
+	if (Array.isArray(oldState) && Array.isArray(newState)) {
+		// For small arrays or when structure changes significantly, replace entirely
+		if (oldState.length !== newState.length || oldState.length > 100) {
+			if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
+				updates.push({
+					path,
+					value: newState,
+					operation: 'set',
+					version: Date.now(),
+					previous_version: 0
+				});
+			}
+			return updates;
+		}
+		
+		// For similar-sized arrays, diff individual elements
+		for (let i = 0; i < Math.max(oldState.length, newState.length); i++) {
+			if (i >= newState.length) {
+				// Element was removed
+				updates.push({
+					path: [...path, String(i)],
+					value: undefined,
+					operation: 'delete',
+					version: Date.now(),
+					previous_version: 0
+				});
+			} else if (i >= oldState.length) {
+				// Element was added
+				updates.push({
+					path: [...path, String(i)],
+					value: newState[i],
+					operation: 'set',
+					version: Date.now(),
+					previous_version: 0
+				});
+			} else if (oldState[i] !== newState[i]) {
+				// Element was modified - recurse for nested structures
+				if (typeof oldState[i] === 'object' && typeof newState[i] === 'object') {
+					updates.push(...calculateStateDiff(oldState[i], newState[i], [...path, String(i)]));
+				} else {
+					updates.push({
+						path: [...path, String(i)],
+						value: newState[i],
+						operation: 'set',
+						version: Date.now(),
+						previous_version: 0
+					});
+				}
+			}
+		}
+		return updates;
+	} else if (Array.isArray(oldState) || Array.isArray(newState)) {
+		// One is array, other is not - complete replacement
 		if (JSON.stringify(oldState) !== JSON.stringify(newState)) {
 			updates.push({
 				path,

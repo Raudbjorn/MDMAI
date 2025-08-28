@@ -51,7 +51,8 @@
 }
 
 @layer base {
-	* {
+	/* Only apply border color to elements that actually have borders */
+	[class*="border"] {
 		@apply border-border;
 	}
 	body {

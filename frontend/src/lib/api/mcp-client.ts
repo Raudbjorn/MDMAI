@@ -86,12 +86,12 @@ export class MCPClient {
 			// Initialize WebSocket pool for better connection management
 			this.wsPool = new WebSocketPool({
 				maxConnections: 3,
-				url: `${this.baseUrl.replace('http', 'ws')}/api/bridge/ws/${this.session.id}`,
+				url: `${this.baseUrl.replace('http', 'ws')}/api/bridge/ws/${this.session!.id}`,
 				reconnectDelay: 1000
 			});
 
-			// Connect WebSocket for bidirectional communication
-			this.connectWebSocket();
+			// Use WebSocket pool for the primary connection
+			this.connectWebSocketWithPool();
 
 			// Connect SSE for server-pushed updates
 			this.connectSSE();
@@ -103,7 +103,7 @@ export class MCPClient {
 				unit: 'ms'
 			});
 
-			return this.session;
+			return this.session!;
 		} catch (error) {
 			this.metricsCollector.recordMetric({
 				name: 'session_connect_error',
@@ -114,6 +114,36 @@ export class MCPClient {
 			
 			console.error('Failed to connect to MCP bridge:', error);
 			throw error;
+		}
+	}
+
+	private async connectWebSocketWithPool() {
+		if (!this.session || !this.wsPool) return;
+
+		try {
+			// Execute WebSocket operations through the pool
+			await this.wsPool.execute(async (ws: WebSocket) => {
+				this.ws = ws;
+				
+				// Set up handlers for pooled connection
+				ws.onmessage = (event) => {
+					try {
+						const message: MCPMessage = JSON.parse(event.data);
+						this.handleMessage(message);
+					} catch (error) {
+						console.error('Failed to parse WebSocket message:', error);
+					}
+				};
+				
+				// Keep connection alive
+				await new Promise(() => {
+					// This promise never resolves, keeping the connection alive
+				});
+			});
+		} catch (error) {
+			console.error('Failed to connect via WebSocket pool:', error);
+			// Fall back to regular connection
+			this.connectWebSocket();
 		}
 	}
 
@@ -143,14 +173,21 @@ export class MCPClient {
 
 		this.ws.onclose = () => {
 			this.updateStatus('disconnected');
-			// Attempt reconnection after 3 seconds
+			// Use exponential backoff for reconnection
+			const baseDelay = 1000;
+			const maxDelay = 30000;
+			const delay = Math.min(baseDelay * Math.pow(2, this.reconnectAttempts || 0), maxDelay);
+			
 			setTimeout(() => {
 				if (this.session?.status === 'disconnected') {
+					this.reconnectAttempts = (this.reconnectAttempts || 0) + 1;
 					this.connectWebSocket();
 				}
-			}, 3000);
+			}, delay);
 		};
 	}
+	
+	private reconnectAttempts = 0;
 
 	private connectSSE() {
 		if (!this.session) return;

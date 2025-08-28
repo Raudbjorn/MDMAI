@@ -314,7 +314,16 @@
 							Cancel
 						</Button>
 						<Button 
-							onclick={() => joinRoom('')}
+							onclick={() => {
+								// Generate room ID from invite code or show error
+								if (!inviteCode.trim()) {
+									error = 'Please enter an invite code';
+									return;
+								}
+								// Assuming invite code maps to a room ID, you might need to resolve it
+								// For now, use the invite code as the room ID placeholder
+								joinRoom(`room-${inviteCode.trim()}`);
+							}}
 							disabled={loading || !inviteCode.trim()}
 						>
 							{loading ? 'Joining...' : 'Join'}

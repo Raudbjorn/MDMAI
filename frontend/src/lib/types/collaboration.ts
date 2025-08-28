@@ -137,9 +137,11 @@ export type CollaborationMessageType =
 	| 'chat_message'
 	| 'permission_changed'
 	| 'turn_changed'
+	| 'next_turn_request'
 	| 'conflict_detected'
 	| 'sync_request'
 	| 'sync_response'
+	| 'authenticate'
 	| 'heartbeat';
 
 export interface StateUpdate {

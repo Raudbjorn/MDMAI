@@ -23,7 +23,6 @@
 	const participants = $derived(collaborationStore.participants);
 	
 	let showCursors = $state(true);
-	let cursorElements = $state(new Map<string, HTMLDivElement>());
 	
 	// Track mouse movements for cursor sharing
 	function handleMouseMove(event: MouseEvent) {
@@ -36,45 +35,32 @@
 		);
 	}
 	
-	// Render other participants' cursors
-	$effect(() => {
-		if (!showCursors) return;
+	// Reactive cursor data for template rendering
+	const cursorsData = $derived(() => {
+		if (!showCursors) return [];
+		
+		const cursors: Array<{
+			userId: string;
+			x: number;
+			y: number;
+			username: string;
+			color?: string;
+		}> = [];
 		
 		collaborationStore.presence.forEach((cursor, userId) => {
 			if (userId === sessionStore.user?.id) return;
 			
-			let cursorEl = cursorElements.get(userId);
-			if (!cursorEl) {
-				cursorEl = document.createElement('div');
-				cursorEl.className = 'fixed pointer-events-none z-50 transition-all duration-75';
-				cursorEl.innerHTML = `
-					<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-						<path d="M5 3L17 9L11 11L9 17L3 5L5 3Z" fill="currentColor"/>
-					</svg>
-					<span class="absolute top-5 left-5 text-xs bg-black text-white px-1 rounded whitespace-nowrap">
-						${participants.find(p => p.user_id === userId)?.username || 'Unknown'}
-					</span>
-				`;
-				document.body.appendChild(cursorEl);
-				cursorElements.set(userId, cursorEl);
-			}
-			
 			const participant = participants.find(p => p.user_id === userId);
-			if (participant) {
-				cursorEl.style.color = participant.color;
-			}
-			
-			cursorEl.style.transform = `translate(${cursor.x}px, ${cursor.y}px)`;
-			cursorEl.style.opacity = '1';
+			cursors.push({
+				userId,
+				x: cursor.x,
+				y: cursor.y,
+				username: participant?.username || 'Unknown',
+				color: participant?.color
+			});
 		});
 		
-		// Clean up cursors for participants who left
-		cursorElements.forEach((el, userId) => {
-			if (!collaborationStore.presence.has(userId)) {
-				el.remove();
-				cursorElements.delete(userId);
-			}
-		});
+		return cursors;
 	});
 	
 	// Handle room events
@@ -121,12 +107,23 @@
 	onDestroy(() => {
 		// Clean up
 		document.removeEventListener('mousemove', handleMouseMove);
-		
-		// Clean up cursor elements
-		cursorElements.forEach(el => el.remove());
-		cursorElements.clear();
 	});
 </script>
+
+<!-- Render cursors reactively without direct DOM manipulation -->
+{#each cursorsData() as cursor (cursor.userId)}
+	<div 
+		class="fixed pointer-events-none z-50 transition-all duration-75 participant-cursor"
+		style="transform: translate({cursor.x}px, {cursor.y}px); color: {cursor.color || '#000'}"
+	>
+		<svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+			<path d="M5 3L17 9L11 11L9 17L3 5L5 3Z" fill="currentColor"/>
+		</svg>
+		<span class="absolute top-5 left-5 text-xs bg-black text-white px-1 rounded whitespace-nowrap">
+			{cursor.username}
+		</span>
+	</div>
+{/each}
 
 <div class="container mx-auto p-4">
 	<div class="mb-4">

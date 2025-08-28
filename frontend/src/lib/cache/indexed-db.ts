@@ -198,12 +198,10 @@ export class IndexedDBCache {
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
       const store = transaction.objectStore(STORE_NAME);
-      const index = store.index('lastAccessed');
-      const request = index.getAllKeys();
+      const countRequest = store.count();
 
-      request.onsuccess = async () => {
-        const keys = request.result;
-        const currentCount = keys.length;
+      countRequest.onsuccess = async () => {
+        const currentCount = countRequest.result;
         
         if (currentCount <= maxItems) {
           resolve(0);
@@ -211,16 +209,38 @@ export class IndexedDBCache {
         }
 
         const toDelete = currentCount - maxItems;
-        const keysToDelete = keys.slice(0, toDelete);
         
-        for (const key of keysToDelete) {
-          await this.delete(key as string);
-        }
-        
-        resolve(toDelete);
+        // Only fetch the keys we need to delete using a cursor
+        const index = store.index('lastAccessed');
+        const cursorRequest = index.openCursor();
+        let deleted = 0;
+        const keysToDelete: string[] = [];
+
+        cursorRequest.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          
+          if (cursor && deleted < toDelete) {
+            keysToDelete.push(cursor.primaryKey as string);
+            deleted++;
+            cursor.continue();
+          } else {
+            // Delete all collected keys in batch
+            const deleteTransaction = this.db!.transaction([STORE_NAME], 'readwrite');
+            const deleteStore = deleteTransaction.objectStore(STORE_NAME);
+            
+            keysToDelete.forEach(key => {
+              deleteStore.delete(key);
+            });
+            
+            deleteTransaction.oncomplete = () => resolve(deleted);
+            deleteTransaction.onerror = () => reject(deleteTransaction.error);
+          }
+        };
+
+        cursorRequest.onerror = () => reject(cursorRequest.error);
       };
 
-      request.onerror = () => reject(request.error);
+      countRequest.onerror = () => reject(countRequest.error);
     });
   }
 

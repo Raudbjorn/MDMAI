@@ -24,6 +24,7 @@ export class OptimizedApiClient {
   private metricsCollector: MetricsCollector;
   private requestOptimizer: RequestOptimizer;
   private defaultHeaders: Record<string, string>;
+  private webSocketPool: any = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -79,12 +80,14 @@ export class OptimizedApiClient {
   }
 
   private setupWebSocketPool() {
-    // Create WebSocket pool for real-time features
-    this.requestOptimizer.createConnectionPool({
-      maxConnections: 3,
-      url: `${this.baseUrl.replace('http', 'ws')}/ws`,
-      reconnectDelay: 1000
-    });
+    // Create WebSocket pool for real-time features (singleton)
+    if (!this.webSocketPool) {
+      this.webSocketPool = this.requestOptimizer.createConnectionPool({
+        maxConnections: 3,
+        url: `${this.baseUrl.replace('http', 'ws')}/ws`,
+        reconnectDelay: 1000
+      });
+    }
   }
 
   /**
@@ -263,13 +266,12 @@ export class OptimizedApiClient {
   async websocket(
     handler: (ws: WebSocket) => Promise<void>
   ): Promise<void> {
-    const pool = this.requestOptimizer.createConnectionPool({
-      maxConnections: 3,
-      url: `${this.baseUrl.replace('http', 'ws')}/ws`,
-      reconnectDelay: 1000
-    });
+    // Use existing pool instead of creating a new one each time
+    if (!this.webSocketPool) {
+      this.setupWebSocketPool();
+    }
     
-    return pool.execute(handler);
+    return this.webSocketPool.execute(handler);
   }
 
   /**

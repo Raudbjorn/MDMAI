@@ -71,17 +71,35 @@
 	}
 	
 	function parseRollMessage(content: string) {
-		// Parse dice roll messages for special formatting
-		const rollPattern = /rolled (.+): \*\*(\d+)\*\* \(([^)]+)\)/;
-		const match = content.match(rollPattern);
-		
-		if (match) {
-			return {
-				expression: match[1],
-				total: match[2],
-				rolls: match[3]
-			};
+		// More robust dice roll message parsing with error handling
+		try {
+			// Try structured data first (if available in message metadata)
+			if (content.startsWith('{') && content.endsWith('}')) {
+				const data = JSON.parse(content);
+				if (data.type === 'roll' && data.expression && data.total !== undefined) {
+					return {
+						expression: data.expression,
+						total: String(data.total),
+						rolls: data.rolls ? data.rolls.join(', ') : ''
+					};
+				}
+			}
+			
+			// Fall back to regex parsing for legacy format
+			const rollPattern = /rolled\s+(.+?):\s+\*?\*?(\d+)\*?\*?\s*(?:\(([^)]+)\))?/i;
+			const match = content.match(rollPattern);
+			
+			if (match) {
+				return {
+					expression: match[1].trim(),
+					total: match[2],
+					rolls: match[3] || ''
+				};
+			}
+		} catch (error) {
+			console.warn('Failed to parse roll message:', error);
 		}
+		
 		return null;
 	}
 	

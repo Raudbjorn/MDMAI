@@ -47,6 +47,8 @@ class CollaborationStore {
 
 	private ws: WebSocket | null = null;
 	private reconnectTimer: number | null = null;
+	private reconnectAttempts: number = 0;
+	private maxReconnectAttempts: number = 10;
 	private heartbeatInterval: number | null = null;
 	private syncInterval: number | null = null;
 	private messageHandlers = new Map<string, Set<(msg: CollaborationMessage) => void>>();
@@ -133,6 +135,7 @@ class CollaborationStore {
 		this.ws.onopen = () => {
 			this.state.isConnected = true;
 			this.clearReconnectTimer();
+			this.reconnectAttempts = 0; // Reset attempts on successful connection
 			
 			// Authenticate
 			this.sendMessage({
@@ -366,42 +369,22 @@ class CollaborationStore {
 			return;
 		}
 
-		const currentTurn = this.state.currentRoom.state.active_turn;
-		const initiativeCount = this.state.currentRoom.state.initiative_order.length;
-		
-		let nextTurn = currentTurn + 1;
-		let nextRound = this.state.currentRoom.state.round_number;
-		
-		if (nextTurn >= initiativeCount) {
-			nextTurn = 0;
-			nextRound++;
-		}
-
-		await this.updateState({
-			path: ['active_turn'],
-			value: nextTurn,
-			operation: 'set',
-			version: (this.state.currentRoom?.state.version || 0) + 1,
-			previous_version: this.state.currentRoom?.state.version || 0
-		});
-
-		if (nextTurn === 0) {
-			await this.updateState({
-				path: ['round_number'],
-				value: nextRound,
-				operation: 'set',
-				version: (this.state.currentRoom?.state.version || 0) + 2,
-				previous_version: (this.state.currentRoom?.state.version || 0) + 1
-			});
-		}
-
+		// Send turn change request to server to handle atomically
+		// This prevents race conditions from multiple clients
 		this.sendMessage({
-			type: 'turn_changed',
+			type: 'next_turn_request',
 			room_id: this.state.currentRoom.id,
 			sender_id: this.currentUserId,
-			data: { turn: nextTurn, round: nextRound },
+			data: {
+				current_turn: this.state.currentRoom.state.active_turn,
+				current_round: this.state.currentRoom.state.round_number,
+				initiative_count: this.state.currentRoom.state.initiative_order.length
+			},
 			timestamp: Date.now()
 		});
+		
+		// Server will broadcast the turn_changed event to all clients
+		// including this one, updating the state consistently
 	}
 
 	// Dice rolling
@@ -437,21 +420,61 @@ class CollaborationStore {
 	}
 
 	private evaluateDiceExpression(expression: string): number[] {
-		// Simple dice expression parser (e.g., "2d6+3")
-		const match = expression.match(/(\d+)d(\d+)([+-]?\d*)/);
-		if (!match) return [0];
-
-		const count = parseInt(match[1]);
-		const sides = parseInt(match[2]);
-		const modifier = match[3] ? parseInt(match[3]) : 0;
-
+		// Enhanced dice expression parser supporting multiple dice types and operations
 		const results: number[] = [];
-		for (let i = 0; i < count; i++) {
-			results.push(Math.floor(Math.random() * sides) + 1);
-		}
-
-		if (modifier !== 0) {
-			results.push(modifier);
+		
+		try {
+			// Clean and normalize the expression
+			const normalized = expression.toLowerCase().replace(/\s+/g, '');
+			
+			// Support multiple dice expressions (e.g., "2d6+1d4+3")
+			const dicePattern = /(\d+)d(\d+)/g;
+			const modifierPattern = /([+-]\d+)(?!d)/g;
+			
+			// Roll all dice
+			let diceMatch;
+			while ((diceMatch = dicePattern.exec(normalized)) !== null) {
+				const count = parseInt(diceMatch[1]);
+				const sides = parseInt(diceMatch[2]);
+				
+				// Validate dice parameters
+				if (count > 0 && count <= 100 && sides > 0 && sides <= 1000) {
+					for (let i = 0; i < count; i++) {
+						results.push(Math.floor(Math.random() * sides) + 1);
+					}
+				}
+			}
+			
+			// Add modifiers
+			let modifierMatch;
+			while ((modifierMatch = modifierPattern.exec(normalized)) !== null) {
+				const modifier = parseInt(modifierMatch[1]);
+				if (!isNaN(modifier) && Math.abs(modifier) <= 1000) {
+					results.push(modifier);
+				}
+			}
+			
+			// Support advantage/disadvantage notation (e.g., "2d20kh1" - keep highest 1)
+			if (normalized.includes('kh')) {
+				const keepHighest = parseInt(normalized.split('kh')[1]) || 1;
+				const sorted = [...results].filter(r => r > 0).sort((a, b) => b - a);
+				return sorted.slice(0, keepHighest);
+			}
+			
+			if (normalized.includes('kl')) {
+				const keepLowest = parseInt(normalized.split('kl')[1]) || 1;
+				const sorted = [...results].filter(r => r > 0).sort((a, b) => a - b);
+				return sorted.slice(0, keepLowest);
+			}
+			
+			// If no valid dice were found, return a single d20
+			if (results.length === 0) {
+				results.push(Math.floor(Math.random() * 20) + 1);
+			}
+		} catch (error) {
+			console.error('Error parsing dice expression:', error);
+			// Fallback to simple d20
+			results.push(Math.floor(Math.random() * 20) + 1);
 		}
 
 		return results;
@@ -656,14 +679,26 @@ class CollaborationStore {
 		);
 	}
 
-	// Reconnection logic
+	// Reconnection logic with exponential backoff
 	private scheduleReconnect() {
 		this.clearReconnectTimer();
+		
+		if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+			console.error('Maximum reconnection attempts reached');
+			return;
+		}
+		
+		// Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s, 512s (max)
+		const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 512000);
+		this.reconnectAttempts++;
+		
+		console.log(`Reconnecting in ${delay / 1000}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+		
 		this.reconnectTimer = window.setTimeout(() => {
 			if (!this.state.isConnected) {
 				this.connect(this.currentUserId);
 			}
-		}, 3000);
+		}, delay);
 	}
 
 	private clearReconnectTimer() {
