@@ -34,7 +34,7 @@ python-magic==0.4.27  # File type detection
 # ============================================
 sentence-transformers==2.3.0
 transformers==4.36.0
-torch==2.1.0
+torch==2.8.0
 spacy==3.7.0
 tiktoken==0.5.0  # Token counting for OpenAI models
 instructor==0.5.0  # Structured LLM outputs
