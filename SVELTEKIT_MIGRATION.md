@@ -410,15 +410,30 @@ export const GET: RequestHandler = async ({ params, setHeaders }) => {
                 controller.enqueue(`event: heartbeat\ndata: ${Date.now()}\n\n`);
             }, 30000);
             
-            // Subscribe to MCP events for this session
-            client.on(`session:${params.session}`, (event) => {
-                controller.enqueue(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
-            });
+            // Note: MCPServerClient needs EventEmitter functionality for server-pushed events
+            // Alternative implementation using polling until EventEmitter is added:
+            let lastUpdateTime = Date.now();
+            const pollInterval = setInterval(async () => {
+                try {
+                    const updates = await client.callTool('get_session_updates', {
+                        session_id: params.session,
+                        since: lastUpdateTime
+                    });
+                    if (updates.events?.length > 0) {
+                        updates.events.forEach(event => {
+                            controller.enqueue(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
+                        });
+                        lastUpdateTime = Date.now();
+                    }
+                } catch (error) {
+                    console.error('Error polling for updates:', error);
+                }
+            }, 1000); // Poll every second
             
             // Cleanup on close
             return () => {
                 clearInterval(heartbeat);
-                client.off(`session:${params.session}`);
+                clearInterval(pollInterval);
             };
         }
     });

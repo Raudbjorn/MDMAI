@@ -1016,26 +1016,29 @@ ruff==0.1.0            # Fast Python linter
 
 #### Error-as-Values Pattern
 ```python
-# New pattern throughout codebase
+# New pattern throughout codebase using returns library
 from returns.result import Result, Success, Failure
+from src.core.result_pattern import AppError, ErrorKind, with_result
 
-async def process_document(pdf_path: str) -> Result[Document, ProcessingError]:
+@with_result(error_kind=ErrorKind.PARSING)
+async def process_document(pdf_path: str) -> Result[Document, AppError]:
     """Process with Result pattern instead of exceptions."""
-    try:
-        content = await extract_pdf_content(pdf_path)
-        if not content:
-            return Failure(ProcessingError("Empty document"))
-        
-        chunks = await chunk_content(content)
-        embeddings = await generate_embeddings(chunks)
-        
-        return Success(Document(
-            content=content,
-            chunks=chunks,
-            embeddings=embeddings
+    content = await extract_pdf_content(pdf_path)
+    if not content:
+        return Failure(AppError(
+            kind=ErrorKind.PARSING,
+            message="Empty document",
+            recovery_hint="Check if the PDF contains extractable text"
         ))
-    except Exception as e:
-        return Failure(ProcessingError(str(e)))
+    
+    chunks = await chunk_content(content)
+    embeddings = await generate_embeddings(chunks)
+    
+    return Success(Document(
+        content=content,
+        chunks=chunks,
+        embeddings=embeddings
+    ))
 
 # Usage
 result = await process_document("rulebook.pdf")
