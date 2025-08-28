@@ -1,0 +1,199 @@
+name: Dependency Update Tests
+
+on:
+  pull_request:
+    paths:
+      - 'requirements.txt'
+      - 'requirements-*.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+      - 'src/**/*.py'
+      - 'tests/**/*.py'
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'requirements.txt'
+      - 'requirements-*.txt'
+      - 'pyproject.toml'
+      - 'setup.py'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Test mode'
+        required: true
+        default: 'quick'
+        type: choice
+        options:
+          - quick
+          - full
+          - coverage
+
+jobs:
+  test-dependencies:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-dev \
+          build-essential \
+          libpq-dev \
+          libssl-dev \
+          libffi-dev
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-xdist  # For parallel testing
+    
+    - name: Run dependency tests (Quick)
+      if: github.event_name == 'pull_request' || github.event.inputs.test_mode == 'quick'
+      run: |
+        python tests/run_dependency_tests.py --quick --parallel --report
+    
+    - name: Run dependency tests (Full)
+      if: github.event_name == 'push' || github.event.inputs.test_mode == 'full'
+      run: |
+        python tests/run_dependency_tests.py --parallel --report
+    
+    - name: Run dependency tests (Coverage)
+      if: github.event.inputs.test_mode == 'coverage'
+      run: |
+        python tests/run_dependency_tests.py --coverage --parallel --report
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          dependency_test_report.json
+          test_report_deps.html
+          htmlcov_deps/
+    
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync('dependency_test_report.json', 'utf8'));
+          
+          const status = report.tests_passed && report.integration_passed && report.imports_successful && report.performance_ok 
+            ? '✅ All tests passed' 
+            : '❌ Some tests failed';
+          
+          const comment = `
+          ## Dependency Update Test Results - Python ${{ matrix.python-version }}
+          
+          ${status}
+          
+          | Check | Status |
+          |-------|--------|
+          | Unit Tests | ${report.tests_passed ? '✅ Passed' : '❌ Failed'} |
+          | Integration Tests | ${report.integration_passed ? '✅ Passed' : '❌ Failed'} |
+          | Module Imports | ${report.imports_successful ? '✅ Successful' : '❌ Failed'} |
+          | Performance | ${report.performance_ok ? '✅ OK' : '❌ Regression'} |
+          
+          Tested dependencies:
+          - pypdf: 3.17.0 → 6.0.0
+          - transformers: 4.36.0 → 4.53.0
+          - torch: 2.1.0 → 2.8.0
+          - aiohttp: 3.9.0 → 3.12.14
+          `;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  regression-tests:
+    runs-on: ubuntu-latest
+    needs: test-dependencies
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install reportlab  # For PDF generation in tests
+    
+    - name: Run regression tests
+      run: |
+        pytest tests/test_dependency_regression.py -v --tb=short --junit-xml=regression-results.xml
+    
+    - name: Publish test results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: always()
+      with:
+        files: |
+          regression-results.xml
+        check_name: 'Regression Test Results'
+        comment_mode: always
+
+  compatibility-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install core dependencies only
+      run: |
+        python -m pip install --upgrade pip
+        pip install pypdf==6.0.0 transformers==4.53.0 torch==2.8.0 aiohttp==3.12.14
+        pip install pytest returns
+    
+    - name: Test basic compatibility
+      run: |
+        python -c "import pypdf; print(f'pypdf version: {pypdf.__version__}')"
+        python -c "import transformers; print(f'transformers version: {transformers.__version__}')"
+        python -c "import torch; print(f'torch version: {torch.__version__}')"
+        python -c "import aiohttp; print(f'aiohttp version: {aiohttp.__version__}')"
+    
+    - name: Run minimal smoke tests
+      run: |
+        pytest tests/test_dependency_updates.py::TestPyPDFUpdates::test_pdf_reader_initialization -v
+        pytest tests/test_dependency_updates.py::TestTorchUpdates::test_tensor_operations -v

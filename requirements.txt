@@ -23,7 +23,7 @@ asyncpg==0.29.0  # PostgreSQL async driver (optional)
 # ============================================
 # PDF Processing (Modernized)
 # ============================================
-pypdf==3.17.0  # Modern fork of PyPDF2, actively maintained
+pypdf==6.0.0  # Modern fork of PyPDF2, actively maintained
 pdfplumber==0.10.3  # Table extraction and advanced parsing
 pikepdf==8.10.0  # Robust PDF handling with QPDF backend
 pymupdf==1.23.0  # Fast PDF processing (optional)
@@ -33,8 +33,8 @@ python-magic==0.4.27  # File type detection
 # AI/ML & Embeddings
 # ============================================
 sentence-transformers==2.3.0
-transformers==4.36.0
-torch==2.1.0
+transformers==4.53.0
+torch==2.8.0
 spacy==3.7.0
 tiktoken==0.5.0  # Token counting for OpenAI models
 instructor==0.5.0  # Structured LLM outputs
@@ -55,7 +55,7 @@ rank-bm25==0.2.2  # BM25 ranking for keyword search
 # HTTP & Async (Modernized)
 # ============================================
 httpx==0.26.0  # Modern async HTTP client (replaces requests)
-aiohttp==3.9.0  # Alternative async HTTP
+aiohttp==3.12.14  # Alternative async HTTP
 tenacity==8.2.0  # Retry logic with exponential backoff
 aiofiles==23.2.0  # Async file operations
 websockets==12.0  # WebSocket support
