@@ -40,7 +40,7 @@ export class EnhancedSSEClient {
 	private messageHandlers = new Map<string, Set<MessageHandler>>();
 	private openHandlers = new Set<EventHandler>();
 	private errorHandlers = new Set<EventHandler>();
-	private state = $state<SSEState>({
+	private state: SSEState = {
 		readyState: EventSource.CLOSED,
 		isReconnecting: false,
 		reconnectAttempts: 0,
@@ -48,7 +48,7 @@ export class EnhancedSSEClient {
 		lastDisconnectedAt: null,
 		lastEventId: null,
 		lastError: null
-	});
+	};
 	private reconnectAttempts = 0;
 	private abortController: AbortController | null = null;
 
@@ -68,7 +68,7 @@ export class EnhancedSSEClient {
 		}
 	}
 
-	// Reactive getters using Svelte 5 runes
+	// Getters for state access
 	get readyState() {
 		return this.state.readyState;
 	}

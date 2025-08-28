@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { providerStore } from '$lib/stores/providers.svelte';
+	import { providerApi } from '$lib/api/providers-client';
 	import { ProviderType } from '$lib/types/providers';
 	import type { ProviderCredentials } from '$lib/types/providers';
 	
@@ -74,13 +75,16 @@
 		validationSuccess = false;
 		
 		try {
-			const isValid = await providerStore.testProvider(providerType);
+			// Use providerApi directly to validate the new API key
+			const validationResult = await providerApi.validateCredentials(providerType, apiKey);
 			
-			if (isValid) {
+			if (validationResult.ok && validationResult.value.is_valid) {
 				validationSuccess = true;
 				validationError = null;
 			} else {
-				validationError = 'API key validation failed. Please check your key and try again.';
+				validationError = validationResult.ok 
+					? (validationResult.value.error_message || 'API key validation failed. Please check your key and try again.')
+					: 'API key validation failed. Please check your key and try again.';
 			}
 		} catch (error) {
 			validationError = error instanceof Error ? error.message : 'Validation failed';

@@ -76,7 +76,7 @@
 		const unsubscribes = [
 			collaborationStore.onMessage('participant_joined', (msg) => {
 				addActivity({
-					id: `join-${Date.now()}`,
+					id: crypto.randomUUID(),
 					type: 'join',
 					timestamp: msg.timestamp,
 					userId: msg.sender_id,
@@ -87,7 +87,7 @@
 			
 			collaborationStore.onMessage('participant_left', (msg) => {
 				addActivity({
-					id: `leave-${Date.now()}`,
+					id: crypto.randomUUID(),
 					type: 'leave',
 					timestamp: msg.timestamp,
 					userId: msg.sender_id,
@@ -127,7 +127,7 @@
 			
 			collaborationStore.onMessage('turn_changed', (msg) => {
 				addActivity({
-					id: `turn-${Date.now()}`,
+					id: crypto.randomUUID(),
 					type: 'turn',
 					timestamp: msg.timestamp,
 					userId: msg.sender_id,
@@ -138,7 +138,7 @@
 			
 			collaborationStore.onMessage('initiative_update', (msg) => {
 				addActivity({
-					id: `init-${Date.now()}`,
+					id: crypto.randomUUID(),
 					type: 'initiative',
 					timestamp: msg.timestamp,
 					userId: msg.sender_id,
@@ -149,7 +149,7 @@
 			
 			collaborationStore.onMessage('state_update', (msg) => {
 				addActivity({
-					id: `state-${Date.now()}`,
+					id: crypto.randomUUID(),
 					type: 'state',
 					timestamp: msg.timestamp,
 					userId: msg.sender_id,

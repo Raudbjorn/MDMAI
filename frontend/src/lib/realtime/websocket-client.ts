@@ -41,7 +41,7 @@ export class EnhancedWebSocketClient {
 	private closeHandlers = new Set<CloseHandler>();
 	private errorHandlers = new Set<EventHandler>();
 	private messageQueue: any[] = [];
-	private state = $state<WebSocketState>({
+	private state: WebSocketState = {
 		readyState: WebSocket.CLOSED,
 		isReconnecting: false,
 		reconnectAttempts: 0,
@@ -49,7 +49,7 @@ export class EnhancedWebSocketClient {
 		lastDisconnectedAt: null,
 		lastError: null,
 		latency: 0
-	});
+	};
 	private pingTimestamp = 0;
 	private reconnectAttempts = 0;
 
@@ -72,7 +72,7 @@ export class EnhancedWebSocketClient {
 		}
 	}
 
-	// Reactive getters using Svelte 5 runes
+	// Getters for state access
 	get readyState() {
 		return this.state.readyState;
 	}

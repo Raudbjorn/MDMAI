@@ -233,6 +233,67 @@
 		if (hours < 24) return `${hours}h ago`;
 		return `${Math.floor(hours / 24)}d ago`;
 	}
+	
+	// Calculate selection position in the textarea
+	function calculateSelectionPosition(charIndex: number): { x: number; y: number } {
+		if (!textareaEl) return { x: 0, y: 0 };
+		
+		// Create a temporary element to measure text dimensions
+		const temp = document.createElement('div');
+		temp.style.position = 'absolute';
+		temp.style.visibility = 'hidden';
+		temp.style.whiteSpace = 'pre-wrap';
+		temp.style.font = window.getComputedStyle(textareaEl).font;
+		temp.style.width = textareaEl.clientWidth + 'px';
+		temp.style.padding = window.getComputedStyle(textareaEl).padding;
+		
+		// Get text up to the selection point
+		const textBeforeSelection = content.substring(0, charIndex);
+		temp.textContent = textBeforeSelection;
+		
+		document.body.appendChild(temp);
+		
+		// Calculate position based on the temporary element
+		const lines = textBeforeSelection.split('\n');
+		const lastLine = lines[lines.length - 1];
+		
+		// Approximate position (this is simplified)
+		const lineHeight = parseInt(window.getComputedStyle(textareaEl).lineHeight) || 20;
+		const y = (lines.length - 1) * lineHeight;
+		
+		// Measure the last line width
+		const tempLine = document.createElement('span');
+		tempLine.style.font = window.getComputedStyle(textareaEl).font;
+		tempLine.textContent = lastLine;
+		document.body.appendChild(tempLine);
+		const x = tempLine.offsetWidth;
+		document.body.removeChild(tempLine);
+		
+		document.body.removeChild(temp);
+		
+		return { x, y };
+	}
+	
+	// Calculate selection width
+	function calculateSelectionWidth(range: { start: number; end: number }): number {
+		if (!textareaEl || range.start === range.end) return 0;
+		
+		// Get selected text
+		const selectedText = content.substring(range.start, range.end);
+		
+		// Create temporary element to measure width
+		const temp = document.createElement('span');
+		temp.style.position = 'absolute';
+		temp.style.visibility = 'hidden';
+		temp.style.font = window.getComputedStyle(textareaEl).font;
+		temp.textContent = selectedText;
+		
+		document.body.appendChild(temp);
+		const width = temp.offsetWidth;
+		document.body.removeChild(temp);
+		
+		return Math.min(width, textareaEl.clientWidth);
+	}
 </script>
 
 <div class="shared-notes">

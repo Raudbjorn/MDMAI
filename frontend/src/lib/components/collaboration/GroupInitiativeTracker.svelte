@@ -114,7 +114,7 @@
 		if (!newEntry.name || !canManageInitiative) return;
 		
 		const entry: InitiativeEntry = {
-			id: `init-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			id: crypto.randomUUID(),
 			name: newEntry.name,
 			initiative: newEntry.initiative,
 			is_player: newEntry.is_player,

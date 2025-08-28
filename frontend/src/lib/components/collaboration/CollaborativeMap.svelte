@@ -562,7 +562,7 @@
 	
 	function startMeasurement(pos: { x: number; y: number }) {
 		currentMeasurement = {
-			id: `measure-${Date.now()}`,
+			id: crypto.randomUUID(),
 			start: pos,
 			end: pos,
 			color: '#3b82f6',
@@ -593,7 +593,7 @@
 	
 	function startDrawing(pos: { x: number; y: number }) {
 		currentDrawing = {
-			id: `draw-${Date.now()}`,
+			id: crypto.randomUUID(),
 			type: 'line',
 			points: [pos],
 			color: '#ef4444',
@@ -762,7 +762,7 @@
 	export function addToken(token: Omit<MapToken, 'id'>) {
 		const newToken: MapToken = {
 			...token,
-			id: `token-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+			id: crypto.randomUUID()
 		};
 		
 		mapState.tokens.set(newToken.id, newToken);

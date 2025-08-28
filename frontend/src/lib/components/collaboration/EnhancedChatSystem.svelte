@@ -2,6 +2,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { collaborationStore } from '$lib/stores/collaboration.svelte';
 	import type { ChatMessage, DiceRoll, Participant } from '$lib/types/collaboration';
+	import DOMPurify from 'dompurify';
 	
 	interface Props {
 		roomId: string;
@@ -234,7 +235,7 @@
 	
 	function addSystemMessage(content: string) {
 		const message: ChatMessage = {
-			id: `system-${Date.now()}`,
+			id: crypto.randomUUID(),
 			room_id: roomId,
 			sender_id: 'system',
 			sender_name: 'System',
@@ -416,11 +417,16 @@
 	}
 	
 	function formatMessage(content: string): string {
-		// Format bold text
+		// Escape HTML first to prevent XSS
+		const div = document.createElement('div');
+		div.textContent = content;
+		content = div.innerHTML;
+		
+		// Format bold text (using escaped asterisks)
 		content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 		
-		// Format italic text
-		content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+		// Format italic text (single asterisk, but not if it's part of bold)
+		content = content.replace(/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>');
 		
 		// Format mentions
 		content = content.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
@@ -428,7 +434,18 @@
 		// Format dice rolls
 		content = content.replace(/\[(\d+(?:,\s*\d+)*)\]/g, '<span class="dice-results">[$1]</span>');
 		
-		return content;
+		// Configure DOMPurify to allow only safe tags and attributes
+		const cleanHTML = DOMPurify.sanitize(content, {
+			ALLOWED_TAGS: ['strong', 'em', 'span'],
+			ALLOWED_ATTR: ['class'],
+			ALLOWED_CLASSES: {
+				span: ['mention', 'dice-results']
+			},
+			KEEP_CONTENT: true,
+			RETURN_TRUSTED_TYPE: false
+		});
+		
+		return cleanHTML;
 	}
 	
 	function getMessageClass(message: ChatMessage): string {

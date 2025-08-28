@@ -45,6 +45,21 @@ async function handleResponse<T>(response: Response): Promise<Result<T>> {
 }
 
 /**
+ * Handles API responses that return void
+ */
+async function handleVoidResponse(response: Response): Promise<Result<void>> {
+	if (!response.ok) {
+		const error = await response.text().catch(() => 'Unknown error');
+		return {
+			ok: false,
+			error: new Error(`${response.status}: ${error}`)
+		};
+	}
+
+	return { ok: true, value: undefined };
+}
+
+/**
  * Provider API client
  */
 export class ProviderApiClient {
@@ -122,15 +137,7 @@ export class ProviderApiClient {
 			headers: this.headers
 		});
 
-		if (!response.ok) {
-			const error = await response.text().catch(() => 'Unknown error');
-			return {
-				ok: false,
-				error: new Error(`${response.status}: ${error}`)
-			};
-		}
-
-		return { ok: true, value: undefined };
+		return handleVoidResponse(response);
 	}
 
 	/**
@@ -143,15 +150,7 @@ export class ProviderApiClient {
 			body: JSON.stringify(credentials)
 		});
 
-		if (!response.ok) {
-			const error = await response.text().catch(() => 'Unknown error');
-			return {
-				ok: false,
-				error: new Error(`${response.status}: ${error}`)
-			};
-		}
-
-		return { ok: true, value: undefined };
+		return handleVoidResponse(response);
 	}
 
 	/**
@@ -230,15 +229,7 @@ export class ProviderApiClient {
 			headers: this.headers
 		});
 
-		if (!response.ok) {
-			const error = await response.text().catch(() => 'Unknown error');
-			return {
-				ok: false,
-				error: new Error(`${response.status}: ${error}`)
-			};
-		}
-
-		return { ok: true, value: undefined };
+		return handleVoidResponse(response);
 	}
 
 	/**
@@ -251,15 +242,7 @@ export class ProviderApiClient {
 			body: JSON.stringify({ provider_type: providerType })
 		});
 
-		if (!response.ok) {
-			const error = await response.text().catch(() => 'Unknown error');
-			return {
-				ok: false,
-				error: new Error(`${response.status}: ${error}`)
-			};
-		}
-
-		return { ok: true, value: undefined };
+		return handleVoidResponse(response);
 	}
 
 	/**
