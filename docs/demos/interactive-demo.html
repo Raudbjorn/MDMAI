@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTRPG MCP Server - Interactive Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .demo-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .demo-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .demo-card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .demo-card .icon {
+            font-size: 1.5em;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .input-group input:focus,
+        .input-group select:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            min-height: 60px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .result.success {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+        
+        .result.error {
+            background: #ffebee;
+            border-left: 4px solid #f44336;
+        }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #f44336;
+        }
+        
+        .status-dot.connected {
+            background: #4caf50;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            background: none;
+            border: none;
+            color: #666;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.3s ease;
+            position: relative;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+        }
+        
+        .tab.active {
+            color: #667eea;
+        }
+        
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #667eea;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .dice-result {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .dice-icon {
+            font-size: 2em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎲 TTRPG MCP Server</h1>
+            <p class="subtitle">Interactive Demo - Experience the Power of AI-Enhanced Tabletop Gaming</p>
+        </header>
+        
+        <div class="connection-status">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Disconnected</span>
+        </div>
+        
+        <div class="demo-grid">
+            <!-- Dice Roller Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">🎲</span> Dice Roller</h2>
+                <div class="input-group">
+                    <label for="diceExpression">Dice Expression</label>
+                    <input type="text" id="diceExpression" placeholder="e.g., 3d6+2, 1d20, 2d10-1" value="3d6+2">
+                </div>
+                <button class="btn" onclick="rollDice()">Roll Dice</button>
+                <div id="diceResult" class="result"></div>
+            </div>
+            
+            <!-- Rule Search Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">📚</span> Rule Search</h2>
+                <div class="input-group">
+                    <label for="searchQuery">Search Query</label>
+                    <input type="text" id="searchQuery" placeholder="e.g., advantage, critical hit, death saves" value="advantage">
+                </div>
+                <div class="input-group">
+                    <label for="searchLimit">Max Results</label>
+                    <select id="searchLimit">
+                        <option value="3">3</option>
+                        <option value="5">5</option>
+                        <option value="10">10</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="searchRules()">Search Rules</button>
+                <div id="searchResult" class="result"></div>
+            </div>
+            
+            <!-- Character Generator Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">⚔️</span> Character Generator</h2>
+                <div class="input-group">
+                    <label for="charClass">Class</label>
+                    <select id="charClass">
+                        <option value="fighter">Fighter</option>
+                        <option value="wizard">Wizard</option>
+                        <option value="rogue">Rogue</option>
+                        <option value="cleric">Cleric</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="charRace">Race</label>
+                    <select id="charRace">
+                        <option value="human">Human</option>
+                        <option value="elf">Elf</option>
+                        <option value="dwarf">Dwarf</option>
+                        <option value="halfling">Halfling</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="generateCharacter()">Generate Character</button>
+                <div id="charResult" class="result"></div>
+            </div>
+            
+            <!-- Session Manager Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">📝</span> Session Notes</h2>
+                <div class="input-group">
+                    <label for="sessionNote">Note Content</label>
+                    <textarea id="sessionNote" rows="3" placeholder="Enter session notes...">The party defeated the goblin ambush and discovered a mysterious map.</textarea>
+                </div>
+                <div class="input-group">
+                    <label for="noteCategory">Category</label>
+                    <select id="noteCategory">
+                        <option value="story">Story</option>
+                        <option value="combat">Combat</option>
+                        <option value="npc">NPC</option>
+                        <option value="loot">Loot</option>
+                    </select>
+                </div>
+                <button class="btn" onclick="addSessionNote()">Add Note</button>
+                <div id="noteResult" class="result"></div>
+            </div>
+            
+            <!-- Initiative Tracker Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">⚡</span> Initiative Tracker</h2>
+                <div class="input-group">
+                    <label for="combatantName">Combatant Name</label>
+                    <input type="text" id="combatantName" placeholder="e.g., Aragorn, Goblin" value="Aragorn">
+                </div>
+                <div class="input-group">
+                    <label for="initiativeRoll">Initiative Roll</label>
+                    <input type="number" id="initiativeRoll" placeholder="1-20" value="15" min="1" max="30">
+                </div>
+                <button class="btn" onclick="addToInitiative()">Add to Initiative</button>
+                <div id="initiativeResult" class="result"></div>
+            </div>
+            
+            <!-- Campaign Info Demo -->
+            <div class="demo-card">
+                <h2><span class="icon">🗺️</span> Campaign Info</h2>
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('overview')">Overview</button>
+                    <button class="tab" onclick="switchTab('npcs')">NPCs</button>
+                    <button class="tab" onclick="switchTab('locations')">Locations</button>
+                </div>
+                <div id="overview" class="tab-content active">
+                    <button class="btn" onclick="getCampaignOverview()">Get Campaign Overview</button>
+                </div>
+                <div id="npcs" class="tab-content">
+                    <button class="btn" onclick="listNPCs()">List NPCs</button>
+                </div>
+                <div id="locations" class="tab-content">
+                    <button class="btn" onclick="listLocations()">List Locations</button>
+                </div>
+                <div id="campaignResult" class="result"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Demo WebSocket connection (simulated)
+        let ws = null;
+        let isConnected = false;
+        
+        // Initialize demo
+        window.onload = function() {
+            connectToDemo();
+        };
+        
+        function connectToDemo() {
+            // Simulate connection
+            setTimeout(() => {
+                isConnected = true;
+                updateConnectionStatus(true);
+            }, 500);
+        }
+        
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            
+            if (connected) {
+                dot.classList.add('connected');
+                text.textContent = 'Connected (Demo Mode)';
+            } else {
+                dot.classList.remove('connected');
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        // Dice Roller
+        function rollDice() {
+            const expression = document.getElementById('diceExpression').value;
+            const resultDiv = document.getElementById('diceResult');
+            
+            if (!expression) {
+                showResult(resultDiv, 'Please enter a dice expression', 'error');
+                return;
+            }
+            
+            // Parse dice expression
+            const match = expression.match(/(\d+)d(\d+)([+-]\d+)?/);
+            if (!match) {
+                showResult(resultDiv, 'Invalid dice expression. Use format like 3d6+2', 'error');
+                return;
+            }
+            
+            const numDice = parseInt(match[1]);
+            const numSides = parseInt(match[2]);
+            const modifier = parseInt(match[3] || 0);
+            
+            // Roll the dice
+            const rolls = [];
+            for (let i = 0; i < numDice; i++) {
+                rolls.push(Math.floor(Math.random() * numSides) + 1);
+            }
+            
+            const total = rolls.reduce((a, b) => a + b, 0) + modifier;
+            
+            const result = `<div class="dice-result">
+                <span class="dice-icon">🎲</span>
+                <div>
+                    <div>Roll: ${expression}</div>
+                    <div>Results: [${rolls.join(', ')}]${modifier !== 0 ? ` ${modifier >= 0 ? '+' : ''}${modifier}` : ''}</div>
+                    <div>Total: ${total}</div>
+                </div>
+            </div>`;
+            
+            showResult(resultDiv, result, 'success', true);
+        }
+        
+        // Rule Search
+        function searchRules() {
+            const query = document.getElementById('searchQuery').value;
+            const limit = document.getElementById('searchLimit').value;
+            const resultDiv = document.getElementById('searchResult');
+            
+            if (!query) {
+                showResult(resultDiv, 'Please enter a search query', 'error');
+                return;
+            }
+            
+            // Simulated search results
+            const rules = {
+                'advantage': {
+                    title: 'Advantage and Disadvantage',
+                    content: 'When you have advantage, roll twice and take the higher result.',
+                    page: 173
+                },
+                'critical': {
+                    title: 'Critical Hits',
+                    content: 'When you score a critical hit, roll extra dice for damage.',
+                    page: 196
+                },
+                'death': {
+                    title: 'Death Saving Throws',
+                    content: 'When at 0 HP, roll 1d20. 10+ is a success, 9- is a failure.',
+                    page: 197
+                }
+            };
+            
+            const results = Object.entries(rules)
+                .filter(([key, rule]) => 
+                    query.toLowerCase().includes(key) || 
+                    rule.title.toLowerCase().includes(query.toLowerCase())
+                )
+                .slice(0, parseInt(limit))
+                .map(([key, rule]) => 
+                    `📖 ${rule.title}\n${rule.content}\n📄 Page ${rule.page}`
+                );
+            
+            if (results.length > 0) {
+                showResult(resultDiv, results.join('\n\n'), 'success');
+            } else {
+                showResult(resultDiv, 'No rules found matching your query', 'error');
+            }
+        }
+        
+        // Character Generator
+        function generateCharacter() {
+            const charClass = document.getElementById('charClass').value;
+            const race = document.getElementById('charRace').value;
+            const resultDiv = document.getElementById('charResult');
+            
+            // Generate random stats
+            const stats = {
+                STR: 8 + Math.floor(Math.random() * 10),
+                DEX: 8 + Math.floor(Math.random() * 10),
+                CON: 8 + Math.floor(Math.random() * 10),
+                INT: 8 + Math.floor(Math.random() * 10),
+                WIS: 8 + Math.floor(Math.random() * 10),
+                CHA: 8 + Math.floor(Math.random() * 10)
+            };
+            
+            const names = {
+                human: ['Aldric', 'Lyra', 'Marcus', 'Elena'],
+                elf: ['Legolas', 'Arwen', 'Elrond', 'Galadriel'],
+                dwarf: ['Thorin', 'Gimli', 'Dwalin', 'Balin'],
+                halfling: ['Frodo', 'Sam', 'Pippin', 'Merry']
+            };
+            
+            const name = names[race][Math.floor(Math.random() * names[race].length)];
+            
+            const character = `⚔️ Character Generated!
+            
+Name: ${name}
+Race: ${race.charAt(0).toUpperCase() + race.slice(1)}
+Class: ${charClass.charAt(0).toUpperCase() + charClass.slice(1)}
+Level: 1
+
+Stats:
+STR: ${stats.STR} (${Math.floor((stats.STR - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.STR - 10) / 2)})
+DEX: ${stats.DEX} (${Math.floor((stats.DEX - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.DEX - 10) / 2)})
+CON: ${stats.CON} (${Math.floor((stats.CON - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.CON - 10) / 2)})
+INT: ${stats.INT} (${Math.floor((stats.INT - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.INT - 10) / 2)})
+WIS: ${stats.WIS} (${Math.floor((stats.WIS - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.WIS - 10) / 2)})
+CHA: ${stats.CHA} (${Math.floor((stats.CHA - 10) / 2) >= 0 ? '+' : ''}${Math.floor((stats.CHA - 10) / 2)})
+
+HP: ${10 + Math.floor((stats.CON - 10) / 2)}
+AC: ${10 + Math.floor((stats.DEX - 10) / 2)}`;
+            
+            showResult(resultDiv, character, 'success');
+        }
+        
+        // Session Notes
+        function addSessionNote() {
+            const note = document.getElementById('sessionNote').value;
+            const category = document.getElementById('noteCategory').value;
+            const resultDiv = document.getElementById('noteResult');
+            
+            if (!note) {
+                showResult(resultDiv, 'Please enter a note', 'error');
+                return;
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const result = `✅ Note Added Successfully!
+            
+Time: ${timestamp}
+Category: ${category.charAt(0).toUpperCase() + category.slice(1)}
+Note: ${note}
+
+Session ID: demo-${Date.now()}`;
+            
+            showResult(resultDiv, result, 'success');
+        }
+        
+        // Initiative Tracker
+        let initiativeOrder = [];
+        
+        function addToInitiative() {
+            const name = document.getElementById('combatantName').value;
+            const roll = parseInt(document.getElementById('initiativeRoll').value);
+            const resultDiv = document.getElementById('initiativeResult');
+            
+            if (!name || !roll) {
+                showResult(resultDiv, 'Please enter name and initiative roll', 'error');
+                return;
+            }
+            
+            initiativeOrder.push({ name, roll });
+            initiativeOrder.sort((a, b) => b.roll - a.roll);
+            
+            const orderList = initiativeOrder
+                .map((c, i) => `${i + 1}. ${c.name} (${c.roll})`)
+                .join('\n');
+            
+            const result = `⚡ Initiative Order:
+            
+${orderList}
+
+Current Turn: ${initiativeOrder[0]?.name || 'None'}`;
+            
+            showResult(resultDiv, result, 'success');
+        }
+        
+        // Campaign Info
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+        }
+        
+        function getCampaignOverview() {
+            const resultDiv = document.getElementById('campaignResult');
+            const overview = `🗺️ Campaign: The Lost Mines of Phandelver
+
+Setting: Sword Coast, Forgotten Realms
+Current Location: Phandalin
+Session: #5
+Party Level: 3
+
+Active Quests:
+• Find Gundren Rockseeker
+• Clear out Cragmaw Castle
+• Investigate the Redbrand Hideout
+
+Party Members: 4
+NPCs Met: 12
+Locations Discovered: 8`;
+            
+            showResult(resultDiv, overview, 'success');
+        }
+        
+        function listNPCs() {
+            const resultDiv = document.getElementById('campaignResult');
+            const npcs = `👥 Campaign NPCs:
+
+1. Gundren Rockseeker
+   Role: Quest Giver
+   Status: Missing
+   
+2. Sildar Hallwinter
+   Role: Ally
+   Location: Phandalin
+   
+3. Harbin Wester
+   Role: Townmaster
+   Location: Town Hall
+   
+4. Sister Garaele
+   Role: Cleric of Tymora
+   Location: Shrine of Luck
+   
+5. Glasstaff
+   Role: Villain
+   Status: Unknown`;
+            
+            showResult(resultDiv, npcs, 'success');
+        }
+        
+        function listLocations() {
+            const resultDiv = document.getElementById('campaignResult');
+            const locations = `📍 Discovered Locations:
+
+1. Phandalin
+   Type: Town
+   Status: Safe Haven
+   
+2. Cragmaw Hideout
+   Type: Dungeon
+   Status: Cleared
+   
+3. Redbrand Hideout
+   Type: Dungeon
+   Status: Partially Explored
+   
+4. Old Owl Well
+   Type: Ruins
+   Status: Not Visited
+   
+5. Thundertree
+   Type: Ruined Town
+   Status: Marked on Map`;
+            
+            showResult(resultDiv, locations, 'success');
+        }
+        
+        // Helper function to show results
+        function showResult(element, message, type = 'success', isHtml = false) {
+            element.className = `result ${type}`;
+            if (isHtml) {
+                element.innerHTML = message;
+            } else {
+                element.textContent = message;
+            }
+            
+            // Add fade-in animation
+            element.style.opacity = '0';
+            setTimeout(() => {
+                element.style.transition = 'opacity 0.3s ease';
+                element.style.opacity = '1';
+            }, 10);
+        }
+    </script>
+</body>
+</html>
