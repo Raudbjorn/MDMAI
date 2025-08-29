@@ -50,13 +50,55 @@ This is a Model Context Protocol (MCP) server for assisting with Tabletop Role-P
 ## Development Guidelines
 
 ### IMPORTANT: Use of Specialized Sub-Agents
-When working on this project, ALWAYS proactively use these specialized sub-agents:
-- **mcp-protocol-expert**: For all MCP protocol implementation, tool design, and FastMCP integration
-- **llm-architect**: For designing AI provider integrations, model selection, and LLM system architecture
-- **context-manager**: For context persistence, session management, and distributed state handling
-- **python-pro**: For ALL Python development - optimization, advanced patterns, testing, and refactoring
 
-These agents should be used proactively without waiting for explicit requests. They provide specialized expertise critical for this project's success.
+**ALWAYS use these specialized sub-agents proactively for this project. Do not wait for explicit requests - use them automatically when working on relevant areas:**
+
+#### Required Sub-Agents by Task Area:
+
+1. **mcp-protocol-expert** - Use for:
+   - All MCP protocol implementation and tool design
+   - FastMCP integration and bridge service development
+   - WebSocket-to-MCP protocol translation
+   - Defining new MCP tools or modifying existing ones
+   - MCP message formatting and session management
+
+2. **llm-architect** - Use for:
+   - AI provider integration design (Anthropic, OpenAI, Google)
+   - Model selection and optimization strategies
+   - Cost optimization and provider failover mechanisms
+   - Prompt engineering for TTRPG-specific tasks
+   - RAG system design for rulebook searches
+
+3. **context-manager** - Use for:
+   - State synchronization architecture
+   - ChromaDB collection design and optimization
+   - Session state persistence and recovery
+   - Distributed state management for multiplayer
+   - Cache invalidation strategies
+
+4. **python-pro** - Use for:
+   - ALL Python code implementation
+   - Performance optimization and profiling
+   - Advanced patterns (async/await, decorators, metaclasses)
+   - Testing strategies and pytest fixtures
+   - Refactoring existing Python code
+
+5. **svelte-ttrpg-developer** - Use for:
+   - ALL Svelte/SvelteKit component development
+   - State management with Svelte 5 runes
+   - Real-time UI components for TTRPG features
+   - TypeScript implementation in frontend
+   - Accessibility and responsive design
+
+#### Example Usage Pattern:
+```
+User: "Implement the dice rolling MCP tool"
+Assistant: [Automatically uses mcp-protocol-expert for MCP tool design]
+         [Automatically uses python-pro for Python implementation]
+         [Automatically uses svelte-ttrpg-developer for frontend component]
+```
+
+These agents provide specialized expertise that is **critical for project success**. Using them ensures best practices, optimal performance, and production-ready code.
 
 ### Code Style
 - Use Python type hints for all functions
@@ -106,15 +148,21 @@ Each game system has a unique personality:
 - [x] Requirements documented
 - [x] Technical design completed
 - [x] Task breakdown with requirement mappings
-- [ ] Core infrastructure setup
+- [x] Frontend infrastructure (SvelteKit, components, stores)
+- [x] Real-time WebSocket/SSE implementation
+- [x] Provider management system (AI providers)
+- [x] Collaborative tools (dice, notes, maps, initiative)
+- [x] Performance optimization framework
+- [x] Offline support with Service Workers
+- [x] Authentication & security design
+- [x] Spike research for all unknowns
+- [ ] Core MCP server implementation
 - [ ] PDF processing pipeline
 - [ ] Search engine implementation
-- [ ] Campaign management system
-- [ ] Session tracking features
-- [ ] Character generation tools
-- [ ] Personality system
-- [ ] Testing suite
-- [ ] Documentation
+- [ ] Backend campaign management
+- [ ] MCP tools implementation
+- [ ] Third-party integrations
+- [ ] Production deployment
 
 ## Development Priorities
 1. **Phase 1**: Core infrastructure and basic PDF processing
@@ -160,13 +208,146 @@ pre-commit install  # Set up git hooks
 docker-compose up  # Run with Docker
 ```
 
+## Documentation Structure
+
+### Core Documentation
+- `requirements.md` - Functional and non-functional requirements
+- `design.md` - Technical architecture and design decisions
+- `tasks.md` - Implementation tasks with requirement mappings
+- `CLAUDE.md` - Project context and development guidelines
+
+### Frontend Documentation (`/frontend/docs/`)
+
+#### Requirements & Design
+- `requirements/TASK_18_3_REQUIREMENTS.md` - Real-time features requirements
+- `design/TASK_18_3_DESIGN.md` - Component architecture for real-time
+- `planning/TASK_18_3_BREAKDOWN.md` - Story points breakdown (76 points)
+
+#### Spike Research (`/frontend/docs/spikes/`)
+- `SPIKE_1_WEBSOCKET.md` - WebSocket-to-MCP bridge architecture
+- `SPIKE_2_STATE_SYNC.md` - Hybrid Event Sourcing + CRDT strategy
+- `SPIKE_3_AUTH_SECURITY.md` - JWT auth, encryption, security policies
+- `SPIKE_4_PERFORMANCE.md` - Performance targets and optimization
+- `SPIKE_5_OFFLINE.md` - Service Workers and offline capability
+- `SPIKE_6_INTEGRATIONS.md` - D&D Beyond, Roll20, Discord, etc.
+- `SPIKE_7_DATABASE.md` - ChromaDB, SQLite, Redis architecture
+- `SPIKE_8_ERROR_RECOVERY.md` - Circuit breakers, resilience patterns
+- `SPIKE_9_TESTING.md` - Test pyramid, coverage targets
+- `SPIKE_10_BROWSER_SUPPORT.md` - Progressive enhancement strategy
+- `SPIKE_SUMMARY.md` - Executive summary of all spikes
+
+#### API Documentation
+- `REALTIME_API.md` - WebSocket/SSE API specifications
+- `REALTIME_MIGRATION_PLAN.md` - Migration strategy for real-time
+- `REALTIME_SECURITY_CHECKLIST.md` - Security audit checklist
+
+### MCP Tools Documentation
+- `docs/MCP_TOOLS_SPEC.md` - Complete specification of 30+ MCP tools
+
+### Implementation Guides
+- `frontend/src/lib/components/providers/README.md` - Provider system guide
+
+## Key Architecture Decisions
+
+### Real-time Communication
+- **WebSocket Bridge**: Enhanced bridge service at `/src/bridge/bridge_server.py`
+- **State Sync**: Hybrid Event Sourcing + CRDT for conflict resolution
+- **Fallback**: SSE and polling for older browsers
+
+### Authentication & Security
+- **Dual Mode**: Local (stdin/stdout) and Web (JWT)
+- **Roles**: GM, Player, Spectator with granular permissions
+- **Encryption**: AES-256 for sensitive data, TLS for transport
+
+### Data Storage
+- **Vector DB**: ChromaDB for semantic search and embeddings
+- **Structured**: SQLite for campaigns, sessions, characters
+- **Cache**: Redis for performance, multi-level caching
+- **Offline**: IndexedDB for client-side persistence
+
+### Performance Targets
+- **Search**: P50 <50ms, P95 <200ms latency
+- **WebSocket**: 5000 msg/sec capacity
+- **Concurrent Users**: 20 per session, 2000 total
+- **PDF Processing**: 2-30 seconds depending on size
+
+### Testing Strategy
+- **Coverage**: 80% overall, 95% critical paths
+- **Pyramid**: 70% unit, 25% integration, 5% E2E
+- **Tools**: Vitest, Pytest, Playwright, Locust
+
+## MCP Tools Overview
+
+### Core Tools (Enhanced)
+- `search_rules` - Hybrid search with campaign context
+- `roll_dice` - Advanced modifiers, advantage/disadvantage
+- `get_monster` - Party scaling, tactical suggestions
+- `manage_initiative` - Conditions, delays, ready actions
+- `take_notes` - AI categorization, entity linking
+
+### Combat Automation
+- `track_damage` - HP tracking with resistances
+- `apply_condition` - Automatic effect tracking
+- `generate_random_table` - Custom tables
+
+### Campaign Management
+- `manage_campaign_timeline` - In-game time tracking
+- `track_campaign_resources` - Party inventory
+- `manage_quest_tracker` - Quest objectives
+
+### Generation Tools
+- `generate_npc` - Complete NPCs with relationships
+- `generate_location` - Maps, NPCs, loot
+- `generate_plot_hook` - Context-aware story seeds
+
+### Real-time Collaboration
+- `broadcast_to_players` - Selective info sharing
+- `sync_game_state` - Automatic synchronization
+- `request_player_action` - Interactive prompts
+
 ## Next Steps
-1. Set up the project structure and dependencies
-2. Implement the core MCP server with FastMCP
-3. Create the ChromaDB integration layer
-4. Build the PDF processing pipeline
-5. Implement the search functionality
-6. Add campaign management tools
-7. Develop the personality system
-8. Create comprehensive tests
-9. Write user documentation
+1. **Immediate**: Review and merge spike documentation
+2. **Week 1-2**: Implement WebSocket bridge and authentication
+3. **Week 3-4**: Build state synchronization system
+4. **Week 5-6**: Add offline support and integrations
+5. **Week 7-8**: Performance optimization and testing
+6. **Week 9-10**: Production hardening and deployment
+
+## Quick Reference
+
+### Running the Project
+```bash
+# Backend MCP Server
+python src/main.py
+
+# Bridge Server (WebSocket/SSE)
+python src/bridge/bridge_server.py
+
+# Frontend Development
+cd frontend && npm run dev
+
+# Run All Services
+docker-compose up
+```
+
+### Testing
+```bash
+# Backend Tests
+pytest tests/ --cov=src
+
+# Frontend Tests
+cd frontend && npm test
+
+# E2E Tests
+cd frontend && npx playwright test
+
+# Load Tests
+locust -f tests/locustfile.py
+```
+
+### Key Files
+- WebSocket Client: `/frontend/src/lib/realtime/websocket-client.ts`
+- SSE Client: `/frontend/src/lib/realtime/sse-client.ts`
+- Collaboration Store: `/frontend/src/lib/stores/collaboration.svelte.ts`
+- Provider Store: `/frontend/src/lib/stores/providers.svelte.ts`
+- Bridge Server: `/src/bridge/bridge_server.py`
