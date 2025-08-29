@@ -1,0 +1,62 @@
+# Testing dependencies for TTRPG MCP project
+
+# Core testing frameworks
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+pytest-timeout>=2.1.0
+pytest-xdist>=3.3.0  # For parallel test execution
+
+# Test utilities
+faker>=18.13.0  # Generate test data
+factory-boy>=3.3.0  # Test fixtures
+hypothesis>=6.82.0  # Property-based testing
+freezegun>=1.2.2  # Time mocking
+
+# HTTP testing
+httpx>=0.24.1
+aioresponses>=0.7.4  # Mock aiohttp requests
+responses>=0.23.1  # Mock requests
+websockets>=11.0
+
+# Performance testing
+locust>=2.15.0  # Load testing
+memory-profiler>=0.61.0
+pytest-benchmark>=4.0.0
+
+# Security testing
+bandit>=1.7.5  # Security linting
+safety>=2.3.5  # Check dependencies for vulnerabilities
+
+# Code quality
+black>=23.7.0
+isort>=5.12.0
+flake8>=6.0.0
+mypy>=1.4.0
+pylint>=2.17.0
+
+# Coverage
+coverage>=7.2.0
+coverage-badge>=1.1.0
+
+# Mocking and fixtures
+Faker>=18.13.0
+factory-boy>=3.3.0
+pytest-factoryboy>=2.5.1
+
+# Documentation testing
+pytest-doctest>=0.0.2
+
+# Async testing utilities
+aiofiles>=23.1.0
+pytest-aiohttp>=1.0.4
+
+# Database testing (if needed)
+pytest-postgresql>=5.0.0
+pytest-redis>=3.0.2
+
+# Additional utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0
+toml>=0.10.2
