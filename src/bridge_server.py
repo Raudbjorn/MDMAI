@@ -60,8 +60,14 @@ class MCPBridge:
             "jsonrpc": "2.0",
             "method": "initialize",
             "params": {
-                "protocolVersion": "0.1.0",
-                "capabilities": {}
+                "protocolVersion": "1.0.0",
+                "capabilities": {
+                    "roots": {}
+                },
+                "clientInfo": {
+                    "name": "TTRPG Bridge",
+                    "version": "1.0.0"
+                }
             },
             "id": self.get_next_id()
         })
