@@ -13,17 +13,17 @@ The desktop application uses a multi-layer architecture:
 │  SvelteKit Frontend (WebView)                │
 │              ↕ IPC                           │
 │  Rust Backend (Process Management)           │
-│              ↕ WebSocket                     │
-│  Python MCP Server (Local)                   │
+│              ↕ stdio                         │
+│  Python MCP Server (subprocess)              │
 └─────────────────────────────────────────────┘
 ```
 
 ### Key Components
 
 - **Frontend**: SvelteKit application running in native WebView
-- **Tauri Backend**: Rust-based process management and native OS integration
-- **Python MCP Server**: Local WebSocket server wrapping the MCP functionality
-- **Communication**: WebSocket-based JSON-RPC 2.0 protocol (improved from stdio)
+- **Tauri Backend**: Rust-based process management and stdio bridge
+- **Python MCP Server**: Subprocess using native MCP stdio protocol
+- **Communication**: JSON-RPC 2.0 over stdin/stdout (native MCP protocol)
 
 ## Features
 

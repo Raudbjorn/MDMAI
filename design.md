@@ -1204,46 +1204,50 @@ The desktop application provides a native experience for running the TTRPG Assis
 
 ### Communication Architecture
 
-#### WebSocket-Based IPC (Improved from stdio)
+#### Stdio-Based IPC (Simple and Robust)
 - **Frontend ↔ Rust**: Tauri's built-in IPC using JSON serialization
-- **Rust ↔ Python**: WebSocket connection to local MCP server
-- **Protocol**: JSON-RPC 2.0 over WebSocket (more robust than stdio)
-- **Security**: Command allowlisting, CSP enforcement, sandboxed execution
+- **Rust ↔ Python**: JSON-RPC 2.0 over stdin/stdout (native MCP protocol)
+- **Protocol**: Line-delimited JSON-RPC messages
+- **Security**: Process sandboxing, command allowlisting, CSP enforcement
 
-#### WebSocket Server Integration
-```python
-# Python MCP server with WebSocket adapter
-from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
+#### Why Stdio Over WebSocket
+After careful evaluation, stdio communication provides:
+- **Zero Python changes** - MCP server already supports stdio perfectly
+- **Process isolation** - Complete memory separation between components
+- **Simpler deployment** - No network services or ports to manage
+- **Better error recovery** - Tauri can restart crashed processes cleanly
+- **Fewer dependencies** - No FastAPI, uvicorn, or WebSocket libraries needed
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:*", "tauri://localhost"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+#### Stdio Bridge Implementation
+```rust
+// Rust manages Python process lifecycle
+struct MCPBridge {
+    child: Child,
+    stdin: Arc<Mutex<ChildStdin>>,
+    stdout: Arc<Mutex<BufReader<ChildStdout>>>,
+}
 
-@app.websocket("/mcp")
-async def mcp_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    # Handle MCP requests with proper error handling
+// Bridge translates between Tauri IPC and stdio
+async fn mcp_call(method: String, params: Value) -> Result<Value> {
+    // Send JSON-RPC request to Python stdin
+    // Read JSON-RPC response from Python stdout
+}
 ```
 
-#### Data Flow (Enhanced)
+#### Data Flow
 1. User interaction in SvelteKit UI
 2. IPC command to Rust backend via Tauri
-3. Rust manages WebSocket connection to Python server
+3. Rust sends JSON-RPC to Python process via stdin
 4. Python MCP server processes request
-5. Response sent back via WebSocket
-6. Rust relays response to frontend with error handling
+5. Response sent back via stdout
+6. Rust parses response and relays to frontend
 7. UI updates with results or error state
 
-#### Connection Management
-- **Automatic Reconnection**: WebSocket client auto-reconnects on disconnect
-- **Health Checks**: Regular ping/pong to detect connection issues
-- **Graceful Degradation**: Queue requests during reconnection
-- **Error Recovery**: Exponential backoff for connection retries
+#### Process Management
+- **Automatic Restart**: Rust monitors and restarts Python if it crashes
+- **Health Monitoring**: Regular heartbeat commands to verify process health
+- **Resource Limits**: CPU and memory limits enforced by OS
+- **Clean Shutdown**: Graceful termination on app close
 
 ### Python Packaging Strategy
 

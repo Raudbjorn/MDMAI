@@ -812,13 +812,13 @@ The TTRPG Assistant MCP Server is now feature-complete and ready for:
 **Requirements:** REQ-021, REQ-026
 **Status:** PLANNED
 - [ ] Implement Tauri command handlers
-- [ ] Create WebSocket client in Rust backend
-- [ ] Build WebSocket server adapter for Python MCP
-- [ ] Implement automatic reconnection logic
-- [ ] Create message queue for offline resilience
+- [ ] Create stdio bridge in Rust backend
+- [ ] Configure Python MCP for stdio mode (no changes needed)
+- [ ] Implement process lifecycle management
 - [ ] Build health check system
 - [ ] Implement error handling and recovery
-- [ ] Create performance monitoring
+- [ ] Create automatic process restart on crash
+- [ ] Add performance monitoring
 
 ### Task 23.4: Package Python with PyOxidizer
 **Requirements:** REQ-022, REQ-026
