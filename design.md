@@ -24,6 +24,9 @@ The project follows a phased approach to ensure incremental delivery and testing
 14. **Phase 18**: Frontend Development - SvelteKit responsive web application
 15. **Phase 19**: Integration Testing - End-to-end testing
 16. **Phase 20**: Performance Optimization - Final optimizations
+17. **Phase 21**: Mobile Support - Integrated into Phase 18 (responsive web)
+18. **Phase 22**: Testing & Documentation - Comprehensive test suite and docs
+19. **Phase 23**: Desktop Application - Native desktop app using Tauri
 
 Each phase builds on the previous ones, with clear interfaces between components.
 
@@ -1157,3 +1160,233 @@ export class MCPWebSocket {
 - **PDF Processing**: < 5s per document
 - **Search Latency**: < 50ms
 - **WebSocket Latency**: < 10ms
+
+## Phase 23: Desktop Application Architecture
+
+### Overview
+The desktop application provides a native experience for running the TTRPG Assistant MCP Server locally with an integrated user interface. Built using Tauri, it combines the efficiency of a Rust backend with the existing SvelteKit frontend, providing a lightweight, secure, and performant desktop experience.
+
+### Technology Stack
+
+#### Core Framework: Tauri
+- **Why Tauri**: 
+  - Small bundle size (3-10MB base vs 50-150MB for Electron)
+  - 90% less memory usage than Electron
+  - Native performance with Rust backend
+  - Direct reuse of existing SvelteKit frontend
+  - Built-in security with sandboxed WebView
+  - Cross-platform support (Windows, macOS, Linux)
+
+#### Architecture Components
+```
+┌─────────────────────────────────────────────┐
+│            Tauri Application                 │
+├─────────────────────────────────────────────┤
+│  ┌────────────────────────────────────┐     │
+│  │    SvelteKit Frontend (WebView)    │     │
+│  └────────────────────────────────────┘     │
+│                    ↕ IPC                     │
+│  ┌────────────────────────────────────┐     │
+│  │      Rust Backend (Tauri)          │     │
+│  │  - Process Management               │     │
+│  │  - File System Access               │     │
+│  │  - System Tray Integration          │     │
+│  └────────────────────────────────────┘     │
+│                    ↕ stdio                   │
+│  ┌────────────────────────────────────┐     │
+│  │    Python MCP Server (subprocess)   │     │
+│  │  - FastMCP Server                   │     │
+│  │  - ChromaDB/SQLite                  │     │
+│  │  - All existing functionality       │     │
+│  └────────────────────────────────────┘     │
+└─────────────────────────────────────────────┘
+```
+
+### Communication Architecture
+
+#### IPC Bridge
+- **Frontend ↔ Rust**: Tauri's built-in IPC using JSON serialization
+- **Rust ↔ Python**: JSON-RPC 2.0 over stdin/stdout (existing MCP protocol)
+- **Security**: Command allowlisting, CSP enforcement, sandboxed execution
+
+#### Data Flow
+1. User interaction in SvelteKit UI
+2. IPC command to Rust backend via Tauri
+3. Rust validates and forwards to Python MCP server
+4. Python processes and returns response
+5. Rust relays response to frontend
+6. UI updates with results
+
+### Python Packaging Strategy
+
+#### PyOxidizer Integration
+- **Single Executable**: Bundle Python runtime + dependencies
+- **Size**: ~50MB for complete Python environment
+- **Startup Time**: ~700ms (vs 2-3s for traditional Python)
+- **Dependencies**: All included (ChromaDB, sentence-transformers, etc.)
+
+#### Distribution Structure
+```
+app/
+├── tauri-app.exe/app/dmg    # Platform-specific Tauri executable
+├── resources/
+│   ├── python/               # Embedded Python executable
+│   │   └── mcp-server        # PyOxidizer bundle
+│   ├── data/                 # User data directory
+│   │   ├── chromadb/         # Vector database
+│   │   ├── sqlite/           # Structured data
+│   │   └── config/           # User configuration
+│   └── assets/               # Static assets
+```
+
+### Platform-Specific Implementation
+
+#### Windows
+- **Installer**: MSI and NSIS installers
+- **WebView**: WebView2 (Chromium-based)
+- **Python**: Embedded via PyOxidizer
+- **Auto-start**: Windows service option
+- **Updates**: Built-in auto-updater
+
+#### macOS
+- **Distribution**: DMG and .app bundle
+- **WebView**: WKWebView (Safari-based)
+- **Code Signing**: Required for distribution
+- **Python**: Universal binary for Intel/Apple Silicon
+- **Updates**: Sparkle framework integration
+
+#### Linux
+- **Packages**: AppImage, .deb, .rpm
+- **WebView**: WebKitGTK
+- **Python**: System Python or embedded
+- **Desktop Integration**: .desktop file
+- **Updates**: AppImageUpdate or package manager
+
+### Security Considerations
+
+#### Process Isolation
+- Python runs as separate subprocess
+- Limited file system access
+- Network restrictions configurable
+- No direct system calls from frontend
+
+#### Data Protection
+- Local storage encryption for sensitive data
+- Secure credential storage using OS keychain
+- Session tokens with expiration
+- Audit logging for security events
+
+### Performance Optimizations
+
+#### Startup Performance
+- Lazy loading of Python modules
+- Pre-compiled Python bytecode
+- Background initialization of ChromaDB
+- Progressive UI loading
+
+#### Runtime Performance
+- Process pooling for parallel operations
+- Efficient IPC with message batching
+- Memory-mapped file sharing for large data
+- Native file dialogs and system integration
+
+### Development Workflow
+
+#### Build Process
+```bash
+# Development
+npm run tauri dev
+
+# Production Build
+npm run tauri build
+
+# Platform-specific builds
+npm run tauri build -- --target x86_64-pc-windows-msvc
+npm run tauri build -- --target x86_64-apple-darwin
+npm run tauri build -- --target x86_64-unknown-linux-gnu
+```
+
+#### Configuration
+```toml
+# tauri.conf.json
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../build"
+  },
+  "package": {
+    "productName": "TTRPG Assistant",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "shell": {
+        "execute": true,
+        "scope": [{
+          "name": "run-mcp-server",
+          "cmd": "python",
+          "args": ["src/main.py"]
+        }]
+      }
+    }
+  }
+}
+```
+
+### Features Comparison
+
+| Feature | Web Version | Desktop Version |
+|---------|------------|-----------------|
+| MCP Server | Remote | Local (embedded) |
+| File Access | Limited | Full (sandboxed) |
+| Offline Mode | Service Worker | Native |
+| PDF Processing | Server-side | Local |
+| Performance | Network-dependent | Native speed |
+| Updates | Automatic | Auto-updater |
+| Installation | None | One-time |
+| System Integration | Limited | Full |
+
+### Migration Path
+
+#### From Web to Desktop
+1. User exports data from web version
+2. Desktop app imports existing campaigns/settings
+3. Automatic schema migration if needed
+4. Sync option for hybrid usage
+
+#### Shared Codebase Strategy
+- Frontend: 95% code reuse (SvelteKit)
+- Backend: 100% code reuse (Python MCP)
+- Desktop-specific: ~5% (Tauri commands)
+- Maintenance: Single codebase for core logic
+
+### Desktop-Specific Features
+
+#### System Tray Integration
+- Quick access to common functions
+- Background operation mode
+- Resource usage monitoring
+- Session status indicators
+
+#### Native File Handling
+- Drag-and-drop PDF import
+- OS file associations (.ttrpg files)
+- Native file dialogs
+- Recent files menu
+
+#### Offline Capabilities
+- Full functionality without internet
+- Local AI model support (optional)
+- Offline documentation
+- Local backup/restore
+
+### Performance Targets
+
+#### Desktop Metrics
+- **Application Size**: < 65MB total
+- **Startup Time**: < 2 seconds
+- **Memory Usage**: < 150MB idle
+- **CPU Usage**: < 5% idle
+- **IPC Latency**: < 5ms
