@@ -812,8 +812,11 @@ The TTRPG Assistant MCP Server is now feature-complete and ready for:
 **Requirements:** REQ-021, REQ-026
 **Status:** PLANNED
 - [ ] Implement Tauri command handlers
-- [ ] Create JSON-RPC bridge to Python process
-- [ ] Build message validation system
+- [ ] Create WebSocket client in Rust backend
+- [ ] Build WebSocket server adapter for Python MCP
+- [ ] Implement automatic reconnection logic
+- [ ] Create message queue for offline resilience
+- [ ] Build health check system
 - [ ] Implement error handling and recovery
 - [ ] Create performance monitoring
 

@@ -1204,18 +1204,46 @@ The desktop application provides a native experience for running the TTRPG Assis
 
 ### Communication Architecture
 
-#### IPC Bridge
+#### WebSocket-Based IPC (Improved from stdio)
 - **Frontend ↔ Rust**: Tauri's built-in IPC using JSON serialization
-- **Rust ↔ Python**: JSON-RPC 2.0 over stdin/stdout (existing MCP protocol)
+- **Rust ↔ Python**: WebSocket connection to local MCP server
+- **Protocol**: JSON-RPC 2.0 over WebSocket (more robust than stdio)
 - **Security**: Command allowlisting, CSP enforcement, sandboxed execution
 
-#### Data Flow
+#### WebSocket Server Integration
+```python
+# Python MCP server with WebSocket adapter
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:*", "tauri://localhost"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.websocket("/mcp")
+async def mcp_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    # Handle MCP requests with proper error handling
+```
+
+#### Data Flow (Enhanced)
 1. User interaction in SvelteKit UI
 2. IPC command to Rust backend via Tauri
-3. Rust validates and forwards to Python MCP server
-4. Python processes and returns response
-5. Rust relays response to frontend
-6. UI updates with results
+3. Rust manages WebSocket connection to Python server
+4. Python MCP server processes request
+5. Response sent back via WebSocket
+6. Rust relays response to frontend with error handling
+7. UI updates with results or error state
+
+#### Connection Management
+- **Automatic Reconnection**: WebSocket client auto-reconnects on disconnect
+- **Health Checks**: Regular ping/pong to detect connection issues
+- **Graceful Degradation**: Queue requests during reconnection
+- **Error Recovery**: Exponential backoff for connection retries
 
 ### Python Packaging Strategy
 
@@ -1369,6 +1397,7 @@ npm run tauri build -- --target x86_64-unknown-linux-gnu
 - Background operation mode
 - Resource usage monitoring
 - Session status indicators
+- Dynamic icon states (active, syncing, error)
 
 #### Native File Handling
 - Drag-and-drop PDF import
@@ -1381,6 +1410,43 @@ npm run tauri build -- --target x86_64-unknown-linux-gnu
 - Local AI model support (optional)
 - Offline documentation
 - Local backup/restore
+
+### Visual Assets and Polish
+
+#### Required Icon Files
+```
+frontend/src-tauri/icons/
+├── icon.ico              # Windows icon (multi-size)
+├── 32x32.png            # Tray icon, taskbar
+├── 128x128.png          # Medium size
+├── 128x128@2x.png       # High DPI (256x256)
+├── icon.png             # Source (512x512+)
+└── tray/
+    ├── icon.ico         # Default tray
+    ├── icon-active.ico  # Connected state
+    ├── icon-error.ico   # Error state
+    └── icon-syncing.ico # Loading state
+```
+
+#### Windows Installer Graphics
+```
+frontend/src-tauri/installer/
+├── header.bmp           # 150x57px NSIS header
+├── welcome.bmp          # 164x314px welcome page
+└── icon.ico            # Installer executable icon
+
+frontend/src-tauri/wix/
+├── banner.bmp          # 493x58px MSI banner
+├── dialog.bmp          # 493x312px background
+└── license.rtf         # License agreement
+```
+
+#### Custom Window Styling
+- Modern titlebar with Windows 11 integration
+- Smooth animations and transitions
+- High DPI support via manifest
+- Custom scrollbars matching OS theme
+- Native Windows fonts (Inter + Iosevka for code)
 
 ### Performance Targets
 

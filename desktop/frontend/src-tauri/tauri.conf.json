@@ -1,0 +1,166 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../build"
+  },
+  "package": {
+    "productName": "TTRPG Assistant",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "execute": true,
+        "sidecar": true,
+        "scope": [
+          {
+            "name": "binaries/mcp-server",
+            "sidecar": true,
+            "args": true
+          }
+        ]
+      },
+      "process": {
+        "all": false,
+        "exit": true,
+        "relaunch": true
+      },
+      "http": {
+        "all": false,
+        "request": true,
+        "scope": ["http://localhost:*", "ws://localhost:*"]
+      },
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "writeFile": true,
+        "readDir": true,
+        "createDir": true,
+        "removeDir": true,
+        "removeFile": true,
+        "scope": ["$APPDATA", "$APPDATA/**", "$RESOURCE/**"]
+      },
+      "dialog": {
+        "all": false,
+        "open": true,
+        "save": true,
+        "message": true
+      },
+      "notification": {
+        "all": true
+      },
+      "clipboard": {
+        "all": false,
+        "readText": true,
+        "writeText": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["msi", "nsis", "deb", "appimage", "dmg"],
+      "identifier": "com.ttrpg.assistant",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "resources": [
+        {
+          "path": "../../../backend/dist/mcp-server.exe",
+          "target": "binaries/mcp-server.exe"
+        },
+        {
+          "path": "../../../backend/dist/mcp-server",
+          "target": "binaries/mcp-server"
+        }
+      ],
+      "copyright": "© 2024 TTRPG Assistant",
+      "category": "Game",
+      "shortDescription": "A comprehensive assistant for Tabletop RPG game masters",
+      "longDescription": "TTRPG Assistant provides quick access to rules, campaign management, and AI-powered content generation for tabletop role-playing games.",
+      "deb": {
+        "depends": []
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "10.15",
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "providerShortName": null,
+        "entitlements": null
+      },
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "",
+        "wix": {
+          "language": "en-US",
+          "template": null,
+          "fragmentPaths": [],
+          "componentGroupRefs": [],
+          "componentRefs": [],
+          "featureGroupRefs": [],
+          "featureRefs": [],
+          "mergeRefs": [],
+          "skipWebviewInstall": false,
+          "license": "wix/license.rtf",
+          "bannerPath": "wix/banner.bmp",
+          "dialogImagePath": "wix/dialog.bmp"
+        },
+        "nsis": {
+          "license": "installer/license.txt",
+          "headerImage": "installer/header.bmp",
+          "sidebarImage": "installer/welcome.bmp",
+          "installerIcon": "installer/icon.ico",
+          "installMode": "perUser",
+          "languages": ["English"],
+          "displayLanguageSelector": false
+        }
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* http://localhost:*; img-src 'self' data: https:; font-src 'self' data:"
+    },
+    "systemTray": {
+      "iconPath": "icons/tray/icon.ico",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": ""
+    },
+    "windows": [
+      {
+        "title": "TTRPG Assistant",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true,
+        "skipTaskbar": false,
+        "fileDropEnabled": true,
+        "theme": null,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": false,
+        "acceptFirstMouse": true,
+        "tabbingIdentifier": "ttrpg-assistant",
+        "additionalBrowserArgs": "--enable-features=OverlayScrollbar"
+      }
+    ]
+  }
+}
