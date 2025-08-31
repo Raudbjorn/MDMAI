@@ -17,14 +17,23 @@ use argon2::{Argon2, PasswordHasher, password_hash::{
 use sha2::{Sha256, Digest};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tokio::sync::RwLock;
 
 const KEY_SIZE: usize = 32; // 256 bits for AES-256
 const NONCE_SIZE: usize = 12; // 96 bits for GCM
 const SALT_SIZE: usize = 32;
 
-/// Encryption manager for handling all cryptographic operations
-pub struct EncryptionManager {
+/// Inner state of the encryption manager (protected by RwLock)
+#[derive(Debug)]
+struct EncryptionState {
     master_key: Option<[u8; KEY_SIZE]>,
+    initialized: bool,
+}
+
+/// Encryption manager for handling all cryptographic operations
+/// Uses interior mutability to allow initialization after creation while maintaining thread safety
+pub struct EncryptionManager {
+    state: RwLock<EncryptionState>,
     key_file_path: PathBuf,
     config: DataManagerConfig,
 }
@@ -35,7 +44,10 @@ impl EncryptionManager {
         let key_file_path = config.data_dir.join(".encryption_key");
         
         let manager = Self {
-            master_key: None,
+            state: RwLock::new(EncryptionState {
+                master_key: None,
+                initialized: false,
+            }),
             key_file_path,
             config: config.clone(),
         };
@@ -44,26 +56,32 @@ impl EncryptionManager {
     }
     
     /// Initialize encryption with a password
-    pub fn initialize_with_password(&mut self, password: &str) -> DataResult<()> {
+    /// This method can be called safely even after the EncryptionManager is shared in an Arc
+    pub async fn initialize_with_password(&self, password: &str) -> DataResult<()> {
         if !self.config.encryption_enabled {
+            let mut state = self.state.write().await;
+            state.initialized = true;
             return Ok(());
         }
         
         // Check if key file already exists
         if self.key_file_path.exists() {
             // Load existing key
-            self.load_key_from_password(password)?;
+            self.load_key_from_password(password).await?;
         } else {
             // Generate new key and save it
-            self.generate_and_save_key(password)?;
+            self.generate_and_save_key(password).await?;
         }
+        
+        let mut state = self.state.write().await;
+        state.initialized = true;
         
         log::info!("Encryption initialized successfully");
         Ok(())
     }
     
     /// Generate a new master key and save it encrypted with password
-    fn generate_and_save_key(&mut self, password: &str) -> DataResult<()> {
+    async fn generate_and_save_key(&self, password: &str) -> DataResult<()> {
         // Generate random master key
         let mut master_key = [0u8; KEY_SIZE];
         use rand::RngCore;
@@ -121,12 +139,14 @@ impl EncryptionManager {
                 })?;
         }
         
-        self.master_key = Some(master_key);
+        // Store the master key in our protected state
+        let mut state = self.state.write().await;
+        state.master_key = Some(master_key);
         Ok(())
     }
     
     /// Load existing key using password
-    fn load_key_from_password(&mut self, password: &str) -> DataResult<()> {
+    async fn load_key_from_password(&self, password: &str) -> DataResult<()> {
         // Read key file
         let key_json = fs::read_to_string(&self.key_file_path)
             .map_err(|e| DataError::Encryption {
@@ -179,7 +199,10 @@ impl EncryptionManager {
         
         let mut master_key = [0u8; KEY_SIZE];
         master_key.copy_from_slice(&master_key_bytes);
-        self.master_key = Some(master_key);
+        
+        // Store the master key in our protected state
+        let mut state = self.state.write().await;
+        state.master_key = Some(master_key);
         
         Ok(())
     }
@@ -201,12 +224,13 @@ impl EncryptionManager {
     }
     
     /// Encrypt a string
-    pub fn encrypt_string(&self, plaintext: &str) -> DataResult<String> {
+    pub async fn encrypt_string(&self, plaintext: &str) -> DataResult<String> {
         if !self.config.encryption_enabled {
             return Ok(plaintext.to_string());
         }
         
-        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
+        let state = self.state.read().await;
+        let master_key = state.master_key.ok_or_else(|| DataError::Encryption {
             message: "Encryption not initialized".to_string(),
         })?;
         
@@ -227,12 +251,13 @@ impl EncryptionManager {
     }
     
     /// Decrypt a string
-    pub fn decrypt_string(&self, ciphertext_hex: &str) -> DataResult<String> {
+    pub async fn decrypt_string(&self, ciphertext_hex: &str) -> DataResult<String> {
         if !self.config.encryption_enabled {
             return Ok(ciphertext_hex.to_string());
         }
         
-        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
+        let state = self.state.read().await;
+        let master_key = state.master_key.ok_or_else(|| DataError::Encryption {
             message: "Encryption not initialized".to_string(),
         })?;
         
@@ -263,18 +288,18 @@ impl EncryptionManager {
     }
     
     /// Encrypt JSON data
-    pub fn encrypt_json(&self, data: &serde_json::Value) -> DataResult<String> {
+    pub async fn encrypt_json(&self, data: &serde_json::Value) -> DataResult<String> {
         let json_string = serde_json::to_string(data)
             .map_err(|e| DataError::Encryption {
                 message: format!("Failed to serialize JSON: {}", e),
             })?;
         
-        self.encrypt_string(&json_string)
+        self.encrypt_string(&json_string).await
     }
     
     /// Decrypt JSON data
-    pub fn decrypt_json(&self, ciphertext_hex: &str) -> DataResult<serde_json::Value> {
-        let json_string = self.decrypt_string(ciphertext_hex)?;
+    pub async fn decrypt_json(&self, ciphertext_hex: &str) -> DataResult<serde_json::Value> {
+        let json_string = self.decrypt_string(ciphertext_hex).await?;
         
         serde_json::from_str(&json_string)
             .map_err(|e| DataError::Encryption {
@@ -283,7 +308,7 @@ impl EncryptionManager {
     }
     
     /// Encrypt file contents
-    pub fn encrypt_file(&self, file_path: &Path) -> DataResult<Vec<u8>> {
+    pub async fn encrypt_file(&self, file_path: &Path) -> DataResult<Vec<u8>> {
         if !self.config.encryption_enabled {
             return fs::read(file_path)
                 .map_err(|e| DataError::FileSystem {
@@ -296,16 +321,17 @@ impl EncryptionManager {
                 message: format!("Failed to read file: {}", e),
             })?;
         
-        self.encrypt_bytes(&plaintext)
+        self.encrypt_bytes(&plaintext).await
     }
     
     /// Encrypt bytes directly (public for async usage)
-    pub fn encrypt_bytes(&self, plaintext: &[u8]) -> DataResult<Vec<u8>> {
+    pub async fn encrypt_bytes(&self, plaintext: &[u8]) -> DataResult<Vec<u8>> {
         if !self.config.encryption_enabled {
             return Ok(plaintext.to_vec());
         }
         
-        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
+        let state = self.state.read().await;
+        let master_key = state.master_key.ok_or_else(|| DataError::Encryption {
             message: "Encryption not initialized".to_string(),
         })?;
         
@@ -326,12 +352,13 @@ impl EncryptionManager {
     }
     
     /// Decrypt file contents
-    pub fn decrypt_file_contents(&self, encrypted_data: &[u8]) -> DataResult<Vec<u8>> {
+    pub async fn decrypt_file_contents(&self, encrypted_data: &[u8]) -> DataResult<Vec<u8>> {
         if !self.config.encryption_enabled {
             return Ok(encrypted_data.to_vec());
         }
         
-        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
+        let state = self.state.read().await;
+        let master_key = state.master_key.ok_or_else(|| DataError::Encryption {
             message: "Encryption not initialized".to_string(),
         })?;
         
@@ -391,13 +418,13 @@ impl EncryptionManager {
     }
     
     /// Rotate master key (re-encrypt with new key)
-    pub fn rotate_key(&mut self, old_password: &str, new_password: &str) -> DataResult<()> {
+    pub async fn rotate_key(&self, old_password: &str, new_password: &str) -> DataResult<()> {
         if !self.config.encryption_enabled {
             return Ok(());
         }
         
         // Verify old password and load current key
-        self.load_key_from_password(old_password)?;
+        self.load_key_from_password(old_password).await?;
         
         // Generate new key
         let mut new_master_key = [0u8; KEY_SIZE];
@@ -460,30 +487,44 @@ impl EncryptionManager {
                 })?;
         }
         
-        self.master_key = Some(new_master_key);
+        // Store the new master key in our protected state
+        let mut state = self.state.write().await;
+        state.master_key = Some(new_master_key);
         
         log::info!("Master key rotated successfully");
         Ok(())
     }
     
     /// Check if encryption is initialized
-    pub fn is_initialized(&self) -> bool {
-        self.master_key.is_some()
+    pub async fn is_initialized(&self) -> bool {
+        let state = self.state.read().await;
+        state.initialized && state.master_key.is_some()
     }
     
     /// Secure memory cleanup
-    pub fn cleanup(&mut self) {
-        if let Some(ref mut key) = self.master_key {
+    pub async fn cleanup(&self) {
+        let mut state = self.state.write().await;
+        if let Some(ref mut key) = state.master_key {
             // Zero out the key in memory
             key.fill(0);
         }
-        self.master_key = None;
+        state.master_key = None;
+        state.initialized = false;
     }
 }
 
 impl Drop for EncryptionManager {
     fn drop(&mut self) {
-        self.cleanup();
+        // Since we can't use async in Drop, we'll do a blocking cleanup
+        // This is a last resort cleanup - proper cleanup should use the async cleanup method
+        if let Ok(mut state) = self.state.try_write() {
+            if let Some(ref mut key) = state.master_key {
+                // Zero out the key in memory
+                key.fill(0);
+            }
+            state.master_key = None;
+            state.initialized = false;
+        }
     }
 }
 
@@ -504,8 +545,8 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
     
-    #[test]
-    fn test_encryption_roundtrip() {
+    #[tokio::test]
+    async fn test_encryption_roundtrip() {
         let temp_dir = tempdir().unwrap();
         let config = DataManagerConfig {
             data_dir: temp_dir.path().to_path_buf(),
@@ -513,19 +554,19 @@ mod tests {
             ..Default::default()
         };
         
-        let mut encryption = EncryptionManager::new(&config).unwrap();
-        encryption.initialize_with_password("test_password").unwrap();
+        let encryption = EncryptionManager::new(&config).unwrap();
+        encryption.initialize_with_password("test_password").await.unwrap();
         
         let original_text = "Hello, World! This is a test string with special characters: 🎲🐉";
-        let encrypted = encryption.encrypt_string(original_text).unwrap();
-        let decrypted = encryption.decrypt_string(&encrypted).unwrap();
+        let encrypted = encryption.encrypt_string(original_text).await.unwrap();
+        let decrypted = encryption.decrypt_string(&encrypted).await.unwrap();
         
         assert_eq!(original_text, decrypted);
         assert_ne!(original_text, encrypted);
     }
     
-    #[test]
-    fn test_json_encryption() {
+    #[tokio::test]
+    async fn test_json_encryption() {
         let temp_dir = tempdir().unwrap();
         let config = DataManagerConfig {
             data_dir: temp_dir.path().to_path_buf(),
@@ -533,8 +574,8 @@ mod tests {
             ..Default::default()
         };
         
-        let mut encryption = EncryptionManager::new(&config).unwrap();
-        encryption.initialize_with_password("test_password").unwrap();
+        let encryption = EncryptionManager::new(&config).unwrap();
+        encryption.initialize_with_password("test_password").await.unwrap();
         
         let original_json = serde_json::json!({
             "name": "Test Campaign",
@@ -546,8 +587,8 @@ mod tests {
             }
         });
         
-        let encrypted = encryption.encrypt_json(&original_json).unwrap();
-        let decrypted = encryption.decrypt_json(&encrypted).unwrap();
+        let encrypted = encryption.encrypt_json(&original_json).await.unwrap();
+        let decrypted = encryption.decrypt_json(&encrypted).await.unwrap();
         
         assert_eq!(original_json, decrypted);
     }

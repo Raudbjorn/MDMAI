@@ -174,11 +174,10 @@ impl DataManagerState {
     /// Create a new data manager with custom configuration and password
     pub async fn with_config_and_password(config: DataManagerConfig, password: &str) -> DataResult<Self> {
         // Initialize encryption manager with password
-        let mut encryption_mgr = EncryptionManager::new(&config)?;
+        let encryption = Arc::new(EncryptionManager::new(&config)?);
         if config.encryption_enabled {
-            encryption_mgr.initialize_with_password(password)?;
+            encryption.initialize_with_password(password).await?;
         }
-        let encryption = Arc::new(encryption_mgr);
         
         // Initialize storage
         let storage = Arc::new(RwLock::new(DataStorage::new(&config, &encryption).await?));

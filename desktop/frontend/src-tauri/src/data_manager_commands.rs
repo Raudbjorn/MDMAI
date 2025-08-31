@@ -73,6 +73,18 @@ pub async fn initialize_data_manager_with_password(
     Ok(())
 }
 
+/// Initialize encryption with password on existing data manager
+/// This allows encryption to be set up after the data manager is already created
+#[tauri::command]
+pub async fn initialize_encryption_with_password(
+    state: State<'_, DataManagerStateWrapper>,
+    password: String,
+) -> Result<(), String> {
+    let manager = state.get().await.ok_or("Data manager not initialized")?;
+    manager.encryption().initialize_with_password(&password).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Get data manager configuration
 #[tauri::command]
 pub async fn get_data_manager_config(

@@ -84,17 +84,7 @@ impl FileManager {
         // Store file (encrypted if enabled) with streaming
         let stored_content = if self.config.encryption_enabled {
             // Use async encryption for large files
-            tokio::task::spawn_blocking({
-                let encryption = self.encryption.clone();
-                let content = file_content.clone();
-                move || encryption.encrypt_bytes(&content)
-            }).await
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Failed to encrypt file: {}", e),
-                })?
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Encryption failed: {:?}", e),
-                })?
+            self.encryption.encrypt_bytes(&file_content).await?
         } else {
             file_content.clone()
         };
@@ -164,17 +154,7 @@ impl FileManager {
         
         // Decrypt if encrypted (async for large files)
         if self.config.encryption_enabled {
-            let decrypted = tokio::task::spawn_blocking({
-                let encryption = self.encryption.clone();
-                let content = stored_content;
-                move || encryption.decrypt_file_contents(&content)
-            }).await
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Failed to decrypt file: {}", e),
-                })?
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Decryption failed: {:?}", e),
-                })?;
+            let decrypted = self.encryption.decrypt_file_contents(&stored_content).await?;
             Ok(decrypted)
         } else {
             Ok(stored_content)

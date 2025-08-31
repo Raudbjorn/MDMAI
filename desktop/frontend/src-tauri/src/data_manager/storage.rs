@@ -133,24 +133,14 @@ impl DataStorage {
     pub async fn create_campaign(&self, campaign: &Campaign) -> DataResult<Campaign> {
         // Use async encryption for better performance
         let settings_encrypted = if self.config.encryption_enabled {
-            tokio::task::spawn_blocking({
-                let encryption = self.encryption.clone();
-                let settings = campaign.settings.clone();
-                move || encryption.encrypt_json(&settings)
-            }).await
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Encryption task failed: {}", e),
-                })?
-                .map_err(|e| DataError::Encryption {
-                    message: format!("Failed to encrypt settings: {:?}", e),
-                })?
+            self.encryption.encrypt_json(&campaign.settings).await?
         } else {
             campaign.settings.to_string()
         };
 
         let notes_encrypted = if let Some(notes) = &campaign.notes {
             if self.config.encryption_enabled {
-                Some(self.encryption.encrypt_string(notes)?)
+                Some(self.encryption.encrypt_string(notes).await?)
             } else {
                 Some(notes.clone())
             }
@@ -211,14 +201,14 @@ impl DataStorage {
         if let Some(row) = row {
             let settings_str: String = row.get("settings");
             let settings = if self.config.encryption_enabled {
-                self.encryption.decrypt_json(&settings_str)?
+                self.encryption.decrypt_json(&settings_str).await?
             } else {
                 serde_json::from_str(&settings_str).unwrap_or(serde_json::json!({}))
             };
 
             let notes = if let Some(encrypted_notes) = row.get::<Option<String>, _>("notes") {
                 if self.config.encryption_enabled {
-                    Some(self.encryption.decrypt_string(&encrypted_notes)?)
+                    Some(self.encryption.decrypt_string(&encrypted_notes).await?)
                 } else {
                     Some(encrypted_notes)
                 }
@@ -319,14 +309,14 @@ impl DataStorage {
         for row in rows {
             let settings_str: String = row.get("settings");
             let settings = if self.config.encryption_enabled {
-                self.encryption.decrypt_json(&settings_str)?
+                self.encryption.decrypt_json(&settings_str).await?
             } else {
                 serde_json::from_str(&settings_str).unwrap_or(serde_json::json!({}))
             };
 
             let notes = if let Some(encrypted_notes) = row.get::<Option<String>, _>("notes") {
                 if self.config.encryption_enabled {
-                    Some(self.encryption.decrypt_string(&encrypted_notes)?)
+                    Some(self.encryption.decrypt_string(&encrypted_notes).await?)
                 } else {
                     Some(encrypted_notes)
                 }
@@ -367,14 +357,14 @@ impl DataStorage {
 
     pub async fn update_campaign(&self, id: Uuid, campaign: &Campaign) -> DataResult<Campaign> {
         let settings_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&campaign.settings)?
+            self.encryption.encrypt_json(&campaign.settings).await?
         } else {
             campaign.settings.to_string()
         };
 
         let notes_encrypted = if let Some(notes) = &campaign.notes {
             if self.config.encryption_enabled {
-                Some(self.encryption.encrypt_string(notes)?)
+                Some(self.encryption.encrypt_string(notes).await?)
             } else {
                 Some(notes.clone())
             }
@@ -460,38 +450,38 @@ impl DataStorage {
     // Character operations
     pub async fn create_character(&self, character: &Character) -> DataResult<Character> {
         let stats_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&character.stats)?
+            self.encryption.encrypt_json(&character.stats).await?
         } else {
             character.stats.to_string()
         };
 
         let inventory_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&character.inventory)?
+            self.encryption.encrypt_json(&character.inventory).await?
         } else {
             character.inventory.to_string()
         };
 
         let spells_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&character.spells)?
+            self.encryption.encrypt_json(&character.spells).await?
         } else {
             character.spells.to_string()
         };
 
         let features_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&character.features)?
+            self.encryption.encrypt_json(&character.features).await?
         } else {
             character.features.to_string()
         };
 
         let personality_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&character.personality)?
+            self.encryption.encrypt_json(&character.personality).await?
         } else {
             character.personality.to_string()
         };
 
         let notes_encrypted = if let Some(notes) = &character.notes {
             if self.config.encryption_enabled {
-                Some(self.encryption.encrypt_string(notes)?)
+                Some(self.encryption.encrypt_string(notes).await?)
             } else {
                 Some(notes.clone())
             }

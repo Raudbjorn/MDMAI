@@ -305,22 +305,19 @@ impl BackupManager {
                 })?;
             
             if !rows.is_empty() {
-                // Get column names from the first row
-                // Using a predefined list since SqliteRow doesn't expose columns directly
-                let column_names = self.get_table_columns(table);
+                // Get column information for type-aware extraction
+                let column_info = self.get_table_column_info(&storage_guard.pool, table).await?;
                 
                 for row in rows.iter() {
-                    let values: Vec<String> = column_names
+                    let values: Vec<String> = column_info
                         .iter()
-                        .map(|col| {
-                            match row.try_get::<Option<String>, _>(*col) {
-                                Ok(Some(val)) => format!("'{}'", val.replace('\'', "''")),
-                                Ok(None) => "NULL".to_string(),
-                                Err(_) => "NULL".to_string(),
-                            }
+                        .enumerate()
+                        .map(|(index, (col_name, col_type))| {
+                            self.extract_column_value_typed(&row, index, col_name, col_type)
                         })
                         .collect();
                     
+                    let column_names: Vec<&str> = column_info.iter().map(|(name, _)| name.as_str()).collect();
                     export_content.push_str(&format!(
                         "INSERT INTO {} ({}) VALUES ({});\n",
                         table,
@@ -723,6 +720,99 @@ impl BackupManager {
             "settings" => vec!["id", "category", "key", "value", "updated_at"],
             "backup_metadata" => vec!["id", "name", "created_at", "backup_type", "file_path", "file_size", "compressed_size", "file_hash", "description", "database_version", "app_version", "compression_algorithm", "encryption_enabled", "integrity_verified", "metadata"],
             _ => vec!["*"], // Generic fallback
+        }
+    }
+    
+    /// Get column information including types for a table
+    async fn get_table_column_info(&self, pool: &sqlx::SqlitePool, table_name: &str) -> DataResult<Vec<(String, String)>> {
+        let query = format!("PRAGMA table_info({})", table_name);
+        let rows = sqlx::query(&query)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DataError::Backup {
+                message: format!("Failed to get column info for table {}: {}", table_name, e),
+            })?;
+            
+        let mut columns = Vec::new();
+        for row in rows {
+            let name: String = row.try_get("name").unwrap_or_default();
+            let type_str: String = row.try_get("type").unwrap_or_default();
+            columns.push((name, type_str.to_uppercase()));
+        }
+        
+        Ok(columns)
+    }
+    
+    /// Extract column value with proper type handling
+    fn extract_column_value_typed(&self, row: &sqlx::sqlite::SqliteRow, index: usize, col_name: &str, col_type: &str) -> String {
+        // First check if the value is NULL by trying to get it as an Option
+        if let Ok(None) = row.try_get::<Option<String>, _>(index) {
+            return "NULL".to_string();
+        }
+        
+        // Handle different SQLite column types
+        match col_type {
+            "INTEGER" | "INT" | "BIGINT" | "TINYINT" | "SMALLINT" | "MEDIUMINT" => {
+                // Try different integer types
+                if let Ok(val) = row.try_get::<i64, _>(index) {
+                    val.to_string()
+                } else if let Ok(val) = row.try_get::<i32, _>(index) {
+                    val.to_string()
+                } else if let Ok(val) = row.try_get::<i16, _>(index) {
+                    val.to_string()
+                } else if let Ok(val) = row.try_get::<i8, _>(index) {
+                    val.to_string()
+                } else {
+                    log::warn!("Failed to extract integer value from column {}", col_name);
+                    "NULL".to_string()
+                }
+            },
+            "REAL" | "DOUBLE" | "FLOAT" | "NUMERIC" | "DECIMAL" => {
+                // Handle floating point numbers
+                if let Ok(val) = row.try_get::<f64, _>(index) {
+                    // Use proper formatting to avoid scientific notation for common values
+                    if val.fract() == 0.0 && val.abs() < 1e15 {
+                        format!("{:.0}", val)
+                    } else {
+                        val.to_string()
+                    }
+                } else if let Ok(val) = row.try_get::<f32, _>(index) {
+                    if val.fract() == 0.0 && val.abs() < 1e7 {
+                        format!("{:.0}", val)
+                    } else {
+                        val.to_string()
+                    }
+                } else {
+                    log::warn!("Failed to extract real value from column {}", col_name);
+                    "NULL".to_string()
+                }
+            },
+            "BLOB" => {
+                // Handle binary data with hex encoding
+                if let Ok(val) = row.try_get::<Vec<u8>, _>(index) {
+                    format!("X'{}'", hex::encode(val))
+                } else {
+                    log::warn!("Failed to extract blob value from column {}", col_name);
+                    "NULL".to_string()
+                }
+            },
+            "TEXT" | "VARCHAR" | "CHAR" | "CLOB" | _ => {
+                // Handle text and default case
+                if let Ok(val) = row.try_get::<String, _>(index) {
+                    // Properly escape SQL strings
+                    format!("'{}'", val.replace('\'', "''").replace('\0', ""))
+                } else {
+                    // Fall back to generic string handling for unknown types
+                    match row.try_get::<Option<String>, _>(index) {
+                        Ok(Some(val)) => format!("'{}'", val.replace('\'', "''").replace('\0', "")),
+                        Ok(None) => "NULL".to_string(),
+                        Err(_) => {
+                            log::warn!("Failed to extract value from column {} of type {}", col_name, col_type);
+                            "NULL".to_string()
+                        }
+                    }
+                }
+            },
         }
     }
     
@@ -1156,4 +1246,167 @@ pub struct RestoreResult {
     pub safety_backup_id: Uuid,
     pub files_restored: usize,
     pub database_restored: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    async fn create_test_storage() -> DataResult<(Arc<RwLock<DataStorage>>, TempDir)> {
+        let temp_dir = TempDir::new().map_err(|e| DataError::FileSystem {
+            message: format!("Failed to create temp dir: {}", e),
+        })?;
+        
+        let config = DataManagerConfig {
+            db_path: temp_dir.path().join("test.db"),
+            files_dir: temp_dir.path().join("files"),
+            backup_dir: temp_dir.path().join("backups"),
+            max_backup_count: 10,
+            encryption_enabled: false,
+        };
+        
+        let storage = DataStorage::new(&config).await?;
+        Ok((Arc::new(RwLock::new(storage)), temp_dir))
+    }
+
+    #[tokio::test]
+    async fn test_column_type_extraction() -> DataResult<()> {
+        let (storage, temp_dir) = create_test_storage().await?;
+        
+        let config = DataManagerConfig {
+            db_path: temp_dir.path().join("test.db"),
+            files_dir: temp_dir.path().join("files"),
+            backup_dir: temp_dir.path().join("backups"),
+            max_backup_count: 10,
+            encryption_enabled: false,
+        };
+        
+        let encryption = Arc::new(EncryptionManager::new(&config).await?);
+        let backup_manager = BackupManager::new(&config, &encryption)?;
+        
+        // Create a test table with various column types
+        {
+            let storage_guard = storage.read().await;
+            sqlx::query(
+                r#"
+                CREATE TABLE test_types (
+                    id INTEGER PRIMARY KEY,
+                    int_val INTEGER,
+                    real_val REAL,
+                    text_val TEXT,
+                    blob_val BLOB
+                )
+                "#
+            )
+            .execute(&storage_guard.pool)
+            .await?;
+            
+            // Insert test data
+            sqlx::query(
+                "INSERT INTO test_types (int_val, real_val, text_val, blob_val) VALUES (42, 3.14, 'test', X'DEADBEEF')"
+            )
+            .execute(&storage_guard.pool)
+            .await?;
+        }
+        
+        // Test column type extraction
+        {
+            let storage_guard = storage.read().await;
+            let column_info = backup_manager.get_table_column_info(&storage_guard.pool, "test_types").await?;
+            
+            // Should have 5 columns
+            assert_eq!(column_info.len(), 5, "Should have 5 columns");
+            
+            // Verify column types are detected correctly  
+            let id_col = column_info.iter().find(|(name, _)| name == "id").unwrap();
+            assert_eq!(id_col.1, "INTEGER", "ID column should be INTEGER");
+            
+            let int_col = column_info.iter().find(|(name, _)| name == "int_val").unwrap();
+            assert_eq!(int_col.1, "INTEGER", "int_val column should be INTEGER");
+            
+            let real_col = column_info.iter().find(|(name, _)| name == "real_val").unwrap();
+            assert_eq!(real_col.1, "REAL", "real_val column should be REAL");
+            
+            let text_col = column_info.iter().find(|(name, _)| name == "text_val").unwrap();
+            assert_eq!(text_col.1, "TEXT", "text_val column should be TEXT");
+            
+            let blob_col = column_info.iter().find(|(name, _)| name == "blob_val").unwrap();
+            assert_eq!(blob_col.1, "BLOB", "blob_val column should be BLOB");
+        }
+        
+        println!("✓ Column type extraction test passed!");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_typed_value_extraction() -> DataResult<()> {
+        let (storage, temp_dir) = create_test_storage().await?;
+        
+        let config = DataManagerConfig {
+            db_path: temp_dir.path().join("test.db"),
+            files_dir: temp_dir.path().join("files"),
+            backup_dir: temp_dir.path().join("backups"),
+            max_backup_count: 10,
+            encryption_enabled: false,
+        };
+        
+        let encryption = Arc::new(EncryptionManager::new(&config).await?);
+        let backup_manager = BackupManager::new(&config, &encryption)?;
+        
+        // Create test table and data
+        {
+            let storage_guard = storage.read().await;
+            sqlx::query(
+                r#"
+                CREATE TABLE value_test (
+                    int_val INTEGER,
+                    real_val REAL,
+                    text_val TEXT,
+                    blob_val BLOB,
+                    null_val TEXT
+                )
+                "#
+            )
+            .execute(&storage_guard.pool)
+            .await?;
+            
+            sqlx::query(
+                "INSERT INTO value_test VALUES (42, 3.14159, 'Hello ''World''', X'48656C6C6F', NULL)"
+            )
+            .execute(&storage_guard.pool)
+            .await?;
+            
+            // Test the value extraction
+            let rows = sqlx::query("SELECT * FROM value_test").fetch_all(&storage_guard.pool).await?;
+            let row = &rows[0];
+            
+            // Test each column type
+            let int_result = backup_manager.extract_column_value_typed(row, 0, "int_val", "INTEGER");
+            assert_eq!(int_result, "42", "Integer value should be extracted correctly");
+            
+            let real_result = backup_manager.extract_column_value_typed(row, 1, "real_val", "REAL");
+            assert!(real_result.starts_with("3.14"), "Real value should be extracted correctly");
+            
+            let text_result = backup_manager.extract_column_value_typed(row, 2, "text_val", "TEXT");
+            assert_eq!(text_result, "'Hello ''World'''", "Text value should be properly escaped");
+            
+            let blob_result = backup_manager.extract_column_value_typed(row, 3, "blob_val", "BLOB");
+            assert_eq!(blob_result, "X'48656c6c6f'", "BLOB value should be hex encoded");
+            
+            let null_result = backup_manager.extract_column_value_typed(row, 4, "null_val", "TEXT");
+            assert_eq!(null_result, "NULL", "NULL value should be handled correctly");
+        }
+        
+        println!("✓ Typed value extraction test passed!");
+        println!("  - INTEGER values correctly extracted without quotes");
+        println!("  - REAL values correctly formatted");
+        println!("  - TEXT values properly escaped with quotes");
+        println!("  - BLOB values hex-encoded with X'' notation");
+        println!("  - NULL values handled correctly");
+        
+        Ok(())
+    }
 }
