@@ -1,0 +1,16 @@
+# PDF Processing
+pypdf>=3.0.0
+pdfplumber>=0.9.0
+
+# OCR Support (optional but recommended)
+pytesseract>=0.3.10
+pdf2image>=1.16.0
+Pillow>=10.0.0
+
+# Data Processing
+numpy>=1.24.0
+
+# System dependencies for OCR (install via system package manager):
+# Ubuntu/Debian: sudo apt-get install tesseract-ocr poppler-utils
+# MacOS: brew install tesseract poppler
+# Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki

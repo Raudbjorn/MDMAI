@@ -101,10 +101,18 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 **Acceptance Criteria:**
 - WHEN processing PDFs THEN the system SHALL learn content type patterns and improve classification accuracy
 - WHEN processing multiple PDFs from the same system THEN the system SHALL reuse learned patterns for better parsing
-- WHEN adaptive learning is enabled THEN the system SHALL cache learned patterns for future use
-- WHEN processing content THEN the system SHALL provide statistics about learned patterns
 
-### REQ-012: Web UI Access with AI Provider Integration
+### REQ-012: Multi-Genre Content Expansion
+**User Story:** As a Game Master, I want access to character races, classes, and NPCs from multiple TTRPG genres beyond generic fantasy, so that I can run diverse campaigns in sci-fi, cyberpunk, cosmic horror, and other settings.
+
+**Acceptance Criteria:**
+- WHEN processing TTRPG PDFs THEN the system SHALL extract and categorize races, classes, and NPC roles by genre
+- WHEN generating characters THEN the system SHALL support selection from multiple genres (fantasy, sci-fi, cyberpunk, cosmic horror, etc.)
+- WHEN content is extracted THEN the system SHALL maintain source attribution with book and page references
+- WHEN similar concepts exist across systems THEN the system SHALL deduplicate while preserving system-specific variations
+- IF a user requests genre-specific content THEN the system SHALL filter available options by the selected genre
+
+### REQ-013: Web UI Access with AI Provider Integration
 **User Story:** As a user, I want to access the TTRPG Assistant through a web interface using my own AI provider account, so that I can use the tools without installing custom desktop applications.
 
 **Acceptance Criteria:**

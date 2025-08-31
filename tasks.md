@@ -966,3 +966,124 @@ These items represent potential improvements rather than critical issues and can
 - ✅ Performance benchmarks met
 - ✅ User documentation complete
 - ✅ Platform-specific installers working
+
+## Phase 24: Multi-Genre Content Expansion
+
+### Task 24.1: PDF Content Analysis Script
+**Requirements:** REQ-012, REQ-011
+**Status:** PLANNED
+- [ ] Create script to batch process TTRPG PDFs
+- [ ] Implement genre classification based on content and filename
+- [ ] Build pattern matching for races, classes, and NPCs
+- [ ] Add OCR fallback for image-based PDFs
+- [ ] Create progress tracking and resumable processing
+
+### Task 24.2: Content Extraction Pipeline
+**Requirements:** REQ-012
+**Status:** PLANNED
+- [ ] Implement race extraction with stat modifiers and abilities
+- [ ] Build class/profession extraction with skills and equipment
+- [ ] Create NPC role extraction with behaviors and motivations
+- [ ] Extract equipment lists by genre
+- [ ] Parse name generation patterns
+
+### Task 24.3: Genre-Specific Data Models
+**Requirements:** REQ-012
+**Status:** PLANNED
+- [ ] Create ExtendedCharacterRace dataclass
+- [ ] Build ExtendedCharacterClass dataclass
+- [ ] Implement ExtendedNPCRole dataclass
+- [ ] Design TTRPGGenre enumeration
+- [ ] Create TTRPGContentRepository class
+
+### Task 24.4: Content Validation and Curation
+**Requirements:** REQ-012
+**Status:** PLANNED
+- [ ] Build validation interface for extracted content
+- [ ] Implement deduplication across similar concepts
+- [ ] Create manual review workflow
+- [ ] Add confidence scoring for extractions
+- [ ] Build correction and enhancement tools
+
+### Task 24.5: Database Schema Updates
+**Requirements:** REQ-012
+**Status:** PLANNED
+- [ ] Create expanded_races ChromaDB collection
+- [ ] Build expanded_classes collection
+- [ ] Implement expanded_npcs collection
+- [ ] Add genre_personalities collection
+- [ ] Update metadata schema for source attribution
+
+### Task 24.6: Generator Integration
+**Requirements:** REQ-006, REQ-007, REQ-012
+**Status:** PLANNED
+- [ ] Update character_generator.py with genre support
+- [ ] Enhance backstory_generator.py with genre templates
+- [ ] Modify npc_generator.py for diverse settings
+- [ ] Create genre-specific name generators
+- [ ] Build equipment selection by genre
+
+### Task 24.7: MCP Tool Updates
+**Requirements:** REQ-004, REQ-012
+**Status:** PLANNED
+- [ ] Add genre parameter to generate_character tool
+- [ ] Update generate_npc with genre filtering
+- [ ] Create list_available_genres tool
+- [ ] Add get_genre_content tool
+- [ ] Update search tools for genre filtering
+
+### Task 24.8: Testing and Documentation
+**Requirements:** REQ-012, NFR-005
+**Status:** PLANNED
+- [ ] Create unit tests for extraction patterns
+- [ ] Build integration tests for genre filtering
+- [ ] Test character generation across genres
+- [ ] Document supported genres and systems
+- [ ] Create usage examples for each genre
+
+## Content Expansion Timeline
+
+### Week 1: Analysis and Extraction
+- Task 24.1: PDF content analysis script
+- Task 24.2: Content extraction pipeline (start)
+
+### Week 2: Data Modeling
+- Task 24.2: Content extraction pipeline (complete)
+- Task 24.3: Genre-specific data models
+- Task 24.4: Content validation (start)
+
+### Week 3: Database and Storage
+- Task 24.4: Content validation (complete)
+- Task 24.5: Database schema updates
+
+### Week 4: Integration
+- Task 24.6: Generator integration
+- Task 24.7: MCP tool updates
+
+### Week 5: Testing and Polish
+- Task 24.8: Testing and documentation
+
+**Total Estimated Timeline: 5 weeks**
+
+## Success Criteria for Content Expansion
+
+### Functional
+- Extract content from 200+ TTRPG PDFs successfully
+- Support at least 8 distinct genres
+- Generate characters from 20+ different game systems
+- Maintain source attribution for all content
+- Provide genre-filtered search and generation
+
+### Non-Functional
+- PDF processing < 30 seconds per document
+- Extraction accuracy > 85%
+- Genre classification accuracy > 90%
+- Database queries < 100ms with genre filtering
+- Memory usage < 2GB during bulk processing
+
+### Quality
+- 90% test coverage for extraction patterns
+- All extracted content validated
+- Documentation for each supported genre
+- Examples for cross-genre character generation
+- Performance benchmarks documented
