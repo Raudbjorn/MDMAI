@@ -5,9 +5,8 @@ import os
 import pickle
 import re
 import tempfile
-from collections import Counter, defaultdict
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from collections import defaultdict
+from typing import Any, Dict, Optional
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -504,10 +503,10 @@ class AdaptiveLearningSystem:
                         self.extraction_metrics[key] = value
 
             logger.info(
-                f"Loaded adaptive learning cache",
+                "Loaded adaptive learning cache",
                 num_systems=len(self.patterns),
                 num_classifiers=len(self.content_classifiers),
             )
 
         except Exception as e:
-            logger.warning(f"Could not load cached patterns", error=str(e))
+            logger.warning("Could not load cached patterns", error=str(e))

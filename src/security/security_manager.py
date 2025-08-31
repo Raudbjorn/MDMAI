@@ -1,9 +1,8 @@
 """Main security manager coordinating all security components."""
 
 import functools
-import inspect
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 
@@ -537,7 +536,7 @@ class SecurityManager:
             self.audit_trail.log_event(
                 SecurityEventType.PERMISSION_REVOKED,
                 SecuritySeverity.INFO,
-                f"Revoked access to campaign",
+                "Revoked access to campaign",
                 user_id=user_id,
                 resource_id=campaign_id,
                 resource_type="campaign",
@@ -558,7 +557,7 @@ class SecurityManager:
         self.audit_trail.log_event(
             SecurityEventType.CAMPAIGN_CREATED,
             SecuritySeverity.INFO,
-            f"Campaign ownership set",
+            "Campaign ownership set",
             user_id=user_id,
             resource_id=campaign_id,
             resource_type="campaign",

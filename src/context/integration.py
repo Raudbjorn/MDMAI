@@ -1,8 +1,7 @@
 """Integration layer for Context Management System with existing TTRPG Assistant components."""
 
-import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from ..ai_providers.models import ProviderType
 from ..ai_providers.provider_manager import ProviderManager
@@ -10,7 +9,7 @@ from ..bridge.models import BridgeMessage, MCPSession
 from ..bridge.session_manager import SessionManager as BridgeSessionManager
 from ..security.enhanced_security_manager import EnhancedSecurityManager
 from .context_manager import ContextManager
-from .models import ConversationContext, SessionContext, CollaborativeContext, ContextEvent
+from .models import ConversationContext, SessionContext, CollaborativeContext
 from .config import get_context_config, validate_context_config, create_context_directories
 
 logger = logging.getLogger(__name__)

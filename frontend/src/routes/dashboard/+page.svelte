@@ -2,78 +2,146 @@
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { BookOpen, Users, Brain, Shield, Search, Plus, Settings, Upload } from 'lucide-svelte';
+	import { BookOpen, Users, Brain, Search, Plus, Settings, Upload } from 'lucide-svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
+	import type { Result } from '$lib/types/providers.js';
 
-	let searchQuery = $state('');
-	let searchResults = $state<any[]>([]);
-	let isSearching = $state(false);
-	
-	// Derived state for recent messages
-	let recentMessages = $derived(sessionStore.messages.slice(-5));
+	// Type-safe search results interface
+	interface SearchResult {
+		title?: string;
+		content: string;
+		source?: string;
+		page?: number;
+	}
 
-	async function handleSearch() {
-		if (!searchQuery.trim()) return;
+	// Enhanced state management with proper typing
+	let searchState = $state({
+		query: '',
+		results: [] as SearchResult[],
+		isSearching: false
+	});
+
+	// Derived state for recent messages with proper typing
+	const recentMessages = $derived(
+		sessionStore.messages
+			.slice(-5)
+			.filter((msg): msg is typeof msg => msg && typeof msg === 'object')
+	);
+
+	// Improved error handling with Result pattern
+	async function handleSearch(): Promise<void> {
+		const query = searchState.query.trim();
+		if (!query) return;
+
+		searchState.isSearching = true;
 		
-		isSearching = true;
 		try {
 			const result = await sessionStore.callTool('search_rules', {
-				query: searchQuery,
+				query,
 				limit: 10
 			});
-			searchResults = result.data || [];
-			if (searchResults.length === 0) {
-				toast.info('No results found');
+
+			// Type-safe result handling
+			if (result && 'data' in result) {
+				searchState.results = Array.isArray(result.data) ? result.data : [];
+				if (searchState.results.length === 0) {
+					toast.info('No results found for your search');
+				}
+			} else {
+				throw new Error('Invalid response format');
 			}
 		} catch (error) {
-			toast.error('Search failed: ' + (error as Error).message);
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+			toast.error(`Search failed: ${errorMessage}`);
+			searchState.results = [];
 		} finally {
-			isSearching = false;
+			searchState.isSearching = false;
 		}
 	}
 
-	async function quickAction(action: string) {
-		try {
-			switch (action) {
-				case 'upload_pdf':
-					goto('/upload');
-					break;
-				case 'roll_dice':
-					const diceResult = await sessionStore.callTool('roll_dice', { 
-						dice_notation: '1d20' 
-					});
-					toast.success(`Rolled 1d20: ${diceResult.data.result}`);
-					break;
-				case 'generate_npc':
-					toast.info('Generating NPC...');
-					const npc = await sessionStore.callTool('generate_npc', {
-						level: 5,
-						type: 'merchant'
-					});
-					toast.success(`Generated NPC: ${npc.data.name}`);
-					break;
-				default:
-					toast.info(`Action ${action} not yet implemented`);
+	// Type-safe quick actions with better error handling
+	type QuickActionType = 'upload_pdf' | 'roll_dice' | 'generate_npc' | 'new_session' | 'view_notes';
+	
+	const quickActionHandlers: Record<QuickActionType, () => Promise<void> | void> = {
+		upload_pdf: () => goto('/upload'),
+		roll_dice: async () => {
+			const result = await sessionStore.callTool('roll_dice', { 
+				dice_notation: '1d20' 
+			});
+			if (result?.data?.result) {
+				toast.success(`🎲 Rolled 1d20: ${result.data.result}`);
 			}
+		},
+		generate_npc: async () => {
+			toast.info('🧙‍♂️ Generating NPC...');
+			const result = await sessionStore.callTool('generate_npc', {
+				level: 5,
+				type: 'merchant'
+			});
+			if (result?.data?.name) {
+				toast.success(`✨ Generated NPC: ${result.data.name}`);
+			}
+		},
+		new_session: async () => {
+			toast.info('🎮 Starting new session...');
+			// Implementation would go here
+		},
+		view_notes: () => goto('/notes')
+	};
+
+	async function executeQuickAction(action: string): Promise<void> {
+		if (!Object.hasOwnProperty.call(quickActionHandlers, action)) {
+			toast.info(`Action "${action}" is not yet implemented`);
+			return;
+		}
+
+		try {
+			await quickActionHandlers[action as QuickActionType]();
 		} catch (error) {
-			toast.error(`Action failed: ${(error as Error).message}`);
+			const errorMessage = error instanceof Error ? error.message : 'Action failed';
+			toast.error(`❌ ${errorMessage}`);
 		}
 	}
 
-	const stats = $derived({
-		campaigns: sessionStore.user?.campaigns.length || 0,
-		isConnected: sessionStore.isConnected,
-		currentCampaign: sessionStore.currentCampaign?.name || 'None',
-		session: sessionStore.currentGameSession?.active ? 'Active' : 'Inactive'
+	// Enhanced derived stats with better type safety
+	const dashboardStats = $derived(() => {
+		const user = sessionStore.user;
+		const currentCampaign = sessionStore.currentCampaign;
+		const gameSession = sessionStore.currentGameSession;
+
+		return {
+			campaigns: user?.campaigns?.length ?? 0,
+			isConnected: sessionStore.isConnected,
+			currentCampaign: currentCampaign?.name ?? 'None',
+			sessionStatus: gameSession?.active ? 'Active' : 'Inactive'
+		} as const;
 	});
+
+	// Keyboard shortcuts for accessibility
+	function handleKeydown(event: KeyboardEvent): void {
+		if (event.ctrlKey || event.metaKey) {
+			switch (event.key) {
+				case 'k':
+					event.preventDefault();
+					document.querySelector<HTMLInputElement>('[data-search-input]')?.focus();
+					break;
+				case '/':
+					event.preventDefault();
+					executeQuickAction('upload_pdf');
+					break;
+			}
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>Dashboard - TTRPG Assistant</title>
 </svelte:head>
 
-<div class="min-h-screen bg-background">
+<svelte:window on:keydown={handleKeydown} />
+
+<div class="min-h-screen bg-background" role="main">
 	<!-- Header -->
 	<header class="sticky top-0 z-50 border-b bg-background/95 backdrop-blur">
 		<div class="container mx-auto px-4">
@@ -92,22 +160,23 @@
 	</header>
 
 	<div class="container mx-auto px-4 py-6">
-		<!-- Status Bar -->
-		<div class="mb-6 flex items-center justify-between rounded-lg bg-muted p-4">
-			<div class="flex items-center gap-6 text-sm">
-				<div>
+		<!-- Enhanced Status Bar with better accessibility -->
+		<div class="mb-6 rounded-lg bg-muted p-4" role="status" aria-label="Dashboard status">
+			<div class="flex flex-wrap items-center gap-6 text-sm">
+				<div class="flex items-center gap-2">
+					<div class="h-2 w-2 rounded-full {dashboardStats().isConnected ? 'bg-green-500' : 'bg-red-500'}" aria-hidden="true"></div>
 					<span class="text-muted-foreground">Connection:</span>
-					<span class="ml-2 font-medium {stats.isConnected ? 'text-green-600' : 'text-red-600'}">
-						{stats.isConnected ? 'Connected' : 'Disconnected'}
+					<span class="font-medium">
+						{dashboardStats().isConnected ? 'Connected' : 'Disconnected'}
 					</span>
 				</div>
 				<div>
 					<span class="text-muted-foreground">Campaign:</span>
-					<span class="ml-2 font-medium">{stats.currentCampaign}</span>
+					<span class="ml-2 font-medium">{dashboardStats().currentCampaign}</span>
 				</div>
 				<div>
 					<span class="text-muted-foreground">Session:</span>
-					<span class="ml-2 font-medium">{stats.session}</span>
+					<span class="ml-2 font-medium">{dashboardStats().sessionStatus}</span>
 				</div>
 			</div>
 		</div>
@@ -122,90 +191,82 @@
 				<CardDescription>Search rules, spells, monsters, and more</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<div class="flex gap-2">
+				<form on:submit|preventDefault={handleSearch} class="flex gap-2">
 					<input
 						type="text"
-						bind:value={searchQuery}
-						onkeydown={(e) => e.key === 'Enter' && handleSearch()}
-						placeholder="Search for rules, spells, monsters..."
+						bind:value={searchState.query}
+						data-search-input
+						placeholder="Search for rules, spells, monsters... (Ctrl+K)"
 						class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						disabled={isSearching}
+						disabled={searchState.isSearching}
+						aria-label="Search query"
+						autocomplete="off"
 					/>
-					<Button onclick={handleSearch} disabled={isSearching || !searchQuery.trim()}>
-						{isSearching ? 'Searching...' : 'Search'}
+					<Button 
+						type="submit" 
+						disabled={searchState.isSearching || !searchState.query.trim()}
+						aria-label={searchState.isSearching ? 'Searching' : 'Search'}
+					>
+						{searchState.isSearching ? 'Searching...' : 'Search'}
 					</Button>
-				</div>
+				</form>
 				
-				{#if searchResults.length > 0}
-					<div class="mt-4 space-y-2">
-						{#each searchResults as result}
-							<div class="rounded border p-3">
-								<div class="font-medium">{result.title || 'Result'}</div>
-								<div class="text-sm text-muted-foreground">{result.content}</div>
+				{#if searchState.results.length > 0}
+					<div class="mt-4 space-y-2" role="region" aria-label="Search results">
+						{#each searchState.results as result, index}
+							<article 
+								class="rounded border p-3 transition-colors hover:bg-muted/50" 
+								tabindex="0"
+								aria-label="Search result {index + 1}"
+							>
+								<h3 class="font-medium">{result.title ?? 'Untitled Result'}</h3>
+								<p class="text-sm text-muted-foreground mt-1">{result.content}</p>
 								{#if result.source}
-									<div class="mt-1 text-xs text-muted-foreground">
-										Source: {result.source} {result.page ? `- Page ${result.page}` : ''}
-									</div>
+									<footer class="mt-2 text-xs text-muted-foreground">
+										Source: {result.source}{result.page ? ` • Page ${result.page}` : ''}
+									</footer>
 								{/if}
-							</div>
+							</article>
 						{/each}
 					</div>
 				{/if}
 			</CardContent>
 		</Card>
 
-		<!-- Quick Actions -->
-		<div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('upload_pdf')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Upload PDF</CardTitle>
-					<Upload class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Process game documents</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('new_session')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">New Session</CardTitle>
-					<Plus class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Start a new game session</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('roll_dice')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Quick Roll</CardTitle>
-					<Brain class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Roll dice quickly</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('generate_npc')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Generate NPC</CardTitle>
-					<Users class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Create a new NPC</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('view_notes')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Session Notes</CardTitle>
-					<BookOpen class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">View recent notes</p>
-				</CardContent>
-			</Card>
-		</div>
+		<!-- Enhanced Quick Actions with better accessibility -->
+		<section class="mb-6" aria-label="Quick actions">
+			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+				{#each [
+					{ id: 'upload_pdf', title: 'Upload PDF', desc: 'Process game documents', icon: Upload, shortcut: 'Ctrl+/' },
+					{ id: 'new_session', title: 'New Session', desc: 'Start a new game session', icon: Plus },
+					{ id: 'roll_dice', title: 'Quick Roll', desc: 'Roll dice quickly', icon: Brain },
+					{ id: 'generate_npc', title: 'Generate NPC', desc: 'Create a new NPC', icon: Users },
+					{ id: 'view_notes', title: 'Session Notes', desc: 'View recent notes', icon: BookOpen }
+				] as action}
+					<Card 
+						class="group cursor-pointer transition-all hover:bg-muted/50 hover:scale-[1.02] focus-within:ring-2 focus-within:ring-ring" 
+						onclick={() => executeQuickAction(action.id)}
+						onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && executeQuickAction(action.id)}
+						tabindex="0"
+						role="button"
+						aria-label={`${action.title}: ${action.desc}${action.shortcut ? ` (${action.shortcut})` : ''}`}
+					>
+						<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+							<CardTitle class="text-sm font-medium group-hover:text-primary transition-colors">
+								{action.title}
+							</CardTitle>
+							<action.icon class="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" aria-hidden="true" />
+						</CardHeader>
+						<CardContent>
+							<p class="text-xs text-muted-foreground">{action.desc}</p>
+							{#if action.shortcut}
+								<p class="text-[10px] text-muted-foreground/70 mt-1">{action.shortcut}</p>
+							{/if}
+						</CardContent>
+					</Card>
+				{/each}
+			</div>
+		</section>
 
 		<!-- Main Content Areas -->
 		<div class="grid gap-6 md:grid-cols-2">
@@ -238,18 +299,35 @@
 					<CardDescription>Latest actions and updates</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div class="space-y-2">
-						{#each recentMessages as message}
-							<div class="flex items-center gap-2 text-sm">
-								<span class="text-xs text-muted-foreground">
-									{new Date(message.timestamp).toLocaleTimeString()}
-								</span>
-								<span>{message.type}</span>
-							</div>
-						{:else}
-							<p class="text-muted-foreground">No recent activity</p>
-						{/each}
-					</div>
+					{#if recentMessages.length > 0}
+						<ul class="space-y-3" role="list" aria-label="Recent activities">
+							{#each recentMessages as message, index}
+								<li class="flex items-start gap-3 text-sm">
+									<div class="h-2 w-2 rounded-full bg-primary mt-2 flex-shrink-0" aria-hidden="true"></div>
+									<div class="flex-1 min-w-0">
+										<div class="flex items-center justify-between">
+											<span class="font-medium truncate">{message.type ?? 'Activity'}</span>
+											<time 
+												class="text-xs text-muted-foreground flex-shrink-0 ml-2"
+												datetime={new Date(message.timestamp).toISOString()}
+											>
+												{new Date(message.timestamp).toLocaleTimeString()}
+											</time>
+										</div>
+										{#if message.content}
+											<p class="text-xs text-muted-foreground mt-1 truncate">{message.content}</p>
+										{/if}
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<div class="text-center py-8">
+							<div class="text-muted-foreground mb-2">📋</div>
+							<p class="text-sm text-muted-foreground">No recent activity</p>
+							<p class="text-xs text-muted-foreground mt-1">Your recent actions will appear here</p>
+						</div>
+					{/if}
 				</CardContent>
 			</Card>
 		</div>

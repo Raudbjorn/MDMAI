@@ -1,11 +1,10 @@
 """Database performance optimization for ChromaDB."""
 
 import asyncio
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.logging_config import get_logger
@@ -412,7 +411,7 @@ class DatabaseOptimizer:
         try:
             # Validate required fields
             if not all(k in data for k in ["collection", "id", "content", "metadata"]):
-                raise ValueError(f"Missing required fields in batch add data")
+                raise ValueError("Missing required fields in batch add data")
 
             await asyncio.get_event_loop().run_in_executor(
                 self.executor,
@@ -432,7 +431,7 @@ class DatabaseOptimizer:
         try:
             # Validate required fields
             if not all(k in data for k in ["collection", "id"]):
-                raise ValueError(f"Missing required fields in batch update data")
+                raise ValueError("Missing required fields in batch update data")
 
             await asyncio.get_event_loop().run_in_executor(
                 self.executor,
@@ -451,7 +450,7 @@ class DatabaseOptimizer:
         try:
             # Validate required fields
             if not all(k in data for k in ["collection", "id"]):
-                raise ValueError(f"Missing required fields in batch delete data")
+                raise ValueError("Missing required fields in batch delete data")
 
             await asyncio.get_event_loop().run_in_executor(
                 self.executor,

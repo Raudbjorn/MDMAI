@@ -2,7 +2,6 @@
 
 import random
 import re
-from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.logging_config import get_logger

@@ -4,20 +4,24 @@ import asyncio
 import os
 import resource
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, validator
 
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# Docker configuration constants
+DOCKER_WORKDIR = "/sandbox"
+DOCKER_IMAGE = "python:3.11-slim"
+DOCKER_SANDBOX_MOUNT_PATH = "/sandbox"
 
 
 class SandboxPolicy(Enum):
@@ -370,9 +374,9 @@ class ProcessSandbox:
                 f"--cpus={self.config.resource_limits.cpu_percent/100}",
                 f"--pids-limit={self.config.resource_limits.max_processes}",
                 "--network=none" if not self.config.network_policy.allow_network else "",
-                f"--workdir=/sandbox",
-                f"-v", f"{sandbox_dir}:/sandbox",
-                "python:3.11-slim",
+                f"--workdir={DOCKER_WORKDIR}",
+                f"-v", f"{sandbox_dir}:{DOCKER_SANDBOX_MOUNT_PATH}",
+                DOCKER_IMAGE,
             ])
         
         sandboxed.extend(command)
@@ -422,7 +426,6 @@ class ProcessSandbox:
             # Drop privileges if configured
             if self.config.drop_privileges and os.getuid() == 0:
                 import pwd
-                import grp
                 
                 # Get nobody user
                 nobody = pwd.getpwnam("nobody")

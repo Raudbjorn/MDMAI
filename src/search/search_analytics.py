@@ -2,17 +2,18 @@
 
 import json
 import statistics
-import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
-from config.settings import settings
 
 logger = get_logger(__name__)
+
+# Constants
+DEFAULT_CACHED_QUERY_LATENCY = 0.01  # 10ms default for cached queries
 
 
 class SearchMetrics:
@@ -96,12 +97,14 @@ class SearchMetrics:
 class SearchAnalytics:
     """Service for tracking and analyzing search metrics."""
 
-    def __init__(self, persist_dir: Optional[str] = None):
+    def __init__(self, persist_dir: Optional[str] = None, latency_threshold: float = 2.0, relevance_threshold: float = 0.5):
         """
         Initialize search analytics service.
 
         Args:
             persist_dir: Optional directory for persisting analytics data
+            latency_threshold: Threshold for considering queries slow (default: 2.0 seconds)
+            relevance_threshold: Minimum relevance score threshold (default: 0.5)
         """
         self.persist_dir = Path(persist_dir) if persist_dir else None
 
@@ -123,8 +126,8 @@ class SearchAnalytics:
         self.daily_metrics = defaultdict(SearchMetrics)
 
         # Performance thresholds
-        self.latency_threshold = latency_threshold  # seconds
-        self.relevance_threshold = 0.5
+        self.latency_threshold = latency_threshold
+        self.relevance_threshold = relevance_threshold
 
         # Load persisted data if available
         if self.persist_dir:

@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from structlog import get_logger
 
-from .models import MCPTool, ProviderTool, ProviderType
+from .models import MCPTool, ProviderType
 
 logger = get_logger(__name__)
 

@@ -2,14 +2,12 @@
 
 import logging
 import random
-from dataclasses import field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
 from .models import (
     NPC,
-    Backstory,
     CharacterClass,
     CharacterRace,
     CharacterStats,

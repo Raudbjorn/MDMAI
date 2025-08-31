@@ -7,9 +7,9 @@ from fastapi import APIRouter, Body, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
 from structlog import get_logger
 
-from ..utils.serialization import serialize_to_json, deserialize_from_json
+from ..utils.serialization import serialize_to_json
 from .context_manager import ContextManager
-from .models import Context, ContextMetadata, ContextState
+from .models import ContextMetadata, ContextState
 
 logger = get_logger(__name__)
 

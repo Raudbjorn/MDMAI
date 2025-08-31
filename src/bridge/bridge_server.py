@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import (
-    Depends,
     FastAPI,
     HTTPException,
     Request,
@@ -25,9 +24,7 @@ from structlog import get_logger
 from .mcp_process_manager import MCPProcessManager
 from .models import (
     BridgeConfig,
-    BridgeMessage,
     BridgeStats,
-    ClientMessage,
     MCPErrorCode,
     SessionState,
     TransportType,

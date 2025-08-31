@@ -3,7 +3,6 @@
 import asyncio
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
@@ -13,7 +12,7 @@ from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.content_chunker import ContentChunk, ContentChunker
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
 from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
-from src.performance.parallel_processor import ParallelProcessor, ResourceLimits, TaskStatus
+from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
 from src.utils.file_size_handler import FileSizeCategory, FileSizeHandler
 from src.utils.security import InputSanitizer, InputValidationError, validate_path
 
@@ -93,7 +92,7 @@ class PDFProcessingPipeline:
                 return size_result
 
             logger.info(
-                f"Starting PDF processing",
+                "Starting PDF processing",
                 pdf=pdf_path,
                 rulebook=rulebook_name,
                 system=system,
@@ -114,10 +113,10 @@ class PDFProcessingPipeline:
 
             # Check for duplicate
             if self._is_duplicate(pdf_content["file_hash"]):
-                logger.warning(f"Duplicate PDF detected", hash=pdf_content["file_hash"])
+                logger.warning("Duplicate PDF detected", hash=pdf_content["file_hash"])
                 return {
                     "status": "duplicate",
-                    "message": f"This PDF has already been processed",
+                    "message": "This PDF has already been processed",
                     "file_hash": pdf_content["file_hash"],
                 }
 
@@ -181,7 +180,7 @@ class PDFProcessingPipeline:
                 "processing_time_seconds": round(processing_time, 2),
             }
 
-            logger.info(f"PDF processing complete", **stats)
+            logger.info("PDF processing complete", **stats)
 
             return stats
 
@@ -202,7 +201,7 @@ class PDFProcessingPipeline:
                 "pdf_path": pdf_path,
             }
         except Exception as e:
-            logger.error(f"Unexpected error during PDF processing", error=str(e), exc_info=True)
+            logger.error("Unexpected error during PDF processing", error=str(e), exc_info=True)
             return {
                 "status": "error",
                 "error": str(e),
@@ -458,13 +457,13 @@ class PDFProcessingPipeline:
                         stored_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to store chunk",
+                            "Failed to store chunk",
                             chunk_id=doc_id,
                             error=str(e),
                         )
         except Exception as e:
             logger.error(
-                f"Failed to store batch of chunks",
+                "Failed to store batch of chunks",
                 count=len(chunks),
                 error=str(e),
             )
@@ -497,7 +496,7 @@ class PDFProcessingPipeline:
                 },
             )
         except Exception as e:
-            logger.error(f"Failed to store source metadata", error=str(e))
+            logger.error("Failed to store source metadata", error=str(e))
 
     def get_processing_stats(self) -> Dict[str, Any]:
         """
@@ -532,7 +531,7 @@ class PDFProcessingPipeline:
             Reprocessing results
         """
         try:
-            logger.info(f"Reprocessing with corrections", source_id=source_id)
+            logger.info("Reprocessing with corrections", source_id=source_id)
 
             # Get source metadata
             source_doc = self.db.get_document(
@@ -561,7 +560,7 @@ class PDFProcessingPipeline:
             }
 
         except Exception as e:
-            logger.error(f"Reprocessing failed", error=str(e))
+            logger.error("Reprocessing failed", error=str(e))
             return {
                 "status": "error",
                 "error": str(e),
@@ -602,3 +601,88 @@ class PDFProcessingPipeline:
             raise ValueError("source_type must be 'rulebook' or 'flavor'")
             
         return pdf_path_obj
+
+    async def _extract_pdf_content(self, pdf_path_obj: Path, skip_size_check: bool, user_confirmed: bool) -> Result[Dict[str, Any], str]:
+        """Extract content from PDF file asynchronously."""
+        try:
+            pdf_content = await asyncio.to_thread(
+                self.parser.extract_text_from_pdf,
+                str(pdf_path_obj),
+                skip_size_check=skip_size_check,
+                user_confirmed=user_confirmed,
+            )
+            return Result.ok(pdf_content)
+            
+        except PDFProcessingError as e:
+            error_msg = f"PDF processing error: {str(e)}"
+            logger.error(error_msg)
+            return Result.err(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to extract PDF content: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return Result.err(error_msg)
+    
+    def _create_source_metadata(self, source_id: str, rulebook_name: str, system: str, source_type: str, pdf_content: Dict[str, Any]) -> Dict[str, Any]:
+        """Create source metadata dictionary."""
+        return {
+            "source_id": source_id,
+            "rulebook_name": rulebook_name,
+            "system": system,
+            "source_type": source_type,
+            "file_name": pdf_content["file_name"],
+            "file_hash": pdf_content["file_hash"],
+            "total_pages": pdf_content["total_pages"],
+            "created_at": time.time(),
+        }
+    
+    async def _chunk_content_async(self, pdf_content: Dict[str, Any], source_metadata: Dict[str, Any]) -> Result[List[ContentChunk], str]:
+        """Chunk document content asynchronously."""
+        try:
+            chunks = await asyncio.to_thread(
+                self.chunker.chunk_document, 
+                pdf_content, 
+                source_metadata
+            )
+            return Result.ok(chunks)
+            
+        except Exception as e:
+            error_msg = f"Failed to chunk content: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return Result.err(error_msg)
+    
+    async def _generate_embeddings_async(self, chunks: List[ContentChunk]) -> Result[List[List[float]], str]:
+        """Generate embeddings for chunks asynchronously."""
+        try:
+            embeddings = await asyncio.to_thread(
+                self.embedding_generator.generate_embeddings, 
+                chunks
+            )
+            
+            # Validate embeddings
+            if not await asyncio.to_thread(self.embedding_generator.validate_embeddings, embeddings):
+                logger.warning("Some embeddings failed validation")
+            
+            return Result.ok(embeddings)
+            
+        except Exception as e:
+            error_msg = f"Failed to generate embeddings: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return Result.err(error_msg)
+    
+    async def _learn_from_document_async(self, pdf_content: Dict[str, Any], system: str) -> Result[None, str]:
+        """Learn from document for adaptive system asynchronously."""
+        if not self.adaptive_system:
+            return Result.ok(None)
+            
+        try:
+            await asyncio.to_thread(
+                self.adaptive_system.learn_from_document, 
+                pdf_content, 
+                system
+            )
+            return Result.ok(None)
+            
+        except Exception as e:
+            error_msg = f"Failed to learn from document: {str(e)}"
+            logger.error(error_msg, system=system, exc_info=True)
+            return Result.err(error_msg)

@@ -2,10 +2,8 @@
 
 import difflib
 import re
-from collections import Counter
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 
 from config.logging_config import get_logger
 from src.core.database import ChromaDBManager

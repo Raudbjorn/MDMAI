@@ -259,14 +259,14 @@ class PerformanceMonitor:
         # Check threshold
         if operation == "query" and duration > self.thresholds["query_time"]:
             logger.warning(
-                f"Slow query detected",
+                "Slow query detected",
                 operation=operation,
                 duration=duration,
                 threshold=self.thresholds["query_time"],
             )
         elif operation == "batch" and duration > self.thresholds["batch_time"]:
             logger.warning(
-                f"Slow batch operation",
+                "Slow batch operation",
                 operation=operation,
                 duration=duration,
                 threshold=self.thresholds["batch_time"],
