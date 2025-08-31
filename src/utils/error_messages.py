@@ -192,7 +192,7 @@ class ErrorMessageTemplate:
         
         try:
             return template.format(**kwargs)
-        except KeyError:
+        except KeyError as e:
             # Return template with placeholders if formatting fails
             return template
 
