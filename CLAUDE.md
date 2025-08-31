@@ -232,7 +232,7 @@ When adding new AI provider support (like Ollama):
    - Implement standard interface methods
    - Handle both webapp and desktop environments
 
-3. **Create Store** (`/frontend/src/lib/stores/[provider].svelte.ts`)
+3. **Create Store** (`/frontend/src/lib/stores/[provider].ts`)
    - Use Svelte 5 runes
    - Include caching and error handling
    - Persist user preferences to localStorage
