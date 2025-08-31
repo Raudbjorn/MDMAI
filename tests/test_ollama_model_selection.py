@@ -132,7 +132,7 @@ class TestOllamaModelSelection:
         mock_post_response = MagicMock()
         mock_post_response.status_code = 200
         mock_post_response.json.return_value = {
-            "embeddings": [[0.1, 0.2, 0.3] * 256]  # batch of 1 embedding vector, 768 dimensions
+            "embeddings": [[float(i) / 768 for i in range(768)]]  # batch of 1 embedding vector, 768 dimensions
         }
         mock_post.return_value = mock_post_response
         
