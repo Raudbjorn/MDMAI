@@ -490,11 +490,19 @@ impl SandboxManager {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
         use windows::{
-            core::*,
+            core::*, // If any specific core types are used, list them explicitly below
             Win32::{
-                Foundation::*,
-                System::JobObjects::*,
-                Security::*,
+                Foundation::{CloseHandle},
+                System::JobObjects::{
+                    CreateJobObjectW, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+                    JOBOBJECT_BASIC_LIMIT_INFORMATION, JOBOBJECT_BASIC_UI_RESTRICTIONS,
+                    JOB_OBJECT_LIMIT_PROCESS_MEMORY, JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+                    JOB_OBJECT_LIMIT_PROCESS_TIME, JobObjectExtendedLimitInformation, JobObjectBasicUIRestrictions,
+                    JOB_OBJECT_UILIMIT_DESKTOP, JOB_OBJECT_UILIMIT_DISPLAYSETTINGS, JOB_OBJECT_UILIMIT_EXITWINDOWS,
+                    JOB_OBJECT_UILIMIT_GLOBALATOMS, JOB_OBJECT_UILIMIT_HANDLES, JOB_OBJECT_UILIMIT_READCLIPBOARD,
+                    JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS, JOB_OBJECT_UILIMIT_WRITECLIPBOARD,
+                },
+                Security::*, // If any specific Security items are used, list them explicitly below
             },
         };
 
