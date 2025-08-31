@@ -4,7 +4,7 @@ use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use log::{info, error, debug, warn};
 use tauri::Manager;
-use sysinfo::{System, SystemExt, ProcessExt, Pid};
+use sysinfo::{System, Process, Pid};
 
 /// Process state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

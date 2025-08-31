@@ -1,12 +1,19 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { getMCPClient, mcpStatus, mcpError, mcpLoading } from '$lib/mcp-robust-client';
+    import { initializeNativeFeatures } from '$lib/native-features-client';
     import LazyLoad from '$lib/components/LazyLoad.svelte';
     import PerformanceMonitor from '$lib/components/PerformanceMonitor.svelte';
+    import ProcessMonitor from '$lib/components/ProcessMonitor.svelte';
+    import DragDropOverlay from '$lib/components/DragDropOverlay.svelte';
+    import TrayActionHandler from '$lib/components/TrayActionHandler.svelte';
+    import NativeFileOperations from '$lib/components/NativeFileOperations.svelte';
     
     let searchQuery = $state('');
     let searchResults = $state<any[]>([]);
     let searchError = $state<string | null>(null);
+    let showProcessMonitor = $state(false);
+    let fileOperations: NativeFileOperations;
     
     async function handleSearch() {
         if (!searchQuery.trim()) return;
@@ -31,9 +38,53 @@
     }
     
     onMount(async () => {
+        // Initialize native features
+        initializeNativeFeatures();
+        
+        // Connect MCP client
         const client = getMCPClient();
         await client.connect();
     });
+    
+    // Handle drag and drop events
+    async function handleFilesSelected(event: CustomEvent<{ files: string[]; type: string }>) {
+        const { files, type } = event.detail;
+        console.log(`Files selected (${type}):`, files);
+        
+        // Handle different file types appropriately
+        switch (type) {
+            case 'rulebooks':
+                // Process PDF rulebooks
+                console.log('Processing rulebooks:', files);
+                break;
+            case 'campaigns': 
+                // Load campaign files
+                console.log('Loading campaigns:', files);
+                break;
+            case 'characters':
+                // Import character sheets
+                console.log('Importing characters:', files);
+                break;
+        }
+    }
+    
+    // Handle tray actions
+    async function handleTrayServerAction(event: CustomEvent<{ action: string }>) {
+        const { action } = event.detail;
+        console.log('Tray server action:', action);
+        // Actions are handled by the ProcessMonitor component
+    }
+    
+    async function handleQuickCampaign() {
+        console.log('Quick campaign requested');
+        // Open campaign creation dialog or wizard
+    }
+    
+    async function handleImportRulebooks(event: CustomEvent<{ files: string[] }>) {
+        const { files } = event.detail;
+        console.log('Import rulebooks from tray:', files);
+        // Process rulebook imports
+    }
 </script>
 
 <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -45,29 +96,58 @@
                     TTRPG Assistant
                 </h1>
                 
-                <!-- Connection Status -->
+                <!-- Action Buttons -->
                 <div class="flex items-center gap-2">
-                    <span class="text-sm text-gray-600 dark:text-gray-400">
-                        MCP Status:
-                    </span>
-                    <span class="flex items-center gap-1">
-                        {#if $mcpStatus === 'connected'}
-                            <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-                            <span class="text-sm text-green-600 dark:text-green-400">Connected</span>
-                        {:else if $mcpStatus === 'connecting'}
-                            <span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
-                            <span class="text-sm text-yellow-600 dark:text-yellow-400">Connecting...</span>
-                        {:else if $mcpStatus === 'degraded'}
-                            <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
-                            <span class="text-sm text-orange-600 dark:text-orange-400">Degraded</span>
-                        {:else if $mcpStatus === 'error'}
-                            <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-                            <span class="text-sm text-red-600 dark:text-red-400">Error</span>
-                        {:else}
-                            <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Disconnected</span>
-                        {/if}
-                    </span>
+                    <!-- File Operations -->
+                    <div class="flex items-center gap-1 mr-4">
+                        <button
+                            onclick={() => fileOperations?.importRulebooks()}
+                            class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md 
+                                   transition-colors duration-200"
+                        >
+                            📖 Import Rulebooks
+                        </button>
+                        <button
+                            onclick={() => fileOperations?.openCampaign()}
+                            class="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-md
+                                   transition-colors duration-200"
+                        >
+                            🗂️ Open Campaign
+                        </button>
+                        <button
+                            onclick={() => showProcessMonitor = !showProcessMonitor}
+                            class="px-3 py-1.5 text-xs bg-gray-600 hover:bg-gray-700 text-white rounded-md
+                                   transition-colors duration-200"
+                            class:bg-gray-800={showProcessMonitor}
+                        >
+                            ⚙️ {showProcessMonitor ? 'Hide' : 'Show'} Monitor
+                        </button>
+                    </div>
+                    
+                    <!-- Connection Status -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-600 dark:text-gray-400">
+                            MCP Status:
+                        </span>
+                        <span class="flex items-center gap-1">
+                            {#if $mcpStatus === 'connected'}
+                                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                                <span class="text-sm text-green-600 dark:text-green-400">Connected</span>
+                            {:else if $mcpStatus === 'connecting'}
+                                <span class="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></span>
+                                <span class="text-sm text-yellow-600 dark:text-yellow-400">Connecting...</span>
+                            {:else if $mcpStatus === 'degraded'}
+                                <span class="w-2 h-2 bg-orange-500 rounded-full"></span>
+                                <span class="text-sm text-orange-600 dark:text-orange-400">Degraded</span>
+                            {:else if $mcpStatus === 'error'}
+                                <span class="w-2 h-2 bg-red-500 rounded-full"></span>
+                                <span class="text-sm text-red-600 dark:text-red-400">Error</span>
+                            {:else}
+                                <span class="w-2 h-2 bg-gray-500 rounded-full"></span>
+                                <span class="text-sm text-gray-600 dark:text-gray-400">Disconnected</span>
+                            {/if}
+                        </span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -160,6 +240,31 @@
         </div>
     </main>
     
+    <!-- Process Monitor (toggleable) -->
+    {#if showProcessMonitor}
+        <div class="fixed bottom-4 right-4 w-96 max-w-[90vw] z-40">
+            <ProcessMonitor />
+        </div>
+    {/if}
+    
     <!-- Performance Monitor (dev only) -->
     <PerformanceMonitor />
+    
+    <!-- Native Feature Components -->
+    <DragDropOverlay />
+    
+    <TrayActionHandler
+        on:server-action={handleTrayServerAction}
+        on:quick-campaign={handleQuickCampaign}
+        on:import-rulebooks={handleImportRulebooks}
+        on:open-settings={() => console.log('Open settings')}
+        on:open-about={() => console.log('Open about')}
+    />
+    
+    <NativeFileOperations
+        bind:this={fileOperations}
+        on:files-selected={handleFilesSelected}
+        on:file-saved={(e) => console.log('File saved:', e.detail)}
+        on:directory-selected={(e) => console.log('Directory selected:', e.detail)}
+    />
 </div>

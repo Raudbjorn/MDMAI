@@ -64,7 +64,33 @@
     "category": "Game",
     "copyright": "© 2024 TTRPG Assistant",
     "shortDescription": "A comprehensive assistant for Tabletop RPG game masters",
-    "longDescription": "TTRPG Assistant provides quick access to rules, campaign management, and AI-powered content generation for tabletop role-playing games."
+    "longDescription": "TTRPG Assistant provides quick access to rules, campaign management, and AI-powered content generation for tabletop role-playing games.",
+    "fileAssociations": [
+      {
+        "ext": ["json"],
+        "name": "TTRPG Campaign",
+        "description": "TTRPG Campaign Data File",
+        "role": "Editor"
+      },
+      {
+        "ext": ["yaml"],
+        "name": "TTRPG Config",
+        "description": "TTRPG Configuration File",
+        "role": "Editor"
+      },
+      {
+        "ext": ["yml"],
+        "name": "TTRPG Config",
+        "description": "TTRPG Configuration File", 
+        "role": "Editor"
+      },
+      {
+        "ext": ["toml"],
+        "name": "TTRPG Settings",
+        "description": "TTRPG Settings File",
+        "role": "Editor"
+      }
+    ]
   },
   "plugins": {
     "updater": {

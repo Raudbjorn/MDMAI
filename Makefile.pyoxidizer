@@ -1,0 +1,271 @@
+# Makefile for MDMAI PyOxidizer Build Operations
+# Provides convenient commands for building, testing, and packaging
+
+# Configuration
+PYTHON := python3
+PYOXIDIZER := pyoxidizer
+BUILD_SCRIPT := scripts/build_pyoxidizer.py
+TEST_SCRIPT := scripts/test_pyoxidizer_stdio.py
+
+# Platform detection
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+
+ifeq ($(UNAME_S),Linux)
+    PLATFORM := linux
+    EXE_EXT :=
+endif
+ifeq ($(UNAME_S),Darwin)
+    PLATFORM := macos
+    EXE_EXT :=
+endif
+ifeq ($(UNAME_S),MINGW64_NT)
+    PLATFORM := windows
+    EXE_EXT := .exe
+endif
+
+# Default target
+.PHONY: help
+help:
+	@echo "MDMAI PyOxidizer Build System"
+	@echo "============================="
+	@echo ""
+	@echo "Available targets:"
+	@echo "  install-deps    - Install PyOxidizer and dependencies"
+	@echo "  build          - Build for current platform ($(PLATFORM))"
+	@echo "  build-all      - Build for all platforms"
+	@echo "  build-linux    - Build for Linux"
+	@echo "  build-windows  - Build for Windows" 
+	@echo "  build-macos    - Build for macOS"
+	@echo "  test           - Test the built executable"
+	@echo "  test-simple    - Simple startup test"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  package        - Create distribution packages"
+	@echo "  install-local  - Install executable locally"
+	@echo "  verify         - Verify PyOxidizer setup"
+	@echo ""
+	@echo "Environment:"
+	@echo "  Platform: $(PLATFORM)"
+	@echo "  Architecture: $(UNAME_M)"
+	@echo ""
+
+# Installation targets
+.PHONY: install-deps
+install-deps:
+	@echo "Installing PyOxidizer and dependencies..."
+ifeq ($(PLATFORM),windows)
+	@powershell.exe -ExecutionPolicy Bypass -File scripts/install_pyoxidizer.ps1
+else
+	@./scripts/install_pyoxidizer.sh
+endif
+
+.PHONY: verify
+verify:
+	@echo "Verifying PyOxidizer installation..."
+	@$(PYOXIDIZER) --version || (echo "ERROR: PyOxidizer not found. Run 'make install-deps' first." && exit 1)
+	@echo "✓ PyOxidizer is available"
+	@$(PYTHON) --version || (echo "ERROR: Python not found." && exit 1)
+	@echo "✓ Python is available"
+	@test -f pyoxidizer.bzl || (echo "ERROR: pyoxidizer.bzl not found." && exit 1)
+	@echo "✓ Configuration file exists"
+	@echo "Setup verification completed successfully"
+
+# Build targets
+.PHONY: build
+build: verify
+	@echo "Building for $(PLATFORM)..."
+	@$(PYTHON) $(BUILD_SCRIPT) --platform $(PLATFORM)
+
+.PHONY: build-all
+build-all: verify
+	@echo "Building for all platforms..."
+	@$(PYTHON) $(BUILD_SCRIPT) --all
+
+.PHONY: build-linux
+build-linux: verify
+	@echo "Building for Linux..."
+	@$(PYTHON) $(BUILD_SCRIPT) --platform linux
+
+.PHONY: build-windows
+build-windows: verify
+	@echo "Building for Windows..."
+	@$(PYTHON) $(BUILD_SCRIPT) --platform windows
+
+.PHONY: build-macos
+build-macos: verify
+	@echo "Building for macOS..."
+	@$(PYTHON) $(BUILD_SCRIPT) --platform macos
+
+# Direct PyOxidizer targets
+.PHONY: pyox-build
+pyox-build: verify
+	@echo "Running PyOxidizer build directly..."
+	@$(PYOXIDIZER) build install
+
+.PHONY: pyox-run
+pyox-run: verify
+	@echo "Running PyOxidizer build and run..."
+	@$(PYOXIDIZER) run
+
+# Testing targets
+.PHONY: test
+test:
+	@echo "Testing built executable..."
+	@$(PYTHON) $(TEST_SCRIPT)
+
+.PHONY: test-simple
+test-simple:
+	@echo "Running simple startup test..."
+	@$(PYTHON) $(TEST_SCRIPT) --simple
+
+.PHONY: test-executable
+test-executable:
+	@if [ -n "$(EXE)" ]; then \
+		echo "Testing specific executable: $(EXE)"; \
+		$(PYTHON) $(TEST_SCRIPT) --executable $(EXE); \
+	else \
+		echo "ERROR: Specify executable with EXE=path/to/executable"; \
+		exit 1; \
+	fi
+
+# Package and distribution targets
+.PHONY: package
+package: build-all
+	@echo "Creating distribution packages..."
+	@echo "Packages available in dist/pyoxidizer/"
+	@ls -la dist/pyoxidizer/ 2>/dev/null || echo "No packages found"
+
+.PHONY: install-local
+install-local: build
+	@echo "Installing executable locally..."
+	@mkdir -p ~/.local/bin
+	@if [ "$(PLATFORM)" = "windows" ]; then \
+		cp dist/pyoxidizer/mdmai-mcp-server-windows-x86_64/mdmai-mcp-server.exe ~/.local/bin/; \
+	elif [ "$(PLATFORM)" = "macos" ]; then \
+		cp dist/pyoxidizer/mdmai-mcp-server-macos-x86_64/mdmai-mcp-server ~/.local/bin/; \
+	else \
+		cp dist/pyoxidizer/mdmai-mcp-server-linux-x86_64/mdmai-mcp-server ~/.local/bin/; \
+	fi
+	@echo "✓ Executable installed to ~/.local/bin/mdmai-mcp-server$(EXE_EXT)"
+	@echo "Make sure ~/.local/bin is in your PATH"
+
+# Development targets
+.PHONY: dev-build
+dev-build: verify
+	@echo "Development build (debug mode)..."
+	@$(PYOXIDIZER) build --var debug=true install
+
+.PHONY: dev-run
+dev-run: verify
+	@echo "Development run..."
+	@$(PYOXIDIZER) run --var debug=true
+
+# Maintenance targets
+.PHONY: clean
+clean:
+	@echo "Cleaning build artifacts..."
+	@$(PYTHON) $(BUILD_SCRIPT) --clean-only
+	@echo "✓ Build artifacts cleaned"
+
+.PHONY: clean-all
+clean-all: clean
+	@echo "Cleaning all generated files..."
+	@rm -rf build/
+	@rm -rf dist/
+	@rm -rf *.egg-info/
+	@rm -rf .pytest_cache/
+	@find . -name "*.pyc" -delete
+	@find . -name "__pycache__" -delete
+	@echo "✓ All generated files cleaned"
+
+# Diagnostic targets
+.PHONY: info
+info:
+	@echo "Build Information"
+	@echo "================"
+	@echo "Platform: $(PLATFORM)"
+	@echo "Architecture: $(UNAME_M)"
+	@echo "Python: $$($(PYTHON) --version 2>&1)"
+	@echo "PyOxidizer: $$($(PYOXIDIZER) --version 2>/dev/null || echo 'Not installed')"
+	@echo "Build script: $(BUILD_SCRIPT)"
+	@echo "Test script: $(TEST_SCRIPT)"
+	@echo ""
+	@echo "Available executables:"
+	@find dist/pyoxidizer/ -name "mdmai-mcp-server*" -type f 2>/dev/null || echo "  None found (run 'make build' first)"
+
+.PHONY: debug
+debug: verify
+	@echo "Debug build information..."
+	@$(PYOXIDIZER) analyze install
+	@echo ""
+	@echo "Build targets:"
+	@$(PYOXIDIZER) list-targets
+
+# Docker targets (if Docker is available)
+.PHONY: docker-build-linux
+docker-build-linux:
+	@echo "Building Linux executable in Docker..."
+	@docker build -t mdmai-pyoxidizer -f docker/Dockerfile.pyoxidizer .
+	@docker run --rm -v $$(pwd)/dist:/app/dist mdmai-pyoxidizer make build-linux
+
+# Performance testing
+.PHONY: benchmark
+benchmark:
+	@echo "Running performance benchmark..."
+	@if [ -f "dist/pyoxidizer/mdmai-mcp-server-$(PLATFORM)-x86_64/mdmai-mcp-server$(EXE_EXT)" ]; then \
+		echo "Testing startup time..."; \
+		time dist/pyoxidizer/mdmai-mcp-server-$(PLATFORM)-x86_64/mdmai-mcp-server$(EXE_EXT) --help 2>/dev/null || echo "Startup test completed"; \
+	else \
+		echo "Executable not found. Run 'make build' first."; \
+	fi
+
+# CI/CD targets
+.PHONY: ci-build
+ci-build: verify build test
+
+.PHONY: ci-build-all
+ci-build-all: verify build-all
+	@echo "Testing all built executables..."
+	@for exe in dist/pyoxidizer/*/mdmai-mcp-server*; do \
+		if [ -f "$$exe" ]; then \
+			echo "Testing $$exe..."; \
+			$(PYTHON) $(TEST_SCRIPT) --executable "$$exe" --simple || echo "Test failed for $$exe"; \
+		fi; \
+	done
+
+# Help for specific targets
+.PHONY: help-build
+help-build:
+	@echo "Build Target Help"
+	@echo "================"
+	@echo ""
+	@echo "build          - Build for current platform ($(PLATFORM))"
+	@echo "build-all      - Build executables for Linux, Windows, and macOS"
+	@echo "build-linux    - Build specifically for Linux (x86_64)"
+	@echo "build-windows  - Build specifically for Windows (x86_64)" 
+	@echo "build-macos    - Build specifically for macOS (x86_64 and aarch64)"
+	@echo ""
+	@echo "Output locations:"
+	@echo "  dist/pyoxidizer/mdmai-mcp-server-{platform}-{arch}/"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make build                    # Build for current platform"
+	@echo "  make build-all               # Build for all platforms"
+	@echo "  make EXE=path/to/exe test-executable  # Test specific executable"
+
+.PHONY: help-test
+help-test:
+	@echo "Test Target Help"
+	@echo "==============="
+	@echo ""
+	@echo "test           - Full MCP protocol test"
+	@echo "test-simple    - Simple startup test only"
+	@echo "test-executable EXE=path  - Test specific executable"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make test                    # Test with auto-discovery"
+	@echo "  make test-simple            # Quick startup test"
+	@echo "  make test-executable EXE=dist/pyoxidizer/mdmai-mcp-server-linux-x86_64/mdmai-mcp-server"
+
+# Default target is help
+.DEFAULT_GOAL := help
