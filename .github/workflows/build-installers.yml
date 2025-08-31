@@ -203,13 +203,14 @@ jobs:
           
       - name: Build Python backend
         run: |
-          cd backend
+          # Check if pyoxidizer.toml exists in root
           if [[ -f "pyoxidizer.toml" ]]; then
             echo "Building with PyOxidizer..."
             pyoxidizer build
           else
             echo "Creating Python bundle..."
-            python -m pip install . --target ../desktop/frontend/src-tauri/binaries/python-deps
+            # Install the current project (root directory) to the target location
+            python -m pip install . --target desktop/frontend/src-tauri/binaries/python-deps
           fi
           
       - name: Build installers
