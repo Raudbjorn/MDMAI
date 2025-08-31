@@ -117,7 +117,7 @@ class TestOllamaModelSelection:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["running"] is False
+        assert data["is_running"] is False
     
     @patch('requests.post')
     @patch('requests.get')
