@@ -285,7 +285,7 @@ def make_msi():
     )
     
     msi.help_url = "https://github.com/mdmai-project/MDMAI"
-    msi.upgrade_code = "12345678-1234-1234-1234-123456789012"  # Generate unique GUID
+    msi.upgrade_code = "e2b7c1a2-4f3b-4c8e-9b2a-7e6d2f1c5a9b"  # Unique GUID for MSI upgrade code
     
     msi.add_program_files_manifest(exe)
     
