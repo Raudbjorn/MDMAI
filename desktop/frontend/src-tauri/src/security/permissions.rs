@@ -10,6 +10,7 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
+use regex::Regex;
 
 /// Permission manager
 pub struct PermissionManager {
@@ -295,20 +296,78 @@ impl PermissionManager {
         }
     }
 
-    /// Check if a permission matches a resource and action
+    /// Check if a permission matches a resource and action using secure pattern matching
+    /// Prevents false positives from substring matches (e.g., "read" matching "thread")
     fn permission_matches(&self, permission_id: &str, resource_id: &str, action: &str) -> bool {
-        // Simple string matching for now
-        // In a real implementation, this would be more sophisticated
-        permission_id.contains(resource_id) || permission_id.contains(action)
+        // Parse permission ID in format: "resource_type.action" or "resource_type.*" or "*"
+        let parts: Vec<&str> = permission_id.split('.').collect();
+        
+        match parts.len() {
+            1 => {
+                // Global wildcard permission
+                parts[0] == "*"
+            }
+            2 => {
+                let (perm_resource, perm_action) = (parts[0], parts[1]);
+                
+                // Check resource match (exact or wildcard)
+                let resource_matches = perm_resource == "*" || 
+                    self.resource_type_matches(perm_resource, resource_id);
+                
+                // Check action match (exact or wildcard)
+                let action_matches = perm_action == "*" || 
+                    self.action_matches(perm_action, action);
+                
+                resource_matches && action_matches
+            }
+            _ => {
+                // Invalid permission format - deny by default
+                log::warn!("Invalid permission format: {}", permission_id);
+                false
+            }
+        }
+    }
+    
+    /// Match resource type with hierarchical support
+    /// Supports exact matches and hierarchical patterns like "campaign" matching "campaign_123"
+    fn resource_type_matches(&self, permission_resource: &str, resource_id: &str) -> bool {
+        // Exact match
+        if permission_resource == resource_id {
+            return true;
+        }
+        
+        // Extract resource type from resource_id (format: "type_id" or "type/id")
+        let resource_type = if let Some(underscore_pos) = resource_id.find('_') {
+            &resource_id[..underscore_pos]
+        } else if let Some(slash_pos) = resource_id.find('/') {
+            &resource_id[..slash_pos]
+        } else {
+            resource_id
+        };
+        
+        // Check if permission resource matches the extracted type
+        permission_resource == resource_type
+    }
+    
+    /// Match action with exact string comparison to prevent substring false positives
+    fn action_matches(&self, permission_action: &str, requested_action: &str) -> bool {
+        // Don't allow empty strings to match for security
+        if permission_action.is_empty() || requested_action.is_empty() {
+            return false;
+        }
+        // Use exact string comparison to prevent "read" from matching "thread"
+        permission_action == requested_action
     }
 
-    /// Check if a permission applies to a resource and action
+    /// Check if a permission applies to a resource and action with enhanced security
     fn permission_applies(&self, permission: &Permission, resource_id: &str, action: &str) -> bool {
-        // Check resource type match
-        let resource_matches = permission.resource_type == "*" || resource_id.starts_with(&permission.resource_type);
+        // Check resource type match with proper validation
+        let resource_matches = permission.resource_type == "*" || 
+            self.resource_type_matches(&permission.resource_type, resource_id);
         
-        // Check action match
-        let action_matches = permission.actions.contains("*") || permission.actions.contains(action);
+        // Check action match with exact comparison
+        let action_matches = permission.actions.contains("*") || 
+            permission.actions.contains(action);
 
         resource_matches && action_matches
     }
@@ -566,5 +625,170 @@ mod tests {
         // This should detect the cycle
         perm_manager.create_role(role_b).await.unwrap();
         assert!(perm_manager.create_role(role_a).await.is_err());
+    }
+
+    #[test]
+    fn test_permission_matching_security() {
+        let config = SecurityConfig::default();
+        let perm_manager = PermissionManager::new(&config).unwrap();
+
+        // Test cases that demonstrate the security fixes
+        let test_cases = vec![
+            // Format: (permission_id, resource_id, action, expected_result, description)
+            ("campaign.read", "campaign_123", "read", true, "Valid exact match"),
+            ("campaign.*", "campaign_123", "read", true, "Valid wildcard action"),
+            ("*.read", "campaign_123", "read", true, "Valid wildcard resource"),
+            ("*", "anything", "read", true, "Global wildcard"),
+            
+            // Security fixes - these should NOT match with the old vulnerable code
+            ("campaign.read", "thread_123", "read", false, "Should not match 'read' in 'thread'"),
+            ("user.delete", "secure_user", "delete", false, "Should not match 'delete' in secure action"),
+            ("read", "thread_123", "read", false, "Invalid format should fail"),
+            ("thread.read", "campaign_123", "read", false, "Wrong resource type"),
+            ("campaign.write", "campaign_123", "read", false, "Wrong action"),
+            
+            // Edge cases
+            ("campaign.read", "campaign", "read", true, "Exact resource type match"),
+            ("campaign.read", "campaign/123", "read", true, "Slash-separated resource ID"),
+            ("", "resource", "action", false, "Empty permission should fail"),
+            ("invalid_format_no_dot", "resource", "action", false, "Invalid format should fail"),
+            ("too.many.dots.here", "resource", "action", false, "Too many dots should fail"),
+        ];
+
+        for (perm_id, resource_id, action, expected, description) in test_cases {
+            let result = perm_manager.permission_matches(perm_id, resource_id, action);
+            assert_eq!(result, expected, 
+                "Test failed for '{}': permission='{}', resource='{}', action='{}' - {}", 
+                description, perm_id, resource_id, action, 
+                if expected { "should match" } else { "should not match" }
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_type_matching() {
+        let config = SecurityConfig::default();
+        let perm_manager = PermissionManager::new(&config).unwrap();
+
+        let test_cases = vec![
+            // Format: (permission_resource, resource_id, expected, description)
+            ("campaign", "campaign_123", true, "Underscore-separated resource ID"),
+            ("campaign", "campaign/123", true, "Slash-separated resource ID"),
+            ("campaign", "campaign", true, "Exact match"),
+            ("campaign", "user_123", false, "Different resource type"),
+            ("user", "user_profile_123", true, "Underscore-separated with multiple parts"),
+            ("user", "user/profile/123", true, "Slash-separated with multiple parts"),
+            ("", "anything", false, "Empty permission resource"),
+            ("campaign", "", false, "Empty resource ID"),
+            ("campaign", "campaigns_123", false, "Partial match should fail"),
+            ("campaigns", "campaign_123", false, "Reverse partial match should fail"),
+        ];
+
+        for (perm_resource, resource_id, expected, description) in test_cases {
+            let result = perm_manager.resource_type_matches(perm_resource, resource_id);
+            assert_eq!(result, expected, 
+                "Resource type matching failed for '{}': perm_resource='{}', resource_id='{}'", 
+                description, perm_resource, resource_id
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_matching_exact() {
+        let config = SecurityConfig::default();
+        let perm_manager = PermissionManager::new(&config).unwrap();
+
+        let test_cases = vec![
+            // Format: (permission_action, requested_action, expected, description)
+            ("read", "read", true, "Exact match"),
+            ("write", "write", true, "Exact match"),
+            ("delete", "delete", true, "Exact match"),
+            
+            // These should NOT match (fixing the vulnerability)
+            ("read", "thread", false, "Should not match 'read' substring in 'thread'"),
+            ("read", "already_read", false, "Should not match 'read' substring in compound word"),
+            ("delete", "undelete", false, "Should not match 'delete' substring"),
+            ("user", "secure_user", false, "Should not match 'user' substring"),
+            
+            // Case sensitivity
+            ("read", "READ", false, "Should be case sensitive"),
+            ("READ", "read", false, "Should be case sensitive"),
+            
+            // Edge cases
+            ("", "read", false, "Empty permission action should not match"),
+            ("read", "", false, "Empty requested action should not match"),
+            ("", "", false, "Both empty should not match"),
+        ];
+
+        for (perm_action, requested_action, expected, description) in test_cases {
+            let result = perm_manager.action_matches(perm_action, requested_action);
+            assert_eq!(result, expected, 
+                "Action matching failed for '{}': perm_action='{}', requested_action='{}'", 
+                description, perm_action, requested_action
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_permission_applies_security() {
+        let config = SecurityConfig::default();
+        let perm_manager = PermissionManager::new(&config).unwrap();
+
+        // Create test permissions
+        let permissions = vec![
+            Permission {
+                id: "campaign.read".to_string(),
+                name: "Campaign Read".to_string(),
+                description: "Read campaign data".to_string(),
+                resource_type: "campaign".to_string(),
+                actions: ["read"].iter().map(|s| s.to_string()).collect(),
+                constraints: HashMap::new(),
+                created_at: SystemTime::now(),
+            },
+            Permission {
+                id: "user.delete".to_string(),
+                name: "User Delete".to_string(),
+                description: "Delete user accounts".to_string(),
+                resource_type: "user".to_string(),
+                actions: ["delete"].iter().map(|s| s.to_string()).collect(),
+                constraints: HashMap::new(),
+                created_at: SystemTime::now(),
+            },
+            Permission {
+                id: "wildcard.all".to_string(),
+                name: "Wildcard Permission".to_string(),
+                description: "Wildcard access".to_string(),
+                resource_type: "*".to_string(),
+                actions: ["*"].iter().map(|s| s.to_string()).collect(),
+                constraints: HashMap::new(),
+                created_at: SystemTime::now(),
+            },
+        ];
+
+        for permission in &permissions {
+            perm_manager.create_permission(permission.clone()).await.unwrap();
+        }
+
+        // Test cases
+        let test_cases = vec![
+            // Valid matches
+            (&permissions[0], "campaign_123", "read", true, "Valid campaign read"),
+            (&permissions[1], "user_456", "delete", true, "Valid user delete"),
+            (&permissions[2], "anything", "read", true, "Wildcard should match anything"),
+            
+            // Security fixes - these should NOT match
+            (&permissions[0], "thread_123", "read", false, "Should not match 'read' in 'thread'"),
+            (&permissions[1], "secure_user_123", "delete", false, "Should not match despite 'user' substring"),
+            (&permissions[0], "campaign_123", "thread", false, "Wrong action should not match"),
+            (&permissions[1], "campaign_123", "delete", false, "Wrong resource type should not match"),
+        ];
+
+        for (permission, resource_id, action, expected, description) in test_cases {
+            let result = perm_manager.permission_applies(permission, resource_id, action);
+            assert_eq!(result, expected, 
+                "Permission applies test failed for '{}': permission='{}', resource='{}', action='{}'", 
+                description, permission.id, resource_id, action
+            );
+        }
     }
 }

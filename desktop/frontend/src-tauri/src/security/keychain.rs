@@ -11,6 +11,7 @@ use super::*;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
 
 /// Keychain entry for storing credentials
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +65,33 @@ impl KeychainManager {
         })
     }
 
+    /// Generate a collision-resistant entry ID using SHA-256 hashing
+    /// This prevents collisions from service/account combinations containing separators
+    fn generate_entry_id(&self, service: &str, account: &str) -> String {
+        let mut hasher = Sha256::new();
+        
+        // Hash the service prefix, service, and account with length prefixes
+        // This ensures that even if service="a" account="bc" and service="ab" account="c"
+        // they will produce different hashes due to length encoding
+        hasher.update(b"service_prefix:");
+        hasher.update((self.service_prefix.len() as u32).to_be_bytes());
+        hasher.update(self.service_prefix.as_bytes());
+        
+        hasher.update(b"service:");
+        hasher.update((service.len() as u32).to_be_bytes());
+        hasher.update(service.as_bytes());
+        
+        hasher.update(b"account:");
+        hasher.update((account.len() as u32).to_be_bytes());
+        hasher.update(account.as_bytes());
+        
+        let result = hasher.finalize();
+        
+        // Use hex encoding for readability in logs and debugging
+        // Prefix with a version identifier for future compatibility
+        format!("v1_{}", hex::encode(result))
+    }
+
     pub async fn initialize(&self) -> SecurityResult<()> {
         // Test keychain access
         if self.fallback_storage.is_none() {
@@ -82,7 +110,7 @@ impl KeychainManager {
         credential: &CredentialData,
         description: Option<&str>,
     ) -> SecurityResult<String> {
-        let entry_id = format!("{}_{}", service, account);
+        let entry_id = self.generate_entry_id(service, account);
         let full_service = format!("{}_{}", self.service_prefix, service);
         
         let keychain_entry = KeychainEntry {
@@ -118,7 +146,7 @@ impl KeychainManager {
         service: &str,
         account: &str,
     ) -> SecurityResult<CredentialData> {
-        let entry_id = format!("{}_{}", service, account);
+        let entry_id = self.generate_entry_id(service, account);
         let full_service = format!("{}_{}", self.service_prefix, service);
 
         // Retrieve using native keychain or fallback
@@ -155,7 +183,7 @@ impl KeychainManager {
         service: &str,
         account: &str,
     ) -> SecurityResult<()> {
-        let entry_id = format!("{}_{}", service, account);
+        let entry_id = self.generate_entry_id(service, account);
         let full_service = format!("{}_{}", self.service_prefix, service);
 
         // Delete using native keychain or fallback
@@ -195,7 +223,7 @@ impl KeychainManager {
         // For native keychain, we'd need to re-store with updated metadata
         // For fallback storage, we can update the entry directly
         if let Some(fallback) = &self.fallback_storage {
-            let entry_id = format!("{}_{}", service, account);
+            let entry_id = self.generate_entry_id(service, account);
             fallback.update_metadata(&entry_id, metadata).await?;
         }
         
@@ -812,5 +840,92 @@ mod tests {
 
         // Verify deletion
         assert!(!keychain.credential_exists("test_service", "test_account").await);
+    }
+
+    #[tokio::test]
+    async fn test_entry_id_collision_resistance() {
+        let config = SecurityConfig::default();
+        let keychain = KeychainManager::new(&config).await.unwrap();
+
+        // Test cases that would collide with simple underscore concatenation
+        let test_cases = vec![
+            ("my_app", "user"),
+            ("my", "app_user"),
+            ("service_with_underscores", "account"),
+            ("service", "with_underscores_account"),
+            ("a_b_c", "d_e_f"),
+            ("a_b", "c_d_e_f"),
+        ];
+
+        let mut entry_ids = HashSet::new();
+        
+        for (service, account) in test_cases {
+            let entry_id = keychain.generate_entry_id(service, account);
+            
+            // Verify each entry ID is unique
+            assert!(!entry_ids.contains(&entry_id), 
+                "Entry ID collision detected for service='{}' account='{}': {}", 
+                service, account, entry_id);
+            
+            // Verify entry ID format
+            assert!(entry_id.starts_with("v1_"), "Entry ID should start with version prefix");
+            assert_eq!(entry_id.len(), 67, "Entry ID should be 67 characters (v1_ + 64 hex chars)");
+            
+            entry_ids.insert(entry_id);
+        }
+        
+        // Verify reproducibility - same inputs should produce same ID
+        let id1 = keychain.generate_entry_id("test_service", "test_account");
+        let id2 = keychain.generate_entry_id("test_service", "test_account");
+        assert_eq!(id1, id2, "Entry ID generation should be deterministic");
+        
+        // Verify different inputs produce different IDs
+        let id3 = keychain.generate_entry_id("different_service", "test_account");
+        assert_ne!(id1, id3, "Different service should produce different entry ID");
+        
+        let id4 = keychain.generate_entry_id("test_service", "different_account");
+        assert_ne!(id1, id4, "Different account should produce different entry ID");
+    }
+
+    #[test]
+    fn test_generate_entry_id_security() {
+        use crate::security::SecurityConfig;
+        
+        // Create a test instance (not async since we're just testing the hash function)
+        let config = SecurityConfig::default();
+        let service_prefix = "com.ttrpg.assistant".to_string();
+        let keychain_data = super::KeychainManager {
+            config,
+            service_prefix,
+            fallback_storage: None,
+        };
+
+        // Test edge cases and potential attack vectors
+        let edge_cases = vec![
+            ("", ""),                          // Empty strings
+            ("service", ""),                   // Empty account
+            ("", "account"),                   // Empty service
+            ("service\0null", "account"),      // Null bytes
+            ("service\nnewline", "account"),   // Newlines
+            ("service\ttab", "account"),       // Tabs
+            ("🔐service", "🔑account"),        // Unicode characters
+            ("very_long_service_name_that_exceeds_normal_limits_and_tests_boundary_conditions", "account"),
+            ("service", "very_long_account_name_that_exceeds_normal_limits_and_tests_boundary_conditions"),
+        ];
+
+        let mut ids = HashSet::new();
+        for (service, account) in edge_cases {
+            let id = keychain_data.generate_entry_id(service, account);
+            
+            // Verify uniqueness
+            assert!(!ids.contains(&id), "Collision detected for edge case: '{}', '{}'", service, account);
+            
+            // Verify format consistency
+            assert!(id.starts_with("v1_"), "Entry ID should start with v1_ prefix");
+            assert!(id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'), 
+                "Entry ID should only contain alphanumeric characters and underscores");
+            
+            ids.insert(id);
+        }
     }
 }
