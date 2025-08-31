@@ -19,8 +19,22 @@ PyOxidizer Version: 0.24.0+
 PYOXIDIZER_VERSION = "0.24.0"
 AUTHOR = "MDMAI Project"
 APP_NAME = "mdmai-mcp-server"
-APP_VERSION = "0.1.0"
 
+def get_app_version():
+    """Read the version from pyproject.toml."""
+    import re
+    try:
+        with open("pyproject.toml", "r", encoding="utf-8") as f:
+            content = f.read()
+        # Look for a line like: version = "0.1.0"
+        match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except Exception as e:
+        print(f"Warning: Could not read version from pyproject.toml: {e}")
+    return "0.1.0"  # fallback default
+
+APP_VERSION = get_app_version()
 # Build configuration
 DEBUG_BUILD = VARS.get("debug", False)
 OPTIMIZE_LEVEL = 2 if not DEBUG_BUILD else 0
