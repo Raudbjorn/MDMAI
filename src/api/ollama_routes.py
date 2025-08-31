@@ -201,7 +201,7 @@ class OllamaRoutes:
                     size=model_data.get("size", 0),
                     digest=model_data.get("digest", ""),
                     modified_at=datetime.fromisoformat(
-                        model_data.get("modified_at", datetime.now().isoformat()).replace("Z", "+00:00")
+                        model_data.get("modified_at", datetime.now().isoformat())
                     ),
                     model_type=model_type,
                     dimension=dimension,
