@@ -235,7 +235,7 @@ def create_placeholder_logo(output_path: str) -> None:
     try:
         # Try to use a nice font if available
         font = ImageFont.truetype("arial.ttf", size // 4)
-    except:
+    except (OSError, IOError, ImportError):
         font = ImageFont.load_default()
     
     text = "d20"

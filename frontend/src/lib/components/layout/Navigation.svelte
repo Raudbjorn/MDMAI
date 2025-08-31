@@ -7,6 +7,7 @@
 		{ href: '/', label: 'Home', icon: '🏠' },
 		{ href: '/dashboard', label: 'Dashboard', icon: '📊' },
 		{ href: '/campaign', label: 'Campaigns', icon: '⚔️' },
+		{ href: '/upload', label: 'Upload', icon: '📤' },
 		{ href: '/providers', label: 'Providers', icon: '🤖' },
 		{ href: '/performance', label: 'Performance', icon: '⚡' }
 	];

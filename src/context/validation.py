@@ -480,7 +480,7 @@ class ContextValidator:
             if field in context_data and context_data[field]:
                 try:
                     if isinstance(context_data[field], str):
-                        timestamps[field] = datetime.fromisoformat(context_data[field].replace("Z", "+00:00"))
+                        timestamps[field] = datetime.fromisoformat(context_data[field])
                     elif isinstance(context_data[field], datetime):
                         timestamps[field] = context_data[field]
                 except Exception:
@@ -721,7 +721,7 @@ class ContextValidator:
             if field in corrected_data and isinstance(corrected_data[field], str):
                 try:
                     # Normalize timestamp format
-                    dt = datetime.fromisoformat(corrected_data[field].replace("Z", "+00:00"))
+                    dt = datetime.fromisoformat(corrected_data[field])
                     corrected_data[field] = dt.isoformat()
                     corrections_applied += 1
                 except Exception:

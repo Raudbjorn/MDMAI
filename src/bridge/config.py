@@ -44,8 +44,10 @@ class BridgeSettings(BaseSettings):
     require_auth: bool = Field(default=False, env="BRIDGE_REQUIRE_AUTH")
     auth_header: str = Field(default="Authorization", env="BRIDGE_AUTH_HEADER")
     api_keys: List[str] = Field(default_factory=list, env="BRIDGE_API_KEYS")
-    cors_origins: List[str] = Field(default=["*"], env="BRIDGE_CORS_ORIGINS")
-    cors_credentials: bool = Field(default=True, env="BRIDGE_CORS_CREDENTIALS")
+    # CORS configuration - secure defaults to prevent security vulnerabilities
+    # Using wildcard origins with credentials is a security risk
+    cors_origins: List[str] = Field(default=["http://localhost:3000", "http://127.0.0.1:3000"], env="BRIDGE_CORS_ORIGINS")
+    cors_credentials: bool = Field(default=False, env="BRIDGE_CORS_CREDENTIALS")
     
     # Performance
     request_timeout: float = Field(default=30.0, env="BRIDGE_REQUEST_TIMEOUT")
