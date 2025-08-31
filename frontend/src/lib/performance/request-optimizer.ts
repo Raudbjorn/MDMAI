@@ -109,7 +109,7 @@ export class RequestOptimizer {
             }
             timeoutId = null;
             maxTimeoutId = null;
-          }, config.delay) as any;
+          }, config.delay);
 
           // Set max wait timer if configured
           if (config.maxWait && !maxTimeoutId) {
