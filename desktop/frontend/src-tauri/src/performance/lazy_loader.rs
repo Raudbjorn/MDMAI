@@ -75,7 +75,7 @@ pub trait ComponentFactory: Send + Sync {
 /// Generic lazy component holder
 pub struct LazyComponentHolder<T> {
     factory: Arc<dyn ComponentFactory<Component = T, Error = String> + Send + Sync>,
-    instance: Arc<RwLock<Option<T>>>,
+    instance: Arc<RwLock<Option<Arc<T>>>>,
     state: Arc<RwLock<LoadingState>>,
     loading_mutex: Arc<Mutex<()>>,
 }
@@ -98,9 +98,7 @@ impl<T: Send + Sync + 'static> LazyComponentHolder<T> {
             if *state == LoadingState::Loaded {
                 let instance = self.instance.read().await;
                 if let Some(ref component) = *instance {
-                    // Convert to Arc - in reality you'd need proper Arc management
-                    // This is a simplified example
-                    return Err("Arc conversion not implemented in this example".to_string());
+                    return Ok(Arc::clone(component));
                 }
             }
         }
@@ -114,12 +112,16 @@ impl<T: Send + Sync + 'static> LazyComponentHolder<T> {
             if *state == LoadingState::Loaded {
                 let instance = self.instance.read().await;
                 if let Some(ref component) = *instance {
-                    return Err("Arc conversion not implemented in this example".to_string());
+                    return Ok(Arc::clone(component));
                 }
             }
             
             if *state == LoadingState::Loading {
                 return Err("Component is already being loaded".to_string());
+            }
+            
+            if let LoadingState::Failed(ref error) = *state {
+                return Err(format!("Component failed to load previously: {}", error));
             }
         }
 
@@ -129,9 +131,10 @@ impl<T: Send + Sync + 'static> LazyComponentHolder<T> {
         // Load the component
         match self.factory.create().await {
             Ok(component) => {
-                *self.instance.write().await = Some(component);
+                let arc_component = Arc::new(component);
+                *self.instance.write().await = Some(Arc::clone(&arc_component));
                 *self.state.write().await = LoadingState::Loaded;
-                Err("Arc conversion not implemented in this example".to_string())
+                Ok(arc_component)
             }
             Err(e) => {
                 *self.state.write().await = LoadingState::Failed(e.to_string());
@@ -155,7 +158,17 @@ impl<T: Send + Sync + 'static> LazyComponentHolder<T> {
         let _guard = self.loading_mutex.lock().await;
 
         if let Some(component) = self.instance.write().await.take() {
-            self.factory.cleanup(component).await;
+            // Try to unwrap Arc, but only if we're the sole owner
+            match Arc::try_unwrap(component) {
+                Ok(component) => self.factory.cleanup(component).await,
+                Err(arc_component) => {
+                    // There are other references, so we can't cleanup immediately
+                    // Put it back and log a warning
+                    *self.instance.write().await = Some(arc_component);
+                    log::warn!("Cannot unload component: other references exist");
+                    return;
+                }
+            }
         }
 
         *self.state.write().await = LoadingState::Unloaded;

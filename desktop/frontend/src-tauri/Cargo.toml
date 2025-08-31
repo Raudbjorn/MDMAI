@@ -51,6 +51,12 @@ base64 = "0.22"
 hmac = "0.12"
 pbkdf2 = "0.12"
 flate2 = "1.0"
+# Keychain dependencies
+keyring = "2.3"
+# Platform-specific dependencies
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.54", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_Security", "Win32_Security_Credentials"] }
+
 # Additional system-level dependencies
 libc = "0.2"
 # Performance optimization dependencies

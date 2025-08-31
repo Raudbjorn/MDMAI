@@ -310,11 +310,23 @@ impl KeychainManager {
 
     #[cfg(target_os = "windows")]
     async fn store_windows(&self, service: &str, account: &str, secret: &str) -> SecurityResult<()> {
-        // This would use the Windows Credential Manager API
-        // For now, this is a placeholder implementation
+        let service = service.to_string();
+        let account = account.to_string();
+        let secret = secret.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Windows API to store credential
-            // Use CredWriteW or similar
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Windows keychain entry: {}", e),
+                })?;
+            
+            entry.set_password(&secret)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to store Windows credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Windows keychain operation failed: {}", e),
@@ -323,10 +335,21 @@ impl KeychainManager {
 
     #[cfg(target_os = "windows")]
     async fn retrieve_windows(&self, service: &str, account: &str) -> SecurityResult<String> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Windows API to retrieve credential
-            // Use CredReadW or similar
-            Ok("placeholder".to_string())
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Windows keychain entry: {}", e),
+                })?;
+            
+            entry.get_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to retrieve Windows credential: {}", e),
+                })
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Windows keychain operation failed: {}", e),
         })?
@@ -334,9 +357,22 @@ impl KeychainManager {
 
     #[cfg(target_os = "windows")]
     async fn delete_windows(&self, service: &str, account: &str) -> SecurityResult<()> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Windows API to delete credential
-            // Use CredDeleteW or similar
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Windows keychain entry: {}", e),
+                })?;
+            
+            entry.delete_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to delete Windows credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Windows keychain operation failed: {}", e),
@@ -345,11 +381,23 @@ impl KeychainManager {
 
     #[cfg(target_os = "macos")]
     async fn store_macos(&self, service: &str, account: &str, secret: &str) -> SecurityResult<()> {
-        // This would use the macOS Security framework
-        // For now, this is a placeholder implementation
+        let service = service.to_string();
+        let account = account.to_string();
+        let secret = secret.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Security framework to store in keychain
-            // Use SecKeychainAddInternetPassword or similar
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create macOS keychain entry: {}", e),
+                })?;
+            
+            entry.set_password(&secret)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to store macOS credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("macOS keychain operation failed: {}", e),
@@ -358,9 +406,21 @@ impl KeychainManager {
 
     #[cfg(target_os = "macos")]
     async fn retrieve_macos(&self, service: &str, account: &str) -> SecurityResult<String> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Security framework to retrieve from keychain
-            Ok("placeholder".to_string())
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create macOS keychain entry: {}", e),
+                })?;
+            
+            entry.get_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to retrieve macOS credential: {}", e),
+                })
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("macOS keychain operation failed: {}", e),
         })?
@@ -368,8 +428,22 @@ impl KeychainManager {
 
     #[cfg(target_os = "macos")]
     async fn delete_macos(&self, service: &str, account: &str) -> SecurityResult<()> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call Security framework to delete from keychain
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create macOS keychain entry: {}", e),
+                })?;
+            
+            entry.delete_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to delete macOS credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("macOS keychain operation failed: {}", e),
@@ -378,9 +452,23 @@ impl KeychainManager {
 
     #[cfg(target_os = "linux")]
     async fn store_linux(&self, service: &str, account: &str, secret: &str) -> SecurityResult<()> {
-        // This would use the Secret Service API (libsecret)
+        let service = service.to_string();
+        let account = account.to_string();
+        let secret = secret.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call libsecret to store credential
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Linux keychain entry: {}", e),
+                })?;
+            
+            entry.set_password(&secret)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to store Linux credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Linux keychain operation failed: {}", e),
@@ -389,9 +477,21 @@ impl KeychainManager {
 
     #[cfg(target_os = "linux")]
     async fn retrieve_linux(&self, service: &str, account: &str) -> SecurityResult<String> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call libsecret to retrieve credential
-            Ok("placeholder".to_string())
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Linux keychain entry: {}", e),
+                })?;
+            
+            entry.get_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to retrieve Linux credential: {}", e),
+                })
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Linux keychain operation failed: {}", e),
         })?
@@ -399,8 +499,22 @@ impl KeychainManager {
 
     #[cfg(target_os = "linux")]
     async fn delete_linux(&self, service: &str, account: &str) -> SecurityResult<()> {
+        let service = service.to_string();
+        let account = account.to_string();
+        
         tokio::task::spawn_blocking(move || {
-            // Call libsecret to delete credential
+            use keyring::Entry;
+            
+            let entry = Entry::new(&service, &account)
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to create Linux keychain entry: {}", e),
+                })?;
+            
+            entry.delete_password()
+                .map_err(|e| SecurityError::KeychainError {
+                    message: format!("Failed to delete Linux credential: {}", e),
+                })?;
+            
             Ok(())
         }).await.map_err(|e| SecurityError::KeychainError {
             message: format!("Linux keychain operation failed: {}", e),
@@ -410,16 +524,83 @@ impl KeychainManager {
 
 impl EncryptedStorage {
     async fn new() -> SecurityResult<Self> {
-        use rand::RngCore;
-        
         let storage_path = std::env::temp_dir().join("ttrpg_assistant_keystore.enc");
-        let mut encryption_key = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut encryption_key);
+        let encryption_key = Self::get_or_create_master_key().await?;
 
         Ok(Self {
             storage_path,
             encryption_key,
         })
+    }
+
+    /// Get or create a persistent master encryption key
+    async fn get_or_create_master_key() -> SecurityResult<[u8; 32]> {
+        use keyring::Entry;
+        use sha2::{Sha256, Digest};
+        use rand::RngCore;
+        
+        let service = "com.ttrpg.assistant.masterkey";
+        let account = "encryption";
+        
+        // Try to retrieve existing key from native keychain
+        let entry = Entry::new(service, account)
+            .map_err(|e| SecurityError::KeychainError {
+                message: format!("Failed to create keychain entry for master key: {}", e),
+            })?;
+
+        match entry.get_password() {
+            Ok(key_string) => {
+                // Decode the existing key
+                let key_bytes = hex::decode(&key_string)
+                    .map_err(|_| SecurityError::KeychainError {
+                        message: "Invalid master key format in keychain".to_string(),
+                    })?;
+                
+                if key_bytes.len() != 32 {
+                    return Err(SecurityError::KeychainError {
+                        message: "Master key has incorrect length".to_string(),
+                    });
+                }
+                
+                let mut key = [0u8; 32];
+                key.copy_from_slice(&key_bytes);
+                log::debug!("Retrieved existing master encryption key from keychain");
+                Ok(key)
+            }
+            Err(_) => {
+                // Generate a new key
+                let mut key = [0u8; 32];
+                rand::rngs::OsRng.fill_bytes(&mut key);
+                
+                // Store the key in native keychain
+                let key_string = hex::encode(&key);
+                entry.set_password(&key_string)
+                    .map_err(|e| SecurityError::KeychainError {
+                        message: format!("Failed to store master key in keychain: {}", e),
+                    })?;
+                
+                log::info!("Generated and stored new master encryption key in keychain");
+                Ok(key)
+            }
+        }
+    }
+
+    /// Derive a storage-specific key from the master key
+    fn derive_storage_key(&self, storage_id: &str) -> [u8; 32] {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        
+        type HmacSha256 = Hmac<Sha256>;
+        
+        let mut mac = HmacSha256::new_from_slice(&self.encryption_key)
+            .expect("HMAC can take keys of any size");
+        mac.update(b"storage_key_derivation");
+        mac.update(storage_id.as_bytes());
+        
+        let result = mac.finalize();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&result.into_bytes()[..32]);
+        key
     }
 
     async fn store(&self, id: &str, secret: &str, entry: &KeychainEntry) -> SecurityResult<()> {
@@ -543,7 +724,9 @@ impl EncryptedStorage {
         use aes_gcm::aead::{Aead, KeyInit};
         use rand::RngCore;
 
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&self.encryption_key));
+        // Derive a storage-specific encryption key
+        let storage_key = self.derive_storage_key("fallback_storage");
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&storage_key));
         let mut nonce_bytes = [0u8; 12];
         rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -571,7 +754,9 @@ impl EncryptedStorage {
         }
 
         let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&self.encryption_key));
+        // Use the same derived key for decryption
+        let storage_key = self.derive_storage_key("fallback_storage");
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&storage_key));
         let nonce = Nonce::from_slice(nonce_bytes);
 
         cipher.decrypt(nonce, ciphertext)

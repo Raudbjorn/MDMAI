@@ -191,13 +191,17 @@ impl BenchmarkContext {
 
         // Calculate standard deviation
         let avg_ms = average_duration.as_millis() as f64;
-        let variance: f64 = durations.iter()
-            .map(|d| {
-                let diff = d.as_millis() as f64 - avg_ms;
-                diff * diff
-            })
-            .sum::<f64>() / durations.len() as f64;
-        let standard_deviation = variance.sqrt();
+        let standard_deviation = if durations.is_empty() {
+            0.0
+        } else {
+            let variance: f64 = durations.iter()
+                .map(|d| {
+                    let diff = d.as_millis() as f64 - avg_ms;
+                    diff * diff
+                })
+                .sum::<f64>() / durations.len() as f64;
+            variance.sqrt()
+        };
 
         // Calculate memory metrics
         let memory_usage = MemoryMetrics {

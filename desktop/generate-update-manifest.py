@@ -85,10 +85,51 @@ class ManifestGenerator:
         if not self.private_key_path or not Path(self.private_key_path).exists():
             print(f"Warning: Private key not found at {self.private_key_path}", file=sys.stderr)
             return "unsigned"
+        
+        try:
+            import subprocess
+            import hashlib
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa, padding
             
-        # For now, return placeholder - in production, use actual Tauri signing
-        # This would typically be: tauri sign --private-key-path {self.private_key_path} {file_path}
-        return f"placeholder-signature-{file_path.stem}"
+            # Read the file and compute its hash
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+            
+            file_hash = hashlib.sha256(file_data).digest()
+            
+            # Load the private key
+            with open(self.private_key_path, 'rb') as key_file:
+                private_key = serialization.load_pem_private_key(
+                    key_file.read(),
+                    password=None,  # Assumes no password protection
+                )
+            
+            # Sign the file hash
+            if isinstance(private_key, rsa.RSAPrivateKey):
+                signature = private_key.sign(
+                    file_hash,
+                    padding.PSS(
+                        mgf=padding.MGF1(hashes.SHA256()),
+                        salt_length=padding.PSS.MAX_LENGTH
+                    ),
+                    hashes.SHA256()
+                )
+                
+                # Return base64-encoded signature
+                import base64
+                return base64.b64encode(signature).decode('ascii')
+            else:
+                print(f"Warning: Unsupported key type for signing", file=sys.stderr)
+                return "unsigned"
+                
+        except ImportError:
+            print(f"Warning: cryptography library not available for signing", file=sys.stderr)
+            print("Install with: pip install cryptography", file=sys.stderr)
+            return "unsigned"
+        except Exception as e:
+            print(f"Warning: Failed to sign file {file_path}: {e}", file=sys.stderr)
+            return "unsigned"
         
     def match_platform_asset(self, asset_name: str) -> Optional[str]:
         """Match asset filename to platform identifier."""

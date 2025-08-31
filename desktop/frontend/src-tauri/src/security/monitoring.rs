@@ -14,6 +14,60 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
+/// Rate limiter for tracking request rates per source
+#[derive(Debug, Default)]
+pub struct RateLimiter {
+    /// Track request counts per source identifier
+    request_counts: HashMap<String, VecDeque<SystemTime>>,
+}
+
+impl RateLimiter {
+    /// Check if a request should be rate limited
+    pub fn is_rate_limited(&mut self, source: &str, max_requests: u32, time_window: Duration) -> bool {
+        let now = SystemTime::now();
+        let window_start = now - time_window;
+        
+        // Get or create the request history for this source
+        let requests = self.request_counts.entry(source.to_string()).or_insert_with(VecDeque::new);
+        
+        // Remove old requests outside the time window
+        while let Some(&front_time) = requests.front() {
+            if front_time < window_start {
+                requests.pop_front();
+            } else {
+                break;
+            }
+        }
+        
+        // Check if we've exceeded the rate limit
+        if requests.len() >= max_requests as usize {
+            return true; // Rate limited
+        }
+        
+        // Add the current request
+        requests.push_back(now);
+        false // Not rate limited
+    }
+    
+    /// Clean up old entries to prevent memory leaks
+    pub fn cleanup_old_entries(&mut self, max_age: Duration) {
+        let cutoff_time = SystemTime::now() - max_age;
+        
+        self.request_counts.retain(|_, requests| {
+            // Remove old requests
+            while let Some(&front_time) = requests.front() {
+                if front_time < cutoff_time {
+                    requests.pop_front();
+                } else {
+                    break;
+                }
+            }
+            // Keep sources that still have recent requests
+            !requests.is_empty()
+        });
+    }
+}
+
 /// Security monitor for real-time threat detection
 pub struct SecurityMonitor {
     config: SecurityConfig,
@@ -22,6 +76,7 @@ pub struct SecurityMonitor {
     alert_history: Arc<Mutex<VecDeque<SecurityAlert>>>,
     resource_monitors: Arc<RwLock<HashMap<String, ResourceMonitor>>>,
     behavior_baselines: Arc<RwLock<HashMap<String, BehaviorBaseline>>>,
+    rate_limiter: Arc<RwLock<RateLimiter>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,6 +220,7 @@ impl SecurityMonitor {
             alert_history: Arc::new(Mutex::new(VecDeque::with_capacity(1000))),
             resource_monitors: Arc::new(RwLock::new(HashMap::new())),
             behavior_baselines: Arc::new(RwLock::new(HashMap::new())),
+            rate_limiter: Arc::new(RwLock::new(RateLimiter::default())),
         })
     }
 
@@ -301,9 +357,32 @@ impl SecurityMonitor {
                 }
             }
             ConditionOperator::RateLimit => {
-                // Rate limiting would require maintaining state over time
-                // This is a simplified implementation
-                Ok(false)
+                // Extract source identifier for rate limiting (e.g., IP address, user ID, process ID)
+                let source = match self.extract_field_value("source", event) {
+                    Ok(serde_json::Value::String(s)) => s,
+                    _ => event.source.clone().unwrap_or_else(|| "unknown".to_string()),
+                };
+
+                // Parse rate limit parameters from condition value
+                // Expected format: "max_requests:time_window_seconds"
+                // e.g., "10:60" for 10 requests per 60 seconds
+                if let serde_json::Value::String(rate_config) = &condition.value {
+                    let parts: Vec<&str> = rate_config.split(':').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(max_requests), Ok(window_secs)) = (
+                            parts[0].parse::<u32>(),
+                            parts[1].parse::<u64>()
+                        ) {
+                            let time_window = Duration::from_secs(window_secs);
+                            let mut rate_limiter = self.rate_limiter.write().await;
+                            return Ok(rate_limiter.is_rate_limited(&source, max_requests, time_window));
+                        }
+                    }
+                }
+
+                // Default rate limit if parsing fails: 100 requests per minute
+                let mut rate_limiter = self.rate_limiter.write().await;
+                Ok(rate_limiter.is_rate_limited(&source, 100, Duration::from_secs(60)))
             }
         }
     }
@@ -543,6 +622,21 @@ impl SecurityMonitor {
                 let cutoff = SystemTime::now() - Duration::from_secs(24 * 3600 * 7); // 7 days
                 
                 history.retain(|alert| alert.timestamp > cutoff);
+            }
+        });
+
+        // Rate limiter cleanup task
+        let rate_limiter = self.rate_limiter.clone();
+        
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 minutes
+            
+            loop {
+                interval.tick().await;
+                
+                // Clean up old rate limiter entries
+                let mut limiter = rate_limiter.write().await;
+                limiter.cleanup_old_entries(Duration::from_secs(3600)); // Remove entries older than 1 hour
             }
         });
     }
