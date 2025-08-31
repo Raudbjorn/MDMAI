@@ -26,56 +26,20 @@ async def upload_and_process_pdf(
     model_name: Optional[str] = Form(None),
     enable_adaptive_learning: bool = Form(True),
 ):
-    """
-    Upload and process a PDF file with optional Ollama model selection.
-    
-    Args:
-        file: The PDF file to upload
-        rulebook_name: Name of the rulebook
-        system: Game system (e.g., "D&D 5e")
-        source_type: Type of source ("rulebook" or "flavor")
-        model_name: Optional Ollama model name for embeddings
-        enable_adaptive_learning: Whether to use adaptive learning
-    
-    Returns:
-        Processing results and statistics
-    """
-    # Validate file type
-    if not file.filename.lower().endswith('.pdf'):
+    """Upload and process a PDF file."""
+    if not file.filename or not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="File must be a PDF")
     
-    # Check file size (max 100MB)
-    max_size = 100 * 1024 * 1024  # 100MB
-    file_size = 0
-    tmp_path = None
-    
-    # Create temporary file
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-            # Read and write in chunks
-            while chunk := await file.read(8192):
-                file_size += len(chunk)
-                if file_size > max_size:
-                    os.unlink(tmp_file.name)
-                    raise HTTPException(
-                        status_code=413,
-                        detail=f"File too large. Maximum size is {max_size / (1024*1024):.0f}MB"
-                    )
-                tmp_file.write(chunk)
-            tmp_path = tmp_file.name
-    except Exception as e:
-        logger.error(f"Failed to save uploaded file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+    # Save file with size check
+    tmp_path = await _save_upload_file(file, max_size_mb=100)
     
     try:
-        # Initialize pipeline with specified model
         pipeline = PDFProcessingPipeline(
             enable_parallel=True,
-            prompt_for_ollama=False,  # Don't prompt in API
-            model_name=model_name  # Use specified model or default
+            prompt_for_ollama=False,
+            model_name=model_name
         )
         
-        # Process the PDF
         results = pipeline.process_pdf(
             pdf_path=tmp_path,
             rulebook_name=rulebook_name,
@@ -83,69 +47,58 @@ async def upload_and_process_pdf(
             source_type=source_type,
             enable_adaptive_learning=enable_adaptive_learning,
             skip_size_check=False,
-            user_confirmed=True  # Already validated size
+            user_confirmed=True
         )
         
-        # Add file info to results
+        # Add metadata
         results['file_info'] = {
             'filename': file.filename,
-            'size_bytes': file_size,
-            'size_mb': round(file_size / (1024 * 1024), 2)
+            'size_mb': round(Path(tmp_path).stat().st_size / (1024 * 1024), 2)
         }
-        
         if model_name:
             results['embedding_model'] = model_name
         
-        return JSONResponse(content=results)
+        return results
         
     except Exception as e:
         logger.error(f"PDF processing failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"PDF processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
     finally:
-        # Clean up temporary file
         if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception as e:
-                logger.warning(f"Failed to delete temporary file: {e}")
+            os.unlink(tmp_path)
+
+
+async def _save_upload_file(file: UploadFile, max_size_mb: int = 100) -> str:
+    """Save uploaded file to temporary location with size check."""
+    max_size = max_size_mb * 1024 * 1024
+    file_size = 0
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+            while chunk := await file.read(8192):
+                file_size += len(chunk)
+                if file_size > max_size:
+                    os.unlink(tmp_file.name)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max size: {max_size_mb}MB"
+                    )
+                tmp_file.write(chunk)
+            return tmp_file.name
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
 
 
 @router.get("/status/{task_id}")
 async def get_processing_status(task_id: str):
-    """
-    Get the status of a PDF processing task.
-    
-    Args:
-        task_id: The task ID returned from upload
-    
-    Returns:
-        Task status and progress
-    """
-    # TODO: Implement task tracking for async processing
-    return {
-        "task_id": task_id,
-        "status": "completed",
-        "progress": 100,
-        "message": "Processing complete"
-    }
+    """Get processing status (placeholder for future async processing)."""
+    return {"task_id": task_id, "status": "completed", "progress": 100}
 
 
 @router.get("/recent")
 async def get_recent_uploads(limit: int = 10):
-    """
-    Get recently processed PDFs.
-    
-    Args:
-        limit: Maximum number of results to return
-    
-    Returns:
-        List of recent uploads with metadata
-    """
-    # TODO: Implement database query for recent uploads
-    return {
-        "uploads": [],
-        "total": 0
-    }
+    """Get recent uploads (placeholder for future implementation)."""
+    return {"uploads": [], "total": 0}

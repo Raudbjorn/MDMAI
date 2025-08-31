@@ -9,6 +9,9 @@
 	let searchQuery = $state('');
 	let searchResults = $state<any[]>([]);
 	let isSearching = $state(false);
+	
+	// Derived state for recent messages
+	let recentMessages = $derived(sessionStore.messages.slice(-5));
 
 	async function handleSearch() {
 		if (!searchQuery.trim()) return;
@@ -236,7 +239,7 @@
 				</CardHeader>
 				<CardContent>
 					<div class="space-y-2">
-						{#each sessionStore.messages.slice(-5) as message}
+						{#each recentMessages as message}
 							<div class="flex items-center gap-2 text-sm">
 								<span class="text-xs text-muted-foreground">
 									{new Date(message.timestamp).toLocaleTimeString()}
