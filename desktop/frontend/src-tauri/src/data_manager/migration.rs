@@ -115,6 +115,9 @@ impl MigrationManager {
         // Extract description from SQL comments
         let description = self.extract_description_from_sql(&content);
         
+        // Look for rollback SQL in the same file or separate rollback file
+        let rollback_sql = self.find_rollback_sql(path, &content)?;
+        
         Ok(Some(Migration {
             version,
             name,
@@ -122,10 +125,80 @@ impl MigrationManager {
             sql_file: path.to_string_lossy().to_string(),
             checksum,
             applied_at: None,
-            rollback_sql: None,
+            rollback_sql,
         }))
     }
     
+    /// Find rollback SQL for a migration
+    fn find_rollback_sql(&self, migration_path: &Path, migration_content: &str) -> DataResult<Option<String>> {
+        // Strategy 1: Look for embedded rollback SQL marked with comments
+        let rollback_from_content = self.extract_rollback_from_content(migration_content);
+        if rollback_from_content.is_some() {
+            return Ok(rollback_from_content);
+        }
+        
+        // Strategy 2: Look for separate .rollback.sql file
+        let rollback_path = migration_path.with_extension("rollback.sql");
+        if rollback_path.exists() {
+            let rollback_content = fs::read_to_string(&rollback_path)
+                .map_err(|e| DataError::Migration {
+                    message: format!("Failed to read rollback file {}: {}", rollback_path.display(), e),
+                })?;
+            return Ok(Some(rollback_content.trim().to_string()));
+        }
+        
+        // Strategy 3: Look for migration_name.down.sql file (Rails-style)
+        let mut down_path = migration_path.to_path_buf();
+        if let Some(stem) = down_path.file_stem() {
+            if let Some(stem_str) = stem.to_str() {
+                down_path.set_file_name(format!("{}.down.sql", stem_str));
+                if down_path.exists() {
+                    let rollback_content = fs::read_to_string(&down_path)
+                        .map_err(|e| DataError::Migration {
+                            message: format!("Failed to read down file {}: {}", down_path.display(), e),
+                        })?;
+                    return Ok(Some(rollback_content.trim().to_string()));
+                }
+            }
+        }
+        
+        // No rollback SQL found
+        Ok(None)
+    }
+    
+    /// Extract rollback SQL from migration content (between special comment markers)
+    fn extract_rollback_from_content(&self, content: &str) -> Option<String> {
+        let lines: Vec<&str> = content.lines().collect();
+        let mut rollback_lines = Vec::new();
+        let mut in_rollback_section = false;
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            // Start of rollback section
+            if trimmed.starts_with("-- ROLLBACK START") || trimmed.starts_with("-- BEGIN ROLLBACK") {
+                in_rollback_section = true;
+                continue;
+            }
+            
+            // End of rollback section
+            if trimmed.starts_with("-- ROLLBACK END") || trimmed.starts_with("-- END ROLLBACK") {
+                break;
+            }
+            
+            // Collect rollback lines
+            if in_rollback_section {
+                rollback_lines.push(line);
+            }
+        }
+        
+        if rollback_lines.is_empty() {
+            None
+        } else {
+            Some(rollback_lines.join("\n").trim().to_string())
+        }
+    }
+
     /// Extract description from SQL comments
     fn extract_description_from_sql(&self, sql: &str) -> String {
         for line in sql.lines() {

@@ -74,17 +74,32 @@ else ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
     OS := windows
     OS_FAMILY := windows
     EXE_EXT := .exe
-    PATH_SEP := \\
+    PATH_SEP := /
 else ifeq ($(findstring MSYS,$(UNAME_S)),MSYS)
     OS := windows
     OS_FAMILY := windows
     EXE_EXT := .exe
-    PATH_SEP := \\
+    PATH_SEP := /
 else ifeq ($(findstring CYGWIN,$(UNAME_S)),CYGWIN)
     OS := windows
     OS_FAMILY := windows
     EXE_EXT := .exe
-    PATH_SEP := \\
+    PATH_SEP := /
+# WSL (Windows Subsystem for Linux) detection
+else ifeq ($(findstring Microsoft,$(UNAME_S)),Microsoft)
+    OS := linux
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+    # Set WSL flag for special handling if needed
+    WSL := 1
+else ifeq ($(findstring microsoft,$(shell uname -r 2>/dev/null)),microsoft)
+    OS := linux
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+    # Set WSL flag for special handling if needed  
+    WSL := 1
 else
     $(error Unsupported operating system: $(UNAME_S))
 endif
@@ -93,14 +108,26 @@ endif
 ifeq ($(OS),darwin)
     RUST_TARGET := $(ARCH)-apple-darwin
 else ifeq ($(OS),linux)
-    # Check for musl vs glibc - robust detection for Alpine/musl compatibility
+    # Check for musl vs glibc - robust cross-platform detection
     LIBC_TYPE := $(shell \
+        # First check for musl dynamic linker files (most reliable)
         if [ -f /lib/ld-musl-$(ARCH).so.1 ] || [ -f /usr/lib/ld-musl-$(ARCH).so.1 ]; then \
             echo musl; \
+        # Check for common musl architectures  
+        elif [ -f /lib/ld-musl-x86_64.so.1 ] || [ -f /lib/ld-musl-aarch64.so.1 ] || \
+             [ -f /lib/ld-musl-armhf.so.1 ] || [ -f /lib/ld-musl-i386.so.1 ]; then \
+            echo musl; \
+        # Check ldd version output (fallback method)
         elif command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then \
             echo musl; \
-        elif [ -f /lib64/ld-linux-x86-64.so.2 ] || [ -f /lib/ld-linux.so.2 ] || [ -f /lib64/ld-linux-aarch64.so.1 ]; then \
+        # Check for getconf GNU_LIBC_VERSION (glibc specific)
+        elif command -v getconf >/dev/null 2>&1 && getconf GNU_LIBC_VERSION >/dev/null 2>&1; then \
             echo gnu; \
+        # Check for common glibc dynamic linker files
+        elif [ -f /lib64/ld-linux-x86-64.so.2 ] || [ -f /lib/ld-linux.so.2 ] || \
+             [ -f /lib64/ld-linux-aarch64.so.1 ] || [ -f /lib/ld-linux-armhf.so.3 ]; then \
+            echo gnu; \
+        # Default to gnu for compatibility
         else \
             echo gnu; \
         fi)

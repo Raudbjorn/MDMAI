@@ -238,7 +238,7 @@ desktop/frontend/build/
 desktop/frontend/.svelte-kit/
 desktop/frontend/.vite/
 desktop/frontend/src-tauri/target/
-desktop/frontend/src-tauri/Cargo.lock
+# Note: Cargo.lock is committed for binary applications to ensure reproducible builds
 
 # Generated binaries for development (in source directories)
 desktop/frontend/src-tauri/binaries/mcp-server-*
@@ -246,7 +246,9 @@ desktop/frontend/src-tauri/binaries/mcp-server-*
 
 # Rust build artifacts
 target/
-Cargo.lock
+# Note: Cargo.lock is committed to version control for binary applications
+# to ensure reproducible builds across environments
+# Cargo.lock should only be ignored for library crates
 **/*.rs.bk
 
 # PyOxidizer build artifacts

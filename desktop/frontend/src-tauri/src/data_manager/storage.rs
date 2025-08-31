@@ -245,51 +245,77 @@ impl DataStorage {
         let limit = params.limit.unwrap_or(100) as i32;
         let offset = params.offset.unwrap_or(0) as i32;
 
-        // Build query with filters
-        let mut query = "SELECT * FROM campaigns WHERE 1=1".to_string();
-        let mut count_query = "SELECT COUNT(*) as count FROM campaigns WHERE 1=1".to_string();
+        // Build secure query with proper parameterized filters
+        let mut query_parts = vec!["SELECT * FROM campaigns WHERE 1=1".to_string()];
+        let mut count_query_parts = vec!["SELECT COUNT(*) as count FROM campaigns WHERE 1=1".to_string()];
+        
+        let mut is_active_filter: Option<bool> = None;
+        let mut system_filter: Option<String> = None;
+        let mut status_filter: Option<String> = None;
 
-        // Add filters
+        // Extract and validate filters
         for (key, value) in &params.filters {
             match key.as_str() {
                 "is_active" => {
                     if let Some(is_active) = value.as_bool() {
-                        query.push_str(&format!(" AND is_active = {}", is_active));
-                        count_query.push_str(&format!(" AND is_active = {}", is_active));
+                        query_parts.push(" AND is_active = ?".to_string());
+                        count_query_parts.push(" AND is_active = ?".to_string());
+                        is_active_filter = Some(is_active);
                     }
                 }
                 "system" => {
                     if let Some(system) = value.as_str() {
-                        query.push_str(&format!(" AND system = '{}'", system));
-                        count_query.push_str(&format!(" AND system = '{}'", system));
+                        query_parts.push(" AND system = ?".to_string());
+                        count_query_parts.push(" AND system = ?".to_string());
+                        system_filter = Some(system.to_string());
                     }
                 }
                 "status" => {
                     if let Some(status) = value.as_str() {
-                        query.push_str(&format!(" AND status = '{}'", status));
-                        count_query.push_str(&format!(" AND status = '{}'", status));
+                        query_parts.push(" AND status = ?".to_string());
+                        count_query_parts.push(" AND status = ?".to_string());
+                        status_filter = Some(status.to_string());
                     }
                 }
                 _ => {} // Ignore unknown filters
             }
         }
 
-        // Add sorting
+        // Add sorting with allowed column validation
         if let Some(sort_by) = &params.sort_by {
-            let order = match params.sort_order {
-                Some(SortOrder::Asc) => "ASC",
-                _ => "DESC",
-            };
-            query.push_str(&format!(" ORDER BY {} {}", sort_by, order));
+            let allowed_sort_columns = ["id", "name", "description", "system", "created_at", "updated_at", "is_active", "status"];
+            if allowed_sort_columns.contains(&sort_by.as_str()) {
+                let order = match params.sort_order {
+                    Some(SortOrder::Asc) => "ASC",
+                    _ => "DESC",
+                };
+                query_parts.push(format!(" ORDER BY {} {}", sort_by, order));
+            } else {
+                query_parts.push(" ORDER BY updated_at DESC".to_string());
+            }
         } else {
-            query.push_str(" ORDER BY updated_at DESC");
+            query_parts.push(" ORDER BY updated_at DESC".to_string());
         }
 
         // Add pagination
-        query.push_str(&format!(" LIMIT {} OFFSET {}", limit, offset));
+        query_parts.push(" LIMIT ? OFFSET ?".to_string());
 
-        // Get total count
-        let count_row = sqlx::query(&count_query)
+        let final_query = query_parts.join("");
+        let final_count_query = count_query_parts.join("");
+
+        // Build parameterized count query
+        let mut count_query_builder = sqlx::query(&final_count_query);
+        if let Some(is_active) = is_active_filter {
+            count_query_builder = count_query_builder.bind(is_active);
+        }
+        if let Some(system) = &system_filter {
+            count_query_builder = count_query_builder.bind(system);
+        }
+        if let Some(status) = &status_filter {
+            count_query_builder = count_query_builder.bind(status);
+        }
+        
+        let count_row = count_query_builder
             .fetch_one(&self.pool)
             .await
             .map_err(|e| DataError::Database {
@@ -297,8 +323,20 @@ impl DataStorage {
             })?;
         let total_count: i64 = count_row.get("count");
 
-        // Get campaigns
-        let rows = sqlx::query(&query)
+        // Build parameterized main query
+        let mut query_builder = sqlx::query(&final_query);
+        if let Some(is_active) = is_active_filter {
+            query_builder = query_builder.bind(is_active);
+        }
+        if let Some(system) = &system_filter {
+            query_builder = query_builder.bind(system);
+        }
+        if let Some(status) = &status_filter {
+            query_builder = query_builder.bind(status);
+        }
+        query_builder = query_builder.bind(limit).bind(offset);
+        
+        let rows = query_builder
             .fetch_all(&self.pool)
             .await
             .map_err(|e| DataError::Database {
@@ -593,13 +631,25 @@ impl DataStorage {
         let mut stats = serde_json::Map::new();
         
         for table in &tables {
-            let query = format!("SELECT COUNT(*) as count FROM {}", table);
-            let row = sqlx::query(&query)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(|e| DataError::Database {
-                    message: format!("Failed to get count for table {}: {}", table, e),
-                })?;
+            // Use match to validate table names and construct safe queries
+            let row = match *table {
+                "campaigns" => sqlx::query("SELECT COUNT(*) as count FROM campaigns"),
+                "characters" => sqlx::query("SELECT COUNT(*) as count FROM characters"),
+                "npcs" => sqlx::query("SELECT COUNT(*) as count FROM npcs"),
+                "sessions" => sqlx::query("SELECT COUNT(*) as count FROM sessions"),
+                "rulebooks" => sqlx::query("SELECT COUNT(*) as count FROM rulebooks"),
+                "personality_profiles" => sqlx::query("SELECT COUNT(*) as count FROM personality_profiles"),
+                "locations" => sqlx::query("SELECT COUNT(*) as count FROM locations"),
+                "items" => sqlx::query("SELECT COUNT(*) as count FROM items"),
+                "spells" => sqlx::query("SELECT COUNT(*) as count FROM spells"),
+                "assets" => sqlx::query("SELECT COUNT(*) as count FROM assets"),
+                _ => continue, // Skip unknown tables
+            }
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| DataError::Database {
+                message: format!("Failed to get count for table {}: {}", table, e),
+            })?;
             
             let count: i64 = row.get("count");
             stats.insert(table.to_string(), serde_json::json!(count));
