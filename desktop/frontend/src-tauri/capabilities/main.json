@@ -9,7 +9,6 @@
     "core:app:default",
     "core:window:default",
     "shell:default",
-    "shell:allow-execute",
     "shell:allow-spawn",
     "process:default",
     "process:allow-exit",
