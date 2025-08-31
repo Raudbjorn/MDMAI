@@ -788,6 +788,36 @@ The TTRPG Assistant MCP Server is now feature-complete and ready for:
 
 **Project Status: 🚀 READY FOR LAUNCH! 🚀**
 
+## Acknowledged Issues for Future Consideration
+
+The following issues were identified during code review but were acknowledged as design decisions or acceptable trade-offs for the current implementation. They are documented here for future consideration if deemed important enough:
+
+### Interactive Prompts in Constructors
+**Issue:** Interactive prompts in `PDFProcessingPipeline.__init__()` and `EmbeddingGenerator.prompt_and_create()` can block automated processes
+- **Location:** `src/pdf_processing/ollama_provider.py:297-341`, `src/pdf_processing/embedding_generator.py:401-422`
+- **Impact:** Low - Only affects initial setup when no environment variables are set
+- **Future Solution:** Consider separating prompting logic into standalone setup utilities or configuration wizards
+
+### Extended Timeout for Model Downloads
+**Issue:** 30-minute timeout for Ollama model downloads may seem excessive
+- **Location:** `src/pdf_processing/ollama_provider.py:169` (1800 second read timeout)
+- **Justification:** Large models (1.3GB+) require extended time on slow connections
+- **Future Solution:** Implement progressive timeout based on model size or connection speed detection
+
+### Simple Polling for Service Startup
+**Issue:** Basic polling logic for Ollama service startup detection could be more sophisticated
+- **Location:** `src/pdf_processing/ollama_provider.py:109-114` (10 iterations with 0.5s sleep)
+- **Impact:** Low - Current approach is reliable and adequate for typical use cases
+- **Future Solution:** Implement exponential backoff or more sophisticated health checking if startup reliability becomes an issue
+
+### Security Enhancement Opportunities
+**Issue:** Additional security measures could be implemented for production environments
+- **Examples:** Request rate limiting per model, more granular regex validation, audit logging for model operations
+- **Impact:** Low - Current implementation meets security requirements for intended use case
+- **Future Solution:** Implement enterprise-grade security features if deploying at scale
+
+These items represent potential improvements rather than critical issues and can be prioritized based on user feedback and production requirements.
+
 ## Phase 23: Desktop Application Development
 
 ### Task 23.1: Set Up Tauri Development Environment
