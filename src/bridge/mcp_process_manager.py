@@ -3,12 +3,9 @@
 import asyncio
 import json
 import os
-import signal
 import sys
-from asyncio import subprocess
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import psutil
 from structlog import get_logger
@@ -16,14 +13,10 @@ from structlog import get_logger
 from .models import (
     BridgeConfig,
     MCPError,
-    MCPErrorCode,
     MCPNotification,
     MCPRequest,
-    MCPResponse,
-    MCPSession,
     PendingRequest,
     ProcessStats,
-    SessionState,
 )
 
 logger = get_logger(__name__)
@@ -55,7 +48,7 @@ class MCPProcess:
         self._lock = asyncio.Lock()
         self._running = False
         self._initialized = False
-        self._auto_restart = True  # Enable automatic restart on failure
+        self._auto_restart = True
     
     async def start(self) -> bool:
         """Start the MCP server subprocess."""
@@ -496,8 +489,12 @@ class MCPProcess:
             except asyncio.TimeoutError:
                 self.process.kill()
                 await self.process.wait()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "Error during process cleanup",
+                    session_id=self.session_id,
+                    error=str(e),
+                )
             self.process = None
     
     def get_stats(self) -> ProcessStats:

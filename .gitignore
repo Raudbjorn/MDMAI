@@ -209,11 +209,21 @@ __marimo__/
 # Claude-specific files
 .claude/
 
+# Node.js / Frontend build artifacts
+node_modules/
+.svelte-kit/
+.nuxt/
+.output/
+.vercel/
+.netlify/
+*.tsbuildinfo
+
 # Desktop Application (Tauri + SvelteKit)
 desktop/frontend/node_modules/
 desktop/frontend/.svelte-kit/
 desktop/frontend/build/
 desktop/frontend/dist/
+<<<<<<< HEAD
 desktop/frontend/src-tauri/target/
 desktop/frontend/src-tauri/Cargo.lock
 
@@ -222,3 +232,5 @@ desktop/frontend/src-tauri/binaries/mcp-server-*
 
 # Temporary test files
 desktop/test_*.py
+=======
+>>>>>>> origin/main
