@@ -708,7 +708,16 @@ _show_installer_artifacts() {
         for pattern in "${patterns[@]}"; do
             while IFS= read -r -d '' artifact; do
                 if [ -f "$artifact" ]; then
-                    local size=$(du -h "$artifact" | cut -f1)
+                    local size_bytes=$(wc -c < "$artifact")
+                    # Simple function to format bytes, can be enhanced
+                    format_size() {
+                        local bytes=$1
+                        if [ $bytes -lt 1024 ]; then echo "${bytes}B";
+                        elif [ $bytes -lt 1048576 ]; then echo "$((bytes/1024))K";
+                        else echo "$((bytes/1048576))M"; fi
+                    }
+                    local size=$(format_size $size_bytes)
+
                     print_success "  $(basename "$artifact") ($size)"
                     found_artifacts=true
                 fi

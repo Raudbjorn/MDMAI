@@ -548,7 +548,7 @@ class InstallerAssetsManager:
         with open(path, "w") as f:
             f.write(f"# Placeholder for {asset_type}\n")
             f.write(f"# Replace with actual {asset_type} asset\n")
-            f.write(f"# Generated on: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}\n")
+            f.write(f"# Generated on: {datetime.now().isoformat()}\n")
             
     def _generate_placeholder_png(self, path: Path, asset_type: str) -> None:
         """Generate placeholder PNG file."""
