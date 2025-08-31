@@ -368,8 +368,8 @@ class ProcessSandbox:
                 f"--cpus={self.config.resource_limits.cpu_percent/100}",
                 f"--pids-limit={self.config.resource_limits.max_processes}",
                 "--network=none" if not self.config.network_policy.allow_network else "",
-                "--workdir=/sandbox",
-                "-v", f"{sandbox_dir}:/sandbox",
+                f"--workdir=/sandbox",
+                f"-v", f"{sandbox_dir}:/sandbox",
                 "python:3.11-slim",
             ])
         

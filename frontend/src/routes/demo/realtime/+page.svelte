@@ -23,23 +23,28 @@
 	onMount(() => {
 		// Connect to collaboration service
 		const init = async () => {
-			await collaborationStore.connect(demoUserId);
-			
-			// Create or join demo room
-			currentRoom = await collaborationStore.createRoom(
-				'Demo Session',
-				'demo-campaign',
-				{
-					max_participants: 20,
-					allow_spectators: true,
-					enable_voice: false,
-					enable_video: false,
-					auto_save: true,
-					save_interval: 30
-				}
-			);
-			
-			isConnected = true;
+			try {
+				await collaborationStore.connect(demoUserId);
+				
+				// Create or join demo room
+				currentRoom = await collaborationStore.createRoom(
+					'Demo Session',
+					'demo-campaign',
+					{
+						max_participants: 20,
+						allow_spectators: true,
+						enable_voice: false,
+						enable_video: false,
+						auto_save: true,
+						save_interval: 30
+					}
+				);
+				
+				isConnected = true;
+			} catch (error) {
+				console.error('Failed to initialize collaboration:', error);
+				isConnected = false;
+			}
 			
 			// Simulate some activity for demo
 			setTimeout(() => {

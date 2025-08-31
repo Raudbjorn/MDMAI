@@ -347,8 +347,6 @@ def register_character_tools(mcp_server):
                 doc = result.get("document", {})
                 if isinstance(doc, str):
                     doc = json.loads(doc)
-                else:
-                    doc = doc
 
                 level = doc.get("stats", {}).get("level", 1)
                 if level_min and level < level_min:
