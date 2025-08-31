@@ -48,12 +48,13 @@ class MDMAIApp:
         # Add any startup tasks here
         # For example, check if Ollama is running
         try:
-            import requests
-            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                logger.info("Ollama service is running")
-            else:
-                logger.warning("Ollama service not responding properly")
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{self.ollama_base_url}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    logger.info("Ollama service is running")
+                else:
+                    logger.warning("Ollama service not responding properly")
         except Exception as e:
             logger.warning(f"Ollama service not available: {e}")
         
