@@ -1,0 +1,420 @@
+name: Build Platform Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (optional)'
+        required: false
+        type: string
+      enable_signing:
+        description: 'Enable code signing'
+        required: false
+        default: false
+        type: boolean
+      generate_manifests:
+        description: 'Generate update manifests'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  RUST_BACKTRACE: 1
+  NODE_ENV: production
+
+jobs:
+  prepare:
+    name: Prepare Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.version }}" != "" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            VERSION="$(date +%Y.%m.%d)-$(echo ${{ github.sha }} | cut -c1-8)"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+          
+      - name: Setup build matrix
+        id: matrix
+        run: |
+          # Define build matrix based on event type
+          if [[ "${{ steps.version.outputs.is_release }}" == "true" || "${{ github.event.inputs.enable_signing }}" == "true" ]]; then
+            # Full matrix for releases and signed builds
+            matrix='{
+              "include": [
+                {
+                  "os": "windows-latest",
+                  "target": "x86_64-pc-windows-msvc",
+                  "installer_targets": ["msi", "nsis"],
+                  "rust_cache_key": "windows"
+                },
+                {
+                  "os": "macos-latest", 
+                  "target": "x86_64-apple-darwin",
+                  "installer_targets": ["dmg"],
+                  "rust_cache_key": "macos-x64"
+                },
+                {
+                  "os": "macos-latest",
+                  "target": "aarch64-apple-darwin", 
+                  "installer_targets": ["dmg"],
+                  "rust_cache_key": "macos-arm64"
+                },
+                {
+                  "os": "ubuntu-latest",
+                  "target": "x86_64-unknown-linux-gnu",
+                  "installer_targets": ["deb", "rpm", "appimage"],
+                  "rust_cache_key": "linux"
+                }
+              ]
+            }'
+          else
+            # Limited matrix for development builds
+            matrix='{
+              "include": [
+                {
+                  "os": "ubuntu-latest",
+                  "target": "x86_64-unknown-linux-gnu", 
+                  "installer_targets": ["appimage"],
+                  "rust_cache_key": "linux"
+                }
+              ]
+            }'
+          fi
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/frontend/package-lock.json
+            
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.rust_cache_key }}
+          workspaces: desktop/frontend/src-tauri -> target
+          
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            rpm \
+            fuse
+            
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          # Ensure Xcode tools are available
+          xcode-select --install || true
+          
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml', '**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel pyoxidizer requests
+          
+      - name: Install project dependencies
+        run: |
+          # Install Python dependencies
+          pip install -e ".[dev,test]" || pip install -e .
+          
+          # Install frontend dependencies
+          cd frontend && npm ci
+          cd ../desktop/frontend && npm ci
+          
+      - name: Setup code signing (Windows)
+        if: runner.os == 'Windows' && (needs.prepare.outputs.is_release == 'true' || github.event.inputs.enable_signing == 'true')
+        run: |
+          # Decode certificate from base64 (stored in secrets)
+          echo "${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}" | base64 -d > windows-cert.p12
+          echo "WINDOWS_CERTIFICATE_PATH=$(pwd)/windows-cert.p12" >> $GITHUB_ENV
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          
+      - name: Setup code signing (macOS)
+        if: runner.os == 'macOS' && (needs.prepare.outputs.is_release == 'true' || github.event.inputs.enable_signing == 'true')
+        run: |
+          # Import Apple certificates
+          echo "${{ secrets.MACOS_CERTIFICATE_BASE64 }}" | base64 -d > macos-cert.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import macos-cert.p12 -k build.keychain -P "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+        env:
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          
+      - name: Setup code signing (Linux)
+        if: runner.os == 'Linux' && (needs.prepare.outputs.is_release == 'true' || github.event.inputs.enable_signing == 'true')
+        run: |
+          # Import GPG key for package signing
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+          echo "${{ secrets.GPG_PUBLIC_KEY }}" | gpg --batch --import
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          
+      - name: Update version in Tauri config
+        run: |
+          cd desktop/frontend/src-tauri
+          # Update version in tauri.conf.json
+          python3 -c "
+          import json
+          with open('tauri.conf.json', 'r') as f:
+              config = json.load(f)
+          config['version'] = '${{ needs.prepare.outputs.version }}'.lstrip('v')
+          with open('tauri.conf.json', 'w') as f:
+              json.dump(config, f, indent=2)
+          "
+          
+      - name: Build Python backend
+        run: |
+          cd backend
+          if [[ -f "pyoxidizer.toml" ]]; then
+            echo "Building with PyOxidizer..."
+            pyoxidizer build
+          else
+            echo "Creating Python bundle..."
+            python -m pip install . --target ../desktop/frontend/src-tauri/binaries/python-deps
+          fi
+          
+      - name: Build installers
+        run: |
+          cd desktop
+          
+          # Prepare build arguments
+          ARGS="--verbose --platform ${{ runner.os == 'Windows' && 'windows' || runner.os == 'macOS' && 'macos' || 'linux' }}"
+          
+          # Add installer targets
+          TARGETS="${{ join(matrix.installer_targets, ' ') }}"
+          if [[ -n "$TARGETS" ]]; then
+            ARGS="$ARGS --installer-targets $TARGETS"
+          fi
+          
+          # Add code signing if enabled
+          if [[ "${{ needs.prepare.outputs.is_release }}" == "true" || "${{ github.event.inputs.enable_signing }}" == "true" ]]; then
+            ARGS="$ARGS --code-signing"
+          fi
+          
+          # Add update manifest generation if enabled
+          if [[ "${{ github.event.inputs.generate_manifests }}" != "false" ]]; then
+            ARGS="$ARGS --generate-update-manifest"
+          fi
+          
+          # Run build
+          python3 build_installer.py $ARGS
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          
+      - name: Notarize macOS app
+        if: runner.os == 'macOS' && (needs.prepare.outputs.is_release == 'true' || github.event.inputs.enable_signing == 'true')
+        run: |
+          # Find the DMG file
+          DMG_PATH=$(find desktop/frontend/src-tauri/target/release/bundle -name "*.dmg" | head -n 1)
+          if [[ -n "$DMG_PATH" ]]; then
+            echo "Notarizing $DMG_PATH..."
+            xcrun notarytool submit "$DMG_PATH" \
+              --apple-id "${{ secrets.APPLE_ID }}" \
+              --password "${{ secrets.APPLE_PASSWORD }}" \
+              --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+              --wait
+            
+            echo "Stapling notarization..."
+            xcrun stapler staple "$DMG_PATH"
+          fi
+          
+      - name: Collect artifacts
+        id: artifacts
+        run: |
+          # Create artifacts directory
+          mkdir -p artifacts
+          
+          # Find and copy installer files
+          BUNDLE_DIR="desktop/frontend/src-tauri/target/release/bundle"
+          if [[ -d "$BUNDLE_DIR" ]]; then
+            find "$BUNDLE_DIR" -name "*.msi" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" | while read -r file; do
+              cp "$file" artifacts/
+              echo "Found: $(basename "$file")"
+            done
+          fi
+          
+          # Copy update manifests if they exist
+          if [[ -d "update-manifests" ]]; then
+            cp update-manifests/*.json artifacts/ 2>/dev/null || true
+          fi
+          
+          # List all artifacts
+          echo "Generated artifacts:"
+          ls -la artifacts/
+          
+          # Set output for artifact count
+          ARTIFACT_COUNT=$(ls artifacts/ | wc -l)
+          echo "artifact_count=$ARTIFACT_COUNT" >> $GITHUB_OUTPUT
+          
+      - name: Upload build artifacts
+        if: steps.artifacts.outputs.artifact_count > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.target }}
+          path: artifacts/
+          retention-days: 7
+          
+      - name: Upload to release
+        if: needs.prepare.outputs.is_release == 'true' && steps.artifacts.outputs.artifact_count > 0
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          files: artifacts/*
+          draft: true
+          prerelease: ${{ contains(needs.prepare.outputs.version, 'alpha') || contains(needs.prepare.outputs.version, 'beta') }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  post-build:
+    name: Post-Build Tasks
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    if: always() && (needs.prepare.outputs.is_release == 'true' || github.event.inputs.generate_manifests != 'false')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          pip install requests
+          
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected-artifacts
+          
+      - name: Generate consolidated update manifests
+        if: needs.prepare.outputs.is_release == 'true'
+        run: |
+          cd desktop
+          
+          # Create consolidated assets directory
+          mkdir -p ../consolidated-assets
+          find ../collected-artifacts -name "*.msi" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" | while read -r file; do
+            cp "$file" ../consolidated-assets/
+          done
+          
+          # Generate final update manifests
+          python3 generate-update-manifest.py \
+            --repo "${{ github.repository }}" \
+            --tag "${{ needs.prepare.outputs.version }}" \
+            --output-dir ../final-manifests
+            
+      - name: Upload final manifests
+        if: needs.prepare.outputs.is_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-manifests
+          path: final-manifests/
+          
+      - name: Update release with manifests
+        if: needs.prepare.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          files: final-manifests/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify Build Results
+    needs: [prepare, build, post-build]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Build Summary
+        run: |
+          echo "# Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release**: ${{ needs.prepare.outputs.is_release == 'true' && 'Yes' || 'No' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Status**: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.post-build.result }}" != "" ]]; then
+            echo "- **Post-Build**: ${{ needs.post-build.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Check the artifacts section below for generated installers." >> $GITHUB_STEP_SUMMARY

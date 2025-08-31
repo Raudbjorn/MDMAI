@@ -558,6 +558,289 @@ build_desktop_release() {
     print_success "Desktop application built for release"
 }
 
+# New installer-specific build functions
+build_installers() {
+    print_section "Building Platform-Specific Installers"
+    
+    local targets="${1:-all}"
+    local enable_signing="${2:-false}"
+    local generate_manifests="${3:-false}"
+    
+    if [ ! -d "desktop" ]; then
+        print_error "Desktop directory not found"
+        return 1
+    fi
+    
+    if ! command_exists python3; then
+        print_error "Python 3 not found - cannot run installer build script"
+        return 1
+    fi
+    
+    print_info "Building installers with targets: $targets"
+    
+    # Prepare build command
+    local cmd=("python3" "build_installer.py" "--verbose")
+    
+    # Add installer targets if specified
+    if [ "$targets" != "all" ]; then
+        IFS=',' read -ra TARGET_ARRAY <<< "$targets"
+        cmd+=("--installer-targets")
+        for target in "${TARGET_ARRAY[@]}"; do
+            cmd+=("$target")
+        done
+    fi
+    
+    # Add code signing if requested
+    if [ "$enable_signing" = "true" ]; then
+        cmd+=("--code-signing")
+    fi
+    
+    # Add update manifest generation if requested
+    if [ "$generate_manifests" = "true" ]; then
+        cmd+=("--generate-update-manifest")
+    fi
+    
+    # Run the build
+    cd desktop || return 1
+    "${cmd[@]}"
+    local exit_code=$?
+    cd "$PROJECT_ROOT" || return 1
+    
+    if [ $exit_code -eq 0 ]; then
+        print_success "Installers built successfully"
+        _show_installer_artifacts
+    else
+        print_error "Installer build failed"
+        return 1
+    fi
+}
+
+build_msi_installer() {
+    print_section "Building Windows MSI Installer"
+    build_installers "msi" "${1:-false}" "${2:-false}"
+}
+
+build_nsis_installer() {
+    print_section "Building Windows NSIS Installer"
+    build_installers "nsis" "${1:-false}" "${2:-false}"
+}
+
+build_dmg_installer() {
+    print_section "Building macOS DMG Installer"
+    build_installers "dmg" "${1:-false}" "${2:-false}"
+}
+
+build_deb_installer() {
+    print_section "Building Linux DEB Package"
+    build_installers "deb" "${1:-false}" "${2:-false}"
+}
+
+build_rpm_installer() {
+    print_section "Building Linux RPM Package"
+    build_installers "rpm" "${1:-false}" "${2:-false}"
+}
+
+build_appimage_installer() {
+    print_section "Building Linux AppImage"
+    build_installers "appimage" "${1:-false}" "${2:-false}"
+}
+
+build_signed_installers() {
+    print_section "Building Signed Installers"
+    
+    if ! _check_signing_environment; then
+        print_error "Code signing environment not properly configured"
+        return 1
+    fi
+    
+    build_installers "all" "true" "true"
+}
+
+_check_signing_environment() {
+    print_info "Checking code signing environment..."
+    
+    local missing_vars=()
+    
+    # Check base signing variables
+    [ -z "$TAURI_SIGNING_PRIVATE_KEY" ] && missing_vars+=("TAURI_SIGNING_PRIVATE_KEY")
+    [ -z "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ] && missing_vars+=("TAURI_SIGNING_PRIVATE_KEY_PASSWORD")
+    
+    # Platform-specific variables
+    case "$(uname -s)" in
+        "Linux")
+            [ -z "$GPG_KEY_ID" ] && missing_vars+=("GPG_KEY_ID")
+            ;;
+        "Darwin")
+            [ -z "$MACOS_SIGNING_IDENTITY" ] && missing_vars+=("MACOS_SIGNING_IDENTITY")
+            [ -z "$APPLE_ID" ] && missing_vars+=("APPLE_ID")
+            [ -z "$APPLE_PASSWORD" ] && missing_vars+=("APPLE_PASSWORD")
+            [ -z "$APPLE_TEAM_ID" ] && missing_vars+=("APPLE_TEAM_ID")
+            ;;
+        "CYGWIN"*|"MINGW"*|"MSYS"*)
+            [ -z "$WINDOWS_CERTIFICATE_PATH" ] && missing_vars+=("WINDOWS_CERTIFICATE_PATH")
+            [ -z "$WINDOWS_CERTIFICATE_PASSWORD" ] && missing_vars+=("WINDOWS_CERTIFICATE_PASSWORD")
+            ;;
+    esac
+    
+    if [ ${#missing_vars[@]} -gt 0 ]; then
+        print_error "Missing required environment variables for code signing:"
+        for var in "${missing_vars[@]}"; do
+            print_error "  - $var"
+        done
+        print_info "See desktop/frontend/src-tauri/codesign-config.json for requirements"
+        return 1
+    fi
+    
+    print_success "Code signing environment is configured"
+    return 0
+}
+
+_show_installer_artifacts() {
+    print_info "Looking for generated installer artifacts..."
+    
+    local bundle_dir="desktop/frontend/src-tauri/target/release/bundle"
+    local found_artifacts=false
+    
+    if [ -d "$bundle_dir" ]; then
+        # Look for various installer types
+        local patterns=("*.msi" "*.exe" "*.dmg" "*.deb" "*.rpm" "*.AppImage")
+        
+        for pattern in "${patterns[@]}"; do
+            while IFS= read -r -d '' artifact; do
+                if [ -f "$artifact" ]; then
+                    local size=$(du -h "$artifact" | cut -f1)
+                    print_success "  $(basename "$artifact") ($size)"
+                    found_artifacts=true
+                fi
+            done < <(find "$bundle_dir" -name "$pattern" -print0 2>/dev/null)
+        done
+    fi
+    
+    # Check for update manifests
+    if [ -d "update-manifests" ]; then
+        while IFS= read -r -d '' manifest; do
+            if [ -f "$manifest" ]; then
+                print_success "  $(basename "$manifest") (update manifest)"
+                found_artifacts=true
+            fi
+        done < <(find "update-manifests" -name "*.json" -print0 2>/dev/null)
+    fi
+    
+    if [ "$found_artifacts" = false ]; then
+        print_warning "No installer artifacts found"
+    fi
+}
+
+generate_update_manifests() {
+    print_section "Generating Update Manifests"
+    
+    if [ ! -f "desktop/generate-update-manifest.py" ]; then
+        print_error "Update manifest generator not found"
+        return 1
+    fi
+    
+    local version="${1:-1.0.0}"
+    local assets_dir="${2:-desktop/frontend/src-tauri/target/release/bundle}"
+    
+    print_info "Generating update manifests for version $version"
+    
+    cd desktop || return 1
+    python3 generate-update-manifest.py \
+        --local-assets "../$assets_dir" \
+        --version "$version" \
+        --output-dir "../update-manifests" \
+        --notes "Release $version"
+    local exit_code=$?
+    cd "$PROJECT_ROOT" || return 1
+    
+    if [ $exit_code -eq 0 ]; then
+        print_success "Update manifests generated successfully"
+        _show_update_manifests
+    else
+        print_error "Failed to generate update manifests"
+        return 1
+    fi
+}
+
+_show_update_manifests() {
+    if [ -d "update-manifests" ]; then
+        print_info "Generated update manifests:"
+        while IFS= read -r -d '' manifest; do
+            if [ -f "$manifest" ]; then
+                print_success "  $(basename "$manifest")"
+            fi
+        done < <(find "update-manifests" -name "*.json" -print0 2>/dev/null)
+    fi
+}
+
+validate_installer_config() {
+    print_section "Validating Installer Configuration"
+    
+    local config_file="desktop/frontend/src-tauri/tauri.conf.json"
+    local codesign_config="desktop/frontend/src-tauri/codesign-config.json"
+    local updater_config="desktop/frontend/src-tauri/updater-config.json"
+    
+    print_info "Checking configuration files..."
+    
+    # Check main Tauri configuration
+    if [ ! -f "$config_file" ]; then
+        print_error "Tauri configuration file not found: $config_file"
+        return 1
+    fi
+    
+    # Validate JSON syntax
+    if command_exists jq; then
+        if ! jq empty "$config_file" 2>/dev/null; then
+            print_error "Invalid JSON in $config_file"
+            return 1
+        fi
+        print_success "Tauri configuration is valid JSON"
+        
+        # Check for required bundle configuration
+        local bundle_active=$(jq -r '.bundle.active // false' "$config_file")
+        if [ "$bundle_active" != "true" ]; then
+            print_error "Bundle configuration is not active in $config_file"
+            return 1
+        fi
+        print_success "Bundle configuration is active"
+        
+        # Check for installer targets
+        local targets=$(jq -r '.bundle.targets[]? // empty' "$config_file" 2>/dev/null)
+        if [ -z "$targets" ]; then
+            print_warning "No installer targets configured in $config_file"
+        else
+            print_success "Installer targets configured: $(echo "$targets" | tr '\n' ' ')"
+        fi
+    else
+        print_warning "jq not available - skipping JSON validation"
+    fi
+    
+    # Check for installer assets
+    local assets_dir="desktop/frontend/src-tauri/installer-assets"
+    if [ -d "$assets_dir" ]; then
+        print_success "Installer assets directory exists"
+    else
+        print_warning "Installer assets directory not found: $assets_dir"
+        print_info "Placeholder assets will be generated during build"
+    fi
+    
+    # Check code signing configuration
+    if [ -f "$codesign_config" ]; then
+        print_success "Code signing configuration found"
+    else
+        print_warning "Code signing configuration not found: $codesign_config"
+    fi
+    
+    # Check updater configuration
+    if [ -f "$updater_config" ]; then
+        print_success "Auto-updater configuration found"
+    else
+        print_warning "Auto-updater configuration not found: $updater_config"
+    fi
+    
+    print_success "Installer configuration validation complete"
+}
+
 # Testing
 run_tests() {
     print_section "Running Tests"
@@ -863,6 +1146,14 @@ show_help() {
     echo -e "  ${GREEN}desktop-release${NC}   Build desktop application (release/production)"
     echo ""
     
+    echo -e "${YELLOW}Installer Commands:${NC}"
+    echo -e "  ${GREEN}installers [type]${NC} Build platform-specific installers"
+    echo -e "    Types: all, msi, nsis, dmg, deb, rpm, appimage, signed"
+    echo -e "  ${GREEN}sign${NC}              Build signed installers with code signing"
+    echo -e "  ${GREEN}update-manifests${NC}  Generate auto-updater manifests"
+    echo -e "  ${GREEN}validate-config${NC}   Validate installer configuration"
+    echo ""
+    
     echo -e "${YELLOW}Development Commands:${NC}"
     echo -e "  ${GREEN}dev-backend${NC}       Start Python MCP server in development mode"
     echo -e "  ${GREEN}dev-webapp${NC}        Start SvelteKit development server"
@@ -889,6 +1180,15 @@ show_help() {
     echo -e "  ${CYAN}$0 clean js${NC}                 # Clean only JavaScript artifacts"
     echo -e "  ${CYAN}$0 dev-desktop${NC}              # Start desktop development"
     echo -e "  ${CYAN}$0 format python && $0 test py${NC} # Format and test Python only"
+    echo ""
+    
+    echo -e "${YELLOW}Installer Examples:${NC}"
+    echo -e "  ${CYAN}$0 installers${NC}               # Build all platform installers"
+    echo -e "  ${CYAN}$0 installers msi${NC}           # Build Windows MSI installer only"
+    echo -e "  ${CYAN}$0 installers dmg true${NC}      # Build macOS DMG with signing"
+    echo -e "  ${CYAN}$0 sign${NC}                     # Build signed installers + manifests"
+    echo -e "  ${CYAN}$0 validate-config${NC}          # Check installer configuration"
+    echo -e "  ${CYAN}$0 update-manifests 1.2.0${NC}   # Generate update manifests for v1.2.0"
     echo ""
     
     echo -e "${YELLOW}Detected Tools:${NC}"
@@ -950,6 +1250,51 @@ case "${1:-help}" in
     "desktop-release")
         print_header
         build_desktop_release
+        ;;
+    
+    "installers")
+        print_header
+        case "${2:-all}" in
+            "msi")
+                build_msi_installer "${3:-false}" "${4:-false}"
+                ;;
+            "nsis")
+                build_nsis_installer "${3:-false}" "${4:-false}"
+                ;;
+            "dmg")
+                build_dmg_installer "${3:-false}" "${4:-false}"
+                ;;
+            "deb")
+                build_deb_installer "${3:-false}" "${4:-false}"
+                ;;
+            "rpm")
+                build_rpm_installer "${3:-false}" "${4:-false}"
+                ;;
+            "appimage")
+                build_appimage_installer "${3:-false}" "${4:-false}"
+                ;;
+            "signed")
+                build_signed_installers
+                ;;
+            "all"|*)
+                build_installers "all" "${3:-false}" "${4:-false}"
+                ;;
+        esac
+        ;;
+    
+    "update-manifests")
+        print_header
+        generate_update_manifests "${2:-1.0.0}" "${3:-}"
+        ;;
+    
+    "validate-config")
+        print_header
+        validate_installer_config
+        ;;
+    
+    "sign")
+        print_header
+        build_signed_installers
         ;;
     
     "test")

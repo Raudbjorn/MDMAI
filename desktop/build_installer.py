@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 
 class Architecture(StrEnum):
@@ -40,6 +40,18 @@ class BuildMode(StrEnum):
 
     DEBUG = auto()
     RELEASE = auto()
+
+
+class InstallerTarget(StrEnum):
+    """Supported installer targets."""
+
+    MSI = "msi"
+    NSIS = "nsis"
+    DEB = "deb"
+    RPM = "rpm"
+    APPIMAGE = "appimage"
+    DMG = "dmg"
+    ALL = "all"
 
 
 @dataclass
@@ -136,6 +148,9 @@ class BuildConfig:
     skip_backend: bool = False
     skip_frontend: bool = False
     verbose: bool = False
+    installer_targets: Set[InstallerTarget] = field(default_factory=set)
+    code_signing: bool = False
+    generate_update_manifest: bool = False
 
     @property
     def is_debug(self) -> bool:
@@ -161,6 +176,31 @@ class BuildConfig:
     def tauri_binaries_dir(self) -> Path:
         """Get Tauri binaries directory path."""
         return self.tauri_dir / "binaries"
+    
+    @property
+    def installer_assets_dir(self) -> Path:
+        """Get installer assets directory path."""
+        return self.tauri_dir / "installer-assets"
+    
+    @property
+    def update_manifests_dir(self) -> Path:
+        """Get update manifests directory path."""
+        return self.root_dir / "update-manifests"
+    
+    def get_platform_targets(self) -> List[InstallerTarget]:
+        """Get installer targets supported by current platform."""
+        if self.installer_targets and InstallerTarget.ALL not in self.installer_targets:
+            return list(self.installer_targets)
+            
+        match self.platform.os:
+            case OperatingSystem.WINDOWS:
+                return [InstallerTarget.MSI, InstallerTarget.NSIS]
+            case OperatingSystem.DARWIN:
+                return [InstallerTarget.DMG]
+            case OperatingSystem.LINUX:
+                return [InstallerTarget.DEB, InstallerTarget.RPM, InstallerTarget.APPIMAGE]
+            case _:
+                return [InstallerTarget.APPIMAGE]
 
 
 @dataclass
@@ -446,12 +486,234 @@ if __name__ == "__main__":
         return result
 
 
+class InstallerAssetsManager:
+    """Manage installer assets and generate missing ones."""
+    
+    def __init__(self, config: BuildConfig, runner: CommandRunner):
+        self.config = config
+        self.runner = runner
+        
+    def check_assets(self) -> BuildResult:
+        """Check for required installer assets."""
+        result = BuildResult()
+        assets_dir = self.config.installer_assets_dir
+        
+        required_assets = self._get_required_assets()
+        missing_assets = []
+        
+        for asset in required_assets:
+            asset_path = assets_dir / asset
+            if not asset_path.exists():
+                missing_assets.append(asset)
+                
+        if missing_assets:
+            result.add_warning(f"Missing installer assets: {', '.join(missing_assets)}")
+            result.add_warning("Placeholder assets will be generated")
+            
+            # Generate placeholder assets
+            self._generate_placeholder_assets(missing_assets)
+            
+        return result
+        
+    def _get_required_assets(self) -> List[str]:
+        """Get list of required assets for current platform."""
+        assets = []
+        
+        for target in self.config.get_platform_targets():
+            match target:
+                case InstallerTarget.MSI | InstallerTarget.NSIS:
+                    assets.extend(["banner.bmp", "dialog.bmp", "header.bmp", "sidebar.bmp"])
+                case InstallerTarget.DMG:
+                    assets.append("dmg-background.png")
+                    
+        return list(set(assets))  # Remove duplicates
+        
+    def _generate_placeholder_assets(self, missing_assets: List[str]) -> None:
+        """Generate placeholder assets for missing files."""
+        assets_dir = self.config.installer_assets_dir
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        for asset in missing_assets:
+            asset_path = assets_dir / asset
+            
+            if asset.endswith(".bmp"):
+                self._generate_placeholder_bmp(asset_path, asset)
+            elif asset.endswith(".png"):
+                self._generate_placeholder_png(asset_path, asset)
+                
+    def _generate_placeholder_bmp(self, path: Path, asset_type: str) -> None:
+        """Generate placeholder BMP file."""
+        # For now, create a simple text file placeholder
+        # In production, you would generate actual BMP files
+        with open(path, "w") as f:
+            f.write(f"# Placeholder for {asset_type}\n")
+            f.write(f"# Replace with actual {asset_type} asset\n")
+            f.write(f"# Generated on: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}\n")
+            
+    def _generate_placeholder_png(self, path: Path, asset_type: str) -> None:
+        """Generate placeholder PNG file."""
+        # For now, create a simple text file placeholder
+        # In production, you would generate actual PNG files
+        with open(path, "w") as f:
+            f.write(f"# Placeholder for {asset_type}\n")
+            f.write(f"# Replace with actual {asset_type} asset\n")
+            f.write(f"# Generated on: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}\n")
+
+
+class CodeSigner:
+    """Handle code signing for different platforms."""
+    
+    def __init__(self, config: BuildConfig, runner: CommandRunner):
+        self.config = config
+        self.runner = runner
+        
+    def setup_signing_environment(self) -> BuildResult:
+        """Set up code signing environment."""
+        result = BuildResult()
+        
+        if not self.config.code_signing:
+            return result
+            
+        # Check for required environment variables
+        required_vars = self._get_required_signing_vars()
+        missing_vars = []
+        
+        for var in required_vars:
+            if not os.getenv(var):
+                missing_vars.append(var)
+                
+        if missing_vars:
+            result.add_error(f"Missing code signing environment variables: {', '.join(missing_vars)}")
+            result.add_error("Code signing will be disabled")
+            self.config.code_signing = False
+            
+        return result
+        
+    def _get_required_signing_vars(self) -> List[str]:
+        """Get required environment variables for code signing."""
+        base_vars = ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"]
+        
+        match self.config.platform.os:
+            case OperatingSystem.WINDOWS:
+                return base_vars + ["WINDOWS_CERTIFICATE_PATH", "WINDOWS_CERTIFICATE_PASSWORD"]
+            case OperatingSystem.DARWIN:
+                return base_vars + ["MACOS_SIGNING_IDENTITY", "APPLE_ID", "APPLE_PASSWORD", "APPLE_TEAM_ID"]
+            case OperatingSystem.LINUX:
+                return base_vars + ["GPG_KEY_ID"]
+            case _:
+                return base_vars
+                
+    def sign_artifacts(self, artifacts: List[Path]) -> BuildResult:
+        """Sign build artifacts."""
+        result = BuildResult()
+        
+        if not self.config.code_signing:
+            result.add_warning("Code signing is disabled")
+            return result
+            
+        for artifact in artifacts:
+            if self._should_sign_artifact(artifact):
+                sign_result = self._sign_single_artifact(artifact)
+                result.errors.extend(sign_result.errors)
+                result.warnings.extend(sign_result.warnings)
+                
+        return result
+        
+    def _should_sign_artifact(self, artifact: Path) -> bool:
+        """Check if artifact should be signed."""
+        extensions = {".msi", ".exe", ".dmg", ".deb", ".rpm", ".AppImage"}
+        return artifact.suffix.lower() in extensions
+        
+    def _sign_single_artifact(self, artifact: Path) -> BuildResult:
+        """Sign a single artifact."""
+        result = BuildResult()
+        
+        # Platform-specific signing logic would go here
+        # For now, just log that signing would happen
+        print(f"  🔐 Signing {artifact.name}...")
+        result.add_warning(f"Code signing for {artifact.name} (placeholder)")
+        
+        return result
+
+
+class UpdateManifestGenerator:
+    """Generate update manifests for auto-updater."""
+    
+    def __init__(self, config: BuildConfig, runner: CommandRunner):
+        self.config = config
+        self.runner = runner
+        
+    def generate_manifests(self, artifacts: List[Path]) -> BuildResult:
+        """Generate update manifests from build artifacts."""
+        result = BuildResult()
+        
+        if not self.config.generate_update_manifest:
+            return result
+            
+        manifest_script = self.config.root_dir / "generate-update-manifest.py"
+        if not manifest_script.exists():
+            result.add_error("Update manifest generator script not found")
+            return result
+            
+        # Create assets directory and copy artifacts
+        assets_dir = self.config.update_manifests_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        
+        for artifact in artifacts:
+            if self._is_installer_artifact(artifact):
+                shutil.copy2(artifact, assets_dir)
+                
+        # Run manifest generator
+        version = self._get_version()
+        
+        cmd = [
+            sys.executable,
+            str(manifest_script),
+            "--local-assets", str(assets_dir),
+            "--version", version,
+            "--output-dir", str(self.config.update_manifests_dir),
+            "--notes", f"Release {version}"
+        ]
+        
+        if self.runner.run(cmd, description="Generating update manifests") != 0:
+            result.add_error("Failed to generate update manifests")
+        else:
+            # Add generated manifests as artifacts
+            for manifest in self.config.update_manifests_dir.glob("*.json"):
+                result.add_artifact(manifest)
+                
+        return result
+        
+    def _is_installer_artifact(self, artifact: Path) -> bool:
+        """Check if artifact is an installer."""
+        installer_extensions = {".msi", ".exe", ".dmg", ".deb", ".rpm", ".AppImage"}
+        return artifact.suffix.lower() in installer_extensions
+        
+    def _get_version(self) -> str:
+        """Get application version from Tauri config."""
+        tauri_config = self.config.tauri_dir / "tauri.conf.json"
+        
+        if tauri_config.exists():
+            try:
+                import json
+                with open(tauri_config) as f:
+                    config = json.load(f)
+                    return config.get("version", "1.0.0")
+            except Exception:
+                pass
+                
+        return "1.0.0"
+
+
 class TauriBuilder:
-    """Tauri frontend builder."""
+    """Tauri frontend builder with installer support."""
 
     def __init__(self, config: BuildConfig, runner: CommandRunner):
         self.config = config
         self.runner = runner
+        self.assets_manager = InstallerAssetsManager(config, runner)
+        self.code_signer = CodeSigner(config, runner)
+        self.manifest_generator = UpdateManifestGenerator(config, runner)
 
     def prepare_resources(self, backend_artifacts: List[Path]) -> BuildResult:
         """Prepare Tauri resources."""
@@ -532,34 +794,107 @@ main()
 
         return result
 
+    def prepare_installer_assets(self) -> BuildResult:
+        """Prepare installer assets."""
+        print("\n🎨 Preparing installer assets...")
+        return self.assets_manager.check_assets()
+        
+    def setup_code_signing(self) -> BuildResult:
+        """Set up code signing environment."""
+        if self.config.code_signing:
+            print("\n🔐 Setting up code signing...")
+            return self.code_signer.setup_signing_environment()
+        return BuildResult()
+
     def build_app(self) -> BuildResult:
-        """Build Tauri application."""
+        """Build Tauri application with installer support."""
         print("\n🚀 Building Tauri application...")
         result = BuildResult()
 
+        # Build specific targets if specified
+        targets = self.config.get_platform_targets()
+        
+        for target in targets:
+            target_result = self._build_single_target(target)
+            result.errors.extend(target_result.errors)
+            result.warnings.extend(target_result.warnings)
+            result.artifacts.extend(target_result.artifacts)
+            
+            if not target_result.success:
+                result.add_error(f"Failed to build {target.value} installer")
+                
+        return result
+        
+    def _build_single_target(self, target: InstallerTarget) -> BuildResult:
+        """Build a single installer target."""
+        result = BuildResult()
+        
         cmd = ["npm", "run", "tauri", "build"]
+        
         if self.config.is_debug:
             cmd.append("--debug")
-
+            
+        # Add target-specific flags
+        cmd.extend(["--target", target.value])
+        
+        # Add code signing flags if enabled
+        if self.config.code_signing:
+            cmd.append("--sign")
+            
+        print(f"  📦 Building {target.value} installer...")
+        
         if self.runner.run(
             cmd,
             cwd=self.config.frontend_dir,
-            description="Building Tauri app",
+            description=f"Building {target.value} installer",
         ) != 0:
-            result.add_error("Tauri build failed")
+            result.add_error(f"Failed to build {target.value} installer")
             return result
 
-        # Find and report installers
+        # Find and collect artifacts for this target
         mode = "debug" if self.config.is_debug else "release"
         bundle_dir = self.config.tauri_dir / "target" / mode / "bundle"
-
+        
         if bundle_dir.exists():
-            installer_patterns = ["*.msi", "*.exe", "*.dmg", "*.deb", "*.AppImage"]
-            for pattern in installer_patterns:
-                for installer in bundle_dir.glob(f"**/{pattern}"):
-                    result.add_artifact(installer)
-
+            target_artifacts = self._find_target_artifacts(bundle_dir, target)
+            
+            for artifact in target_artifacts:
+                result.add_artifact(artifact)
+                print(f"    ✓ Generated: {artifact.name}")
+                
         return result
+        
+    def _find_target_artifacts(self, bundle_dir: Path, target: InstallerTarget) -> List[Path]:
+        """Find artifacts for specific target."""
+        artifacts = []
+        
+        patterns = {
+            InstallerTarget.MSI: ["**/*.msi"],
+            InstallerTarget.NSIS: ["**/*.exe"],
+            InstallerTarget.DEB: ["**/*.deb"],
+            InstallerTarget.RPM: ["**/*.rpm"],
+            InstallerTarget.APPIMAGE: ["**/*.AppImage"],
+            InstallerTarget.DMG: ["**/*.dmg"]
+        }
+        
+        for pattern in patterns.get(target, []):
+            artifacts.extend(bundle_dir.glob(pattern))
+            
+        return artifacts
+        
+    def sign_installers(self, artifacts: List[Path]) -> BuildResult:
+        """Sign installer artifacts."""
+        if self.config.code_signing:
+            print("\n🔐 Signing installers...")
+            return self.code_signer.sign_artifacts(artifacts)
+        return BuildResult()
+        
+    def generate_update_manifests(self, artifacts: List[Path]) -> BuildResult:
+        """Generate update manifests."""
+        if self.config.generate_update_manifest:
+            print("\n📋 Generating update manifests...")
+            return self.manifest_generator.generate_manifests(artifacts)
+        return BuildResult()
 
 
 class BuildOrchestrator:
@@ -609,7 +944,20 @@ class BuildOrchestrator:
                     print("❌ Frontend build failed")
                     return result
 
-            # Build Tauri app
+            # Prepare installer assets
+            assets_result = self.tauri_builder.prepare_installer_assets()
+            result.warnings.extend(assets_result.warnings)
+            
+            # Set up code signing
+            signing_result = self.tauri_builder.setup_code_signing()
+            result.errors.extend(signing_result.errors)
+            result.warnings.extend(signing_result.warnings)
+            
+            if not signing_result.success and self.config.code_signing:
+                print("❌ Code signing setup failed")
+                return result
+
+            # Build Tauri app with installers
             app_result = self.tauri_builder.build_app()
             result.errors.extend(app_result.errors)
             result.artifacts.extend(app_result.artifacts)
@@ -617,6 +965,17 @@ class BuildOrchestrator:
             if not app_result.success:
                 print("❌ Tauri build failed")
                 return result
+                
+            # Sign installers if code signing is enabled
+            sign_result = self.tauri_builder.sign_installers(app_result.artifacts)
+            result.errors.extend(sign_result.errors)
+            result.warnings.extend(sign_result.warnings)
+            
+            # Generate update manifests if requested
+            manifest_result = self.tauri_builder.generate_update_manifests(app_result.artifacts)
+            result.errors.extend(manifest_result.errors)
+            result.warnings.extend(manifest_result.warnings)
+            result.artifacts.extend(manifest_result.artifacts)
 
             self._print_results(result)
             return result
@@ -700,6 +1059,25 @@ def parse_arguments() -> argparse.Namespace:
         choices=["windows", "macos", "linux"],
         help="Target platform (auto-detected by default)",
     )
+    
+    parser.add_argument(
+        "--installer-targets",
+        nargs="*",
+        choices=[t.value for t in InstallerTarget],
+        help="Specific installer targets to build (default: platform-appropriate targets)",
+    )
+    
+    parser.add_argument(
+        "--code-signing",
+        action="store_true",
+        help="Enable code signing for installers",
+    )
+    
+    parser.add_argument(
+        "--generate-update-manifest",
+        action="store_true",
+        help="Generate update manifests for auto-updater",
+    )
 
     return parser.parse_args()
 
@@ -713,6 +1091,13 @@ def main() -> int:
     platform = PlatformInfo.detect()
     mode = BuildMode.DEBUG if args.debug else BuildMode.RELEASE
 
+    # Parse installer targets
+    installer_targets = set()
+    if args.installer_targets:
+        installer_targets = {InstallerTarget(t) for t in args.installer_targets}
+    else:
+        installer_targets = {InstallerTarget.ALL}
+    
     config = BuildConfig(
         root_dir=root_dir,
         platform=platform,
@@ -720,6 +1105,9 @@ def main() -> int:
         skip_backend=args.skip_backend,
         skip_frontend=args.skip_frontend,
         verbose=args.verbose,
+        installer_targets=installer_targets,
+        code_signing=args.code_signing,
+        generate_update_manifest=args.generate_update_manifest,
     )
 
     # Execute build
