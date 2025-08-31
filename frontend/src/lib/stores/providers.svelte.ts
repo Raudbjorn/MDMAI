@@ -58,14 +58,15 @@ class ProviderStore {
 		this.state.stats.reduce((sum, stat) => sum + stat.total_cost, 0)
 	);
 
-	overallHealth = $derived<ProviderStatus>(
-		this.state.health.length === 0 ? ProviderStatus.UNAVAILABLE :
-		this.state.health.map(h => h.status).some(s => s === ProviderStatus.ERROR) ? ProviderStatus.ERROR :
-		this.state.health.map(h => h.status).some(s => s === ProviderStatus.RATE_LIMITED) ? ProviderStatus.RATE_LIMITED :
-		this.state.health.map(h => h.status).some(s => s === ProviderStatus.QUOTA_EXCEEDED) ? ProviderStatus.QUOTA_EXCEEDED :
-		this.state.health.map(h => h.status).every(s => s === ProviderStatus.AVAILABLE) ? ProviderStatus.AVAILABLE :
-		ProviderStatus.MAINTENANCE
-	);
+	overallHealth = $derived<ProviderStatus>(() => {
+		if (this.state.health.length === 0) return ProviderStatus.UNAVAILABLE;
+		const statuses = this.state.health.map(h => h.status);
+		if (statuses.some(s => s === ProviderStatus.ERROR)) return ProviderStatus.ERROR;
+		if (statuses.some(s => s === ProviderStatus.RATE_LIMITED)) return ProviderStatus.RATE_LIMITED;
+		if (statuses.some(s => s === ProviderStatus.QUOTA_EXCEEDED)) return ProviderStatus.QUOTA_EXCEEDED;
+		if (statuses.every(s => s === ProviderStatus.AVAILABLE)) return ProviderStatus.AVAILABLE;
+		return ProviderStatus.MAINTENANCE;
+	});
 
 	providersByPriority = $derived(
 		[...this.state.configs]
