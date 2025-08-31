@@ -30,6 +30,9 @@ print_header() {
     echo -e "\n${PURPLE}╔═══════════════════════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${PURPLE}║                        TTRPG Assistant Build System                           ║${NC}"
     echo -e "${PURPLE}╚═══════════════════════════════════════════════════════════════════════════════╝${NC}"
+    
+    # Show git/GitHub status warnings
+    check_git_status
 }
 
 print_section() {
@@ -61,6 +64,232 @@ command_exists() {
 # Directory detection
 get_script_dir() {
     cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd
+}
+
+# Git repository status check
+check_git_status() {
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        return 0  # Not a git repo, skip checks
+    fi
+    
+    local warnings=()
+    
+    # Check for uncommitted changes
+    local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
+    if [ "$uncommitted" -gt 20 ]; then
+        warnings+=("🔄 You have $uncommitted uncommitted changes - consider committing or stashing")
+    elif [ "$uncommitted" -gt 5 ]; then
+        warnings+=("📝 You have $uncommitted uncommitted changes")
+    fi
+    
+    # Check for unpushed commits and branch divergence
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ]; then
+        local unpushed=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0")
+        if [ "$unpushed" -gt 0 ]; then
+            warnings+=("📤 You have $unpushed unpushed commits on branch '$current_branch'")
+        fi
+        
+        # Check if branch can be merged with main/master (quick check)
+        check_merge_status warnings "$current_branch"
+        
+        # Check if branch is significantly behind main/master
+        check_branch_divergence warnings "$current_branch"
+    fi
+    
+    # Check for unmerged pull requests (if gh CLI is available)
+    if command_exists gh; then
+        check_github_status warnings
+    fi
+    
+    # Display warnings if any
+    if [ ${#warnings[@]} -gt 0 ]; then
+        echo -e "\n${YELLOW}${WARNING} Git Status Notifications:${NC}"
+        for warning in "${warnings[@]}"; do
+            echo -e "  ${YELLOW}$warning${NC}"
+        done
+        echo ""
+    fi
+}
+
+# Check if current branch can merge cleanly with main/master
+check_merge_status() {
+    local -n warnings_ref=$1
+    local current_branch=$2
+    
+    # Skip if we're on main/master
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        return 0
+    fi
+    
+    # Find the default branch (main or master)
+    local default_branch=""
+    if git show-ref --verify --quiet refs/heads/main; then
+        default_branch="main"
+    elif git show-ref --verify --quiet refs/heads/master; then
+        default_branch="master"
+    else
+        return 0  # No default branch found
+    fi
+    
+    # Quick merge conflict check (this is fast)
+    local merge_base=$(git merge-base "$current_branch" "$default_branch" 2>/dev/null || echo "")
+    if [ -n "$merge_base" ]; then
+        # Check if there are conflicting files (this is the expensive part, so we limit it)
+        local conflicts=$(git merge-tree "$merge_base" "$current_branch" "$default_branch" 2>/dev/null | grep -c "<<<<<<< " 2>/dev/null || echo "0")
+        if [ -n "$conflicts" ] && [ "$conflicts" -gt 0 ] 2>/dev/null; then
+            warnings_ref+=("⚠️ Branch '$current_branch' may have merge conflicts with '$default_branch' ($conflicts potential conflicts)")
+        fi
+    fi
+}
+
+# Check branch divergence from main/master
+check_branch_divergence() {
+    local -n warnings_ref=$1
+    local current_branch=$2
+    
+    # Skip if we're on main/master
+    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+        return 0
+    fi
+    
+    # Find the default branch
+    local default_branch=""
+    if git show-ref --verify --quiet refs/heads/main; then
+        default_branch="main"
+    elif git show-ref --verify --quiet refs/heads/master; then
+        default_branch="master"
+    else
+        return 0
+    fi
+    
+    # Check how far behind we are (this is very fast)
+    local behind=$(git rev-list --count HEAD.."$default_branch" 2>/dev/null || echo "0")
+    local ahead=$(git rev-list --count "$default_branch"..HEAD 2>/dev/null || echo "0")
+    
+    if [ "$behind" -gt 20 ]; then
+        warnings_ref+=("📉 Branch '$current_branch' is $behind commits behind '$default_branch' - consider rebasing")
+    elif [ "$behind" -gt 5 ]; then
+        warnings_ref+=("📋 Branch '$current_branch' is $behind commits behind '$default_branch'")
+    fi
+    
+    # Check for very long-running branches
+    local days_old=$(git log --format="%ct" -1 "$default_branch" 2>/dev/null)
+    local branch_base=$(git merge-base "$current_branch" "$default_branch" 2>/dev/null)
+    if [ -n "$days_old" ] && [ -n "$branch_base" ]; then
+        local base_time=$(git log --format="%ct" -1 "$branch_base" 2>/dev/null || echo "$days_old")
+        local days_since=$(( ($(date +%s) - base_time) / 86400 ))
+        if [ "$days_since" -gt 30 ]; then
+            warnings_ref+=("📅 Branch '$current_branch' diverged $days_since days ago - consider updating or merging")
+        fi
+    fi
+}
+
+# GitHub CLI integration for PR checks
+check_github_status() {
+    local -n warnings_ref=$1
+    
+    # Check if we're in a GitHub repo
+    local github_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+    if [ -z "$github_repo" ]; then
+        return 0  # Not a GitHub repo or not authenticated
+    fi
+    
+    # Check for open pull requests with detailed status
+    local open_prs=$(gh pr list --state open --json number,title,author,isDraft,mergeable,reviewDecision 2>/dev/null)
+    local pr_count=$(echo "$open_prs" | jq length 2>/dev/null || echo "0")
+    
+    if [ "$pr_count" -gt 0 ]; then
+        # Count mergeable vs problematic PRs
+        local mergeable_count=$(echo "$open_prs" | jq '[.[] | select(.mergeable == "MERGEABLE")] | length' 2>/dev/null || echo "0")
+        local conflicted_count=$(echo "$open_prs" | jq '[.[] | select(.mergeable == "CONFLICTING")] | length' 2>/dev/null || echo "0")
+        local draft_count=$(echo "$open_prs" | jq '[.[] | select(.isDraft == true)] | length' 2>/dev/null || echo "0")
+        
+        warnings_ref+=("🔀 There are $pr_count open pull request(s) in $github_repo")
+        
+        if [ "$conflicted_count" -gt 0 ]; then
+            warnings_ref+=("⚠️ $conflicted_count PR(s) have merge conflicts")
+        fi
+        
+        if [ "$draft_count" -gt 0 ]; then
+            warnings_ref+=("📝 $draft_count draft PR(s) not ready for review")
+        fi
+        
+        # Show specific PRs if not too many
+        if [ "$pr_count" -le 5 ]; then
+            local pr_info=$(echo "$open_prs" | jq -r '.[] | "  • #\(.number): \(.title) (@\(.author.login))" + (if .isDraft then " [DRAFT]" else "" end) + (if .mergeable == "CONFLICTING" then " [CONFLICTS]" else "" end)' 2>/dev/null | head -3)
+            if [ -n "$pr_info" ]; then
+                warnings_ref+=("$pr_info")
+            fi
+        fi
+    fi
+    
+    # Check for PRs that need review (assigned to you)
+    local review_prs=$(gh pr list --state open --review-requested @me --json number 2>/dev/null | jq length 2>/dev/null || echo "0")
+    if [ -n "$review_prs" ] && [ "$review_prs" -gt 0 ] 2>/dev/null; then
+        warnings_ref+=("👀 You have $review_prs pull request(s) awaiting your review")
+    fi
+    
+    # Check for failed CI/CD runs on current branch
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ]; then
+        local failed_runs=$(gh run list --branch "$current_branch" --status failure --limit 5 --json conclusion 2>/dev/null | jq length 2>/dev/null || echo "0")
+        if [ "$failed_runs" -gt 0 ]; then
+            warnings_ref+=("❌ Recent CI/CD failures on branch '$current_branch' - check 'gh run list'")
+        fi
+    fi
+}
+
+# Quick status command
+show_git_status() {
+    print_section "Repository Status"
+    
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        print_warning "Not in a git repository"
+        return 0
+    fi
+    
+    # Basic git status
+    echo -e "${BLUE}Git Status:${NC}"
+    local current_branch=$(git branch --show-current 2>/dev/null || echo "detached")
+    local uncommitted=$(git status --porcelain 2>/dev/null | wc -l)
+    local unpushed=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "unknown")
+    
+    echo -e "  Branch: ${CYAN}$current_branch${NC}"
+    echo -e "  Uncommitted changes: ${CYAN}$uncommitted${NC}"
+    echo -e "  Unpushed commits: ${CYAN}$unpushed${NC}"
+    
+    # GitHub status if available
+    if command_exists gh; then
+        local github_repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+        if [ -n "$github_repo" ]; then
+            echo -e "\n${BLUE}GitHub Status (${CYAN}$github_repo${BLUE}):${NC}"
+            
+            # Pull requests
+            local open_prs=$(gh pr list --state open --json number,title,author 2>/dev/null)
+            local pr_count=$(echo "$open_prs" | jq length 2>/dev/null || echo "0")
+            echo -e "  Open pull requests: ${CYAN}$pr_count${NC}"
+            
+            if [ "$pr_count" -gt 0 ] && [ "$pr_count" -le 5 ]; then
+                echo "$open_prs" | jq -r '.[] | "    • #\(.number): \(.title) (@\(.author.login))"' 2>/dev/null | head -3
+            fi
+            
+            # Issues
+            local open_issues=$(gh issue list --state open --json number 2>/dev/null | jq length 2>/dev/null || echo "0")
+            echo -e "  Open issues: ${CYAN}$open_issues${NC}"
+            
+            # Recent workflow runs
+            local recent_runs=$(gh run list --limit 3 --json status,conclusion,workflowName 2>/dev/null)
+            if [ -n "$recent_runs" ] && [ "$recent_runs" != "null" ]; then
+                echo -e "  Recent CI/CD runs:"
+                echo "$recent_runs" | jq -r '.[] | "    • \(.workflowName): \(.conclusion // .status)"' 2>/dev/null
+            fi
+        else
+            echo -e "\n${YELLOW}  Not authenticated with GitHub CLI or not a GitHub repo${NC}"
+        fi
+    else
+        echo -e "\n${YELLOW}  GitHub CLI (gh) not available for enhanced status${NC}"
+    fi
 }
 
 # Get project root
@@ -483,6 +712,7 @@ show_help() {
     echo ""
     
     echo -e "${YELLOW}Utility Commands:${NC}"
+    echo -e "  ${GREEN}status${NC}            Show detailed git and GitHub repository status"
     echo -e "  ${GREEN}clean${NC}             Remove all build artifacts and caches"
     echo -e "  ${GREEN}help${NC}              Show this help message"
     echo ""
@@ -498,6 +728,8 @@ show_help() {
     echo -e "  Python Manager: ${CYAN}$(detect_python_manager)${NC}"
     echo -e "  Node.js Manager: ${CYAN}$(detect_node_manager)${NC}"
     echo -e "  Rust/Cargo: ${CYAN}$(command_exists cargo && echo "available" || echo "not found")${NC}"
+    echo -e "  GitHub CLI: ${CYAN}$(command_exists gh && echo "available (enhanced git status)" || echo "not found")${NC}"
+    echo -e "  JSON Parser: ${CYAN}$(command_exists jq && echo "available" || echo "not found (limited GitHub features)")${NC}"
     echo ""
 }
 
@@ -565,6 +797,10 @@ case "${1:-help}" in
     "dev-desktop")
         print_header
         dev_desktop
+        ;;
+    
+    "status")
+        show_git_status
         ;;
     
     "clean")
