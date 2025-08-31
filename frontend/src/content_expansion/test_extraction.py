@@ -186,25 +186,38 @@ def main():
         test_single_pdf(args.single)
     elif args.all:
         # Test with first PDF in sample directory if it exists
-        sample_dir = Path(__file__).parent.parent.parent.parent / "sample_pdfs"  # Example relative path
-        if sample_dir.exists():
-            pdfs = list(sample_dir.glob("*.pdf"))
-            if pdfs:
-                test_single_pdf(str(pdfs[0]))
+        # Try multiple possible locations
+        possible_dirs = [
+            Path(__file__).parent.parent.parent.parent / "sample_pdfs",
+            Path.cwd() / "sample_pdfs",
+            Path(os.environ.get("PDF_SAMPLE_DIR", "/tmp/sample_pdfs"))
+        ]
+        
+        for sample_dir in possible_dirs:
+            if sample_dir.exists():
+                pdfs = list(sample_dir.glob("*.pdf"))
+                if pdfs:
+                    print(f"Found sample PDFs in: {sample_dir}")
+                    test_single_pdf(str(pdfs[0]))
+                    break
+        else:
+            print("No sample PDF directory found. Set PDF_SAMPLE_DIR environment variable.")
     
     if args.batch:
         test_batch_processing(args.batch, args.max_files)
     elif args.all:
-        sample_dir = "/home/svnbjrn/code/phase12/sample_pdfs"
-        if Path(sample_dir).exists():
-            test_batch_processing(sample_dir, 3)
+        # Test batch processing using discovered sample directory
+        for sample_dir in possible_dirs:
+            if sample_dir.exists() and list(sample_dir.glob("*.pdf")):
+                test_batch_processing(str(sample_dir), max_files=3)
+                break
     
     if not any([args.classifier, args.single, args.batch, args.all]):
         print("No tests specified. Use --help for options.")
         print("\nQuick test command examples:")
         print("  python test_extraction.py --classifier")
         print("  python test_extraction.py --single /path/to/file.pdf")
-        print("  python test_extraction.py --batch /home/svnbjrn/code/phase12/sample_pdfs")
+        print("  python test_extraction.py --batch ./sample_pdfs")
         print("  python test_extraction.py --all")
     
     print("\n" + "="*60)

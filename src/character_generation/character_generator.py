@@ -2,7 +2,7 @@
 
 import logging
 import random
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from .models import (
     Backstory,
@@ -165,7 +165,7 @@ class CharacterGenerator:
         name: Optional[str] = None,
         backstory_hints: Optional[str] = None,
         stat_generation: str = "standard",  # "standard", "random", "point_buy"
-        genre: Optional[str] = None,  # Genre override
+        genre: Optional[Union[str, TTRPGGenre]] = None,  # Genre override
         use_extended: bool = False,  # Use ExtendedCharacter with genre data
     ) -> Character:
         """
@@ -286,11 +286,13 @@ class CharacterGenerator:
     def _select_class(self, class_name: Optional[str], genre: TTRPGGenre) -> CharacterClass:
         """Select a character class based on genre."""
         if class_name:
-            try:
-                return CharacterClass(class_name.lower().replace(" ", "_").replace("-", "_"))
-            except ValueError:
-                # Custom class
-                return CharacterClass.CUSTOM
+            # Try to find matching enum value
+            normalized = class_name.lower().replace(" ", "_").replace("-", "_")
+            for cls in CharacterClass:
+                if cls.value == normalized:
+                    return cls
+            # If no match found, it's a custom class
+            return CharacterClass.CUSTOM
 
         # Genre-specific class pools
         genre_classes = {
@@ -340,13 +342,13 @@ class CharacterGenerator:
     def _select_race(self, race_name: Optional[str], genre: TTRPGGenre) -> CharacterRace:
         """Select a character race based on genre."""
         if race_name:
-            try:
-                # Replace spaces and hyphens with underscores to match enum values
-                normalized_race = race_name.lower().replace(" ", "_").replace("-", "_")
-                return CharacterRace(normalized_race)
-            except ValueError:
-                # Custom race
-                return CharacterRace.CUSTOM
+            # Try to find matching enum value
+            normalized = race_name.lower().replace(" ", "_").replace("-", "_")
+            for race in CharacterRace:
+                if race.value == normalized:
+                    return race
+            # If no match found, it's a custom race
+            return CharacterRace.CUSTOM
 
         # Genre-specific race pools
         genre_races = {

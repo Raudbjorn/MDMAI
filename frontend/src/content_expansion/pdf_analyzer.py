@@ -120,15 +120,23 @@ class PDFAnalyzer:
             logger.debug(f"Trying pypdf for {pdf_path.name}")
             with open(pdf_path, 'rb') as file:
                 if hasattr(pypdf, 'PdfReader'):
+                    # Modern PyPDF2/pypdf API
                     reader = pypdf.PdfReader(file)
+                    num_pages = len(reader.pages)
+                    for page_num in range(num_pages):
+                        page = reader.pages[page_num]
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
                 else:
+                    # Legacy PyPDF2 API
                     reader = pypdf.PdfFileReader(file)
-                
-                for page_num in range(len(reader.pages)):
-                    page = reader.pages[page_num]
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                    num_pages = reader.numPages
+                    for page_num in range(num_pages):
+                        page = reader.getPage(page_num)
+                        page_text = page.extractText()
+                        if page_text:
+                            text += page_text + "\n"
             
             if len(text.strip()) > 100:
                 method = "pypdf"
@@ -417,10 +425,17 @@ class PDFAnalyzer:
         """Process PDFs in parallel using multiprocessing."""
         results = []
         
+        # Prepare configuration for workers
+        worker_config = {
+            'output_dir': str(self.output_dir),
+            'cache_dir': str(self.cache_dir),
+            'use_ocr': self.use_ocr
+        }
+        
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all tasks
+            # Submit all tasks with configuration
             future_to_pdf = {
-                executor.submit(self._analyze_pdf_worker, pdf_path): pdf_path
+                executor.submit(self._analyze_pdf_worker, pdf_path, worker_config): pdf_path
                 for pdf_path in pdf_files
             }
             
@@ -444,9 +459,16 @@ class PDFAnalyzer:
         return results
     
     @staticmethod
-    def _analyze_pdf_worker(pdf_path: Path) -> Optional[ExtractedContent]:
-        """Worker function for parallel processing."""
-        analyzer = PDFAnalyzer(use_multiprocessing=False)
+    def _analyze_pdf_worker(pdf_path: Path, config: Dict[str, Any]) -> Optional[ExtractedContent]:
+        """Worker function for parallel processing with configuration."""
+        from pathlib import Path
+        
+        analyzer = PDFAnalyzer(
+            output_dir=Path(config['output_dir']),
+            cache_dir=Path(config['cache_dir']),
+            use_ocr=config['use_ocr'],
+            use_multiprocessing=False
+        )
         return analyzer.analyze_single_pdf(pdf_path)
     
     def _get_cache_file(self, pdf_path: Path) -> Path:

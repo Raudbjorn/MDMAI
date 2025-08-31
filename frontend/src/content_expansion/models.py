@@ -11,30 +11,34 @@ from enum import Enum, auto
 from typing import Dict, List, Optional, Set, Any
 from pathlib import Path
 
-
-class TTRPGGenre(Enum):
-    """Enumeration of TTRPG genres for classification."""
-    FANTASY = "FANTASY"
-    SCI_FI = "SCI_FI"
-    CYBERPUNK = "CYBERPUNK"
-    COSMIC_HORROR = "COSMIC_HORROR"
-    POST_APOCALYPTIC = "POST_APOCALYPTIC"
-    STEAMPUNK = "STEAMPUNK"
-    URBAN_FANTASY = "URBAN_FANTASY"
-    SPACE_OPERA = "SPACE_OPERA"
-    SUPERHERO = "SUPERHERO"
-    HISTORICAL = "HISTORICAL"
-    WESTERN = "WESTERN"
-    NOIR = "NOIR"
-    PULP = "PULP"
-    MODERN = "MODERN"
-    MILITARY = "MILITARY"
-    HORROR = "HORROR"
-    MYSTERY = "MYSTERY"
-    MYTHOLOGICAL = "MYTHOLOGICAL"
-    ANIME = "ANIME"
-    GENERIC = "GENERIC"
-    UNKNOWN = "UNKNOWN"
+# Import TTRPGGenre from the main models to avoid duplication
+try:
+    from src.character_generation.models import TTRPGGenre
+except ImportError:
+    # Fallback definition if import fails
+    class TTRPGGenre(Enum):
+        """Enumeration of TTRPG genres for classification."""
+        FANTASY = "fantasy"
+        SCI_FI = "sci_fi"
+        CYBERPUNK = "cyberpunk"
+        COSMIC_HORROR = "cosmic_horror"
+        POST_APOCALYPTIC = "post_apocalyptic"
+        STEAMPUNK = "steampunk"
+        URBAN_FANTASY = "urban_fantasy"
+        SPACE_OPERA = "space_opera"
+        SUPERHERO = "superhero"
+        HISTORICAL = "historical"
+        WESTERN = "western"
+        NOIR = "noir"
+        PULP = "pulp"
+        MODERN = "modern"
+        MILITARY = "military"
+        HORROR = "horror"
+        MYSTERY = "mystery"
+        MYTHOLOGICAL = "mythological"
+        ANIME = "anime"
+        GENERIC = "generic"
+        UNKNOWN = "unknown"
 
 
 class ContentType(Enum):
