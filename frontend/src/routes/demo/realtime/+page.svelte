@@ -41,18 +41,26 @@
 				);
 				
 				isConnected = true;
+				
+				// Simulate some activity for demo
+				setTimeout(() => {
+					try {
+						collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
+					} catch (error) {
+						console.error('Failed to send welcome message:', error);
+					}
+				}, 1000);
 			} catch (error) {
 				console.error('Failed to initialize collaboration:', error);
 				isConnected = false;
 			}
-			
-			// Simulate some activity for demo
-			setTimeout(() => {
-				collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
-			}, 1000);
 		};
 		
-		init();
+		// Call init with proper error handling
+		init().catch((error) => {
+			console.error('Unhandled error during initialization:', error);
+			isConnected = false;
+		});
 		
 		return () => {
 			collaborationStore.leaveRoom();
