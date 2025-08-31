@@ -151,6 +151,7 @@
 							<button
 								class="p-1 hover:bg-gray-200 rounded"
 								title="Change role"
+								aria-label="Change role for {participant.username}"
 								onclick={() => {
 									selectedParticipant = participant;
 									showPermissionsDialog = true;
@@ -165,6 +166,7 @@
 							<button
 								class="p-1 hover:bg-red-100 rounded text-red-600"
 								title="Remove from room"
+								aria-label="Remove {participant.username} from room"
 								onclick={() => kickParticipant(participant)}
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

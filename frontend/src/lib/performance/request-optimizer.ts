@@ -109,7 +109,7 @@ export class RequestOptimizer {
             }
             timeoutId = null;
             maxTimeoutId = null;
-          }, config.delay);
+          }, config.delay) as any;
 
           // Set max wait timer if configured
           if (config.maxWait && !maxTimeoutId) {
@@ -122,7 +122,7 @@ export class RequestOptimizer {
                 timeoutId = null;
               }
               maxTimeoutId = null;
-            }, config.maxWait);
+            }, config.maxWait) as any;
           }
         }
       });
@@ -265,7 +265,7 @@ export class RequestOptimizer {
     // Schedule new batch processing
     const timer = setTimeout(() => {
       this.processBatch(endpoint);
-    }, maxWaitTime);
+    }, maxWaitTime) as any;
 
     this.batchTimers.set(endpoint, timer);
   }
