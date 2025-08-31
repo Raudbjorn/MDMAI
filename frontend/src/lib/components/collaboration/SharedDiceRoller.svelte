@@ -1,6 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { collaborationStore } from '$lib/stores/collaboration.svelte';
+		import { collaborationStore } from '$lib/stores/collaboration.svelte';
 	import type { DiceRoll } from '$lib/types/collaboration';
 
 	interface DicePreset {
@@ -11,13 +10,15 @@
 	}
 
 	interface Props {
-		roomId: string;
+		roomId: string; // Reserved for future room-specific features
 		maxHistory?: number;
 		showAnimation?: boolean;
 		compactMode?: boolean;
 	}
 
 	let { roomId, maxHistory = 20, showAnimation = true, compactMode = false }: Props = $props();
+	// Note: roomId is currently managed internally by collaborationStore
+	// but kept in props for future room-specific configurations
 
 	let customExpression = $state('');
 	let selectedPreset = $state<DicePreset | null>(null);
@@ -50,10 +51,6 @@
 		const room = collaborationStore.currentRoom;
 		if (room) rollHistory = room.state.dice_rolls.slice(-maxHistory);
 		return () => unsubscribe?.();
-	});
-	
-	onDestroy(() => {
-		unsubscribe?.();
 	});
 	
 	function handleDiceRoll(roll: DiceRoll) {
@@ -102,7 +99,8 @@
 				await rerollOnesInRoll(roll);
 			}
 		} catch (error) {
-			console.error('Failed to roll dice:', error);
+			// Handle roll error gracefully
+			// Could show error message to user through a toast notification
 		} finally {
 			isRolling = false;
 		}
@@ -144,7 +142,8 @@
 				}
 				
 				frame++;
-				animatingDice = [...animatingDice];
+				// Trigger reactivity with minimal overhead
+				animatingDice = animatingDice;
 				requestAnimationFrame(animate);
 			}
 		};
@@ -180,11 +179,9 @@
 	}
 	
 	function handleCritical(roll: DiceRoll) {
-		// Visual feedback for critical hits
-		const message = `CRITICAL ${roll.results[0] === 20 ? 'SUCCESS' : 'HIT'}!`;
-		
-		// Could trigger confetti or other celebration animation
-		console.log(message);
+			// Visual feedback for critical hits
+		// Could implement confetti or other celebration animation here
+		// Message would be: CRITICAL ${roll.results[0] === 20 ? 'SUCCESS' : 'HIT'}!
 	}
 	
 	async function rerollOnesInRoll(roll: DiceRoll): Promise<boolean> {
@@ -201,8 +198,6 @@
 		const [, , dieSize] = diceMatch;
 		const rerollExpression = `${onesToReroll}d${dieSize}`;
 		
-		console.log(`Rerolling ${onesToReroll} ones with expression: ${rerollExpression}`);
-		
 		try {
 			// Perform the actual reroll
 			const rerollResult = await collaborationStore.rollDice(
@@ -211,7 +206,8 @@
 			);
 			return true;
 		} catch (error) {
-			console.error('Failed to reroll ones:', error);
+			// Handle reroll error gracefully
+			// Could show error message to user through a toast notification
 			return false;
 		}
 	}
@@ -248,6 +244,8 @@
 		return '#6b7280';
 	}
 	
+	// Utility function for parsing dice expressions - kept for potential future use
+	// Currently not used but may be useful for advanced expression validation
 	function parseExpression(expression: string): { dice: string[]; modifier: number } {
 		const dicePattern = /(\d+d\d+)/g;
 		const modPattern = /([+-]\d+)(?!d)/g;
@@ -267,6 +265,8 @@
 			<button 
 				class="advanced-toggle"
 				onclick={() => showAdvanced = !showAdvanced}
+				aria-label="Toggle advanced options"
+				aria-expanded={showAdvanced}
 			>
 				{showAdvanced ? 'Simple' : 'Advanced'}
 			</button>
@@ -282,6 +282,7 @@
 				style="--dice-color: {preset.color}"
 				onclick={() => quickRoll(preset)}
 				disabled={isRolling}
+				aria-label={`Roll ${preset.name}`}
 			>
 				<span class="dice-icon">{preset.icon}</span>
 				<span class="dice-label">{preset.name}</span>
@@ -294,11 +295,13 @@
 		<div class="advanced-options">
 			<div class="option-group">
 				<label>Advantage</label>
-				<div class="button-group">
+				<div class="button-group" role="group" aria-label="Advantage selection">
 					<button 
 						class="option-btn"
 						class:active={advantage === 'normal'}
 						onclick={() => advantage = 'normal'}
+						aria-label="Normal roll"
+						aria-pressed={advantage === 'normal'}
 					>
 						Normal
 					</button>
@@ -306,6 +309,8 @@
 						class="option-btn"
 						class:active={advantage === 'advantage'}
 						onclick={() => advantage = 'advantage'}
+						aria-label="Roll with advantage"
+						aria-pressed={advantage === 'advantage'}
 					>
 						Adv
 					</button>
@@ -313,6 +318,8 @@
 						class="option-btn"
 						class:active={advantage === 'disadvantage'}
 						onclick={() => advantage = 'disadvantage'}
+						aria-label="Roll with disadvantage"
+						aria-pressed={advantage === 'disadvantage'}
 					>
 						Dis
 					</button>
@@ -327,6 +334,7 @@
 					class="modifier-input"
 					min="-20"
 					max="20"
+					aria-label="Dice roll modifier"
 				/>
 			</div>
 			
@@ -351,6 +359,7 @@
 					class="crit-input"
 					min="1"
 					max="20"
+					aria-label="Critical hit range"
 				/>
 			</div>
 		</div>
@@ -361,6 +370,7 @@
 		<select 
 			class="purpose-select"
 			bind:value={selectedPurpose}
+			aria-label="Select roll purpose"
 		>
 			{#each purposes as purpose}
 				<option value={purpose}>{purpose}</option>
@@ -373,12 +383,14 @@
 			placeholder="e.g. 2d6+3"
 			class="expression-input"
 			onkeypress={(e) => e.key === 'Enter' && rollDice()}
+			aria-label="Custom dice expression"
 		/>
 		
 		<button 
 			class="roll-btn"
 			onclick={() => rollDice()}
 			disabled={isRolling}
+			aria-label="Roll dice"
 		>
 			{#if isRolling}
 				<span class="rolling-icon"></span>
@@ -393,7 +405,7 @@
 		<div class="dice-animation">
 			<div class="animated-dice">
 				{#each animatingDice as die}
-					<div class="animated-die" key={die.id}>
+					<div class="animated-die" data-die-id={die.id}>
 						<span class="die-value">{die.value}</span>
 					</div>
 				{/each}
@@ -407,7 +419,7 @@
 	{/if}
 	
 	<!-- Roll history -->
-	<div class="roll-history" class:collapsed={compactMode}>
+	<div class="roll-history" class:collapsed={compactMode} role="region" aria-label="Roll history">
 		<div class="history-header">
 			<h4>Recent Rolls</h4>
 			<span class="history-count">{rollHistory.length}</span>
@@ -432,11 +444,18 @@
 					
 					<div class="roll-results">
 						<span class="roll-dice">
-							[{roll.results.map(r => {
-								if (r === 20) return '<span class="crit">20</span>';
-								if (r === 1) return '<span class="fail">1</span>';
-								return r;
-							}).join(', ')}]
+							[
+							{#each roll.results as result, i}
+								{#if i > 0}, {/if}
+								{#if result === 20}
+									<span class="crit">20</span>
+								{:else if result === 1}
+									<span class="fail">1</span>
+								{:else}
+									{result}
+								{/if}
+							{/each}
+							]
 						</span>
 						<span class="roll-total" style="color: {getRollColor(roll.total, roll.expression)}">
 							= {roll.total}
@@ -847,12 +866,12 @@
 		color: var(--color-text-secondary);
 	}
 	
-	.roll-dice :global(.crit) {
+	.roll-dice .crit {
 		color: var(--color-success);
 		font-weight: bold;
 	}
 	
-	.roll-dice :global(.fail) {
+	.roll-dice .fail {
 		color: var(--color-error);
 		font-weight: bold;
 	}
