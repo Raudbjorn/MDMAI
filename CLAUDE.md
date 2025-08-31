@@ -194,7 +194,7 @@ When adding new UI features that need to work in both the webapp and desktop app
 2. **Use Svelte 5 Runes for State Management**
    ```typescript
    // Use $state for reactive state
-   private state = $state<StateType>({...});
+   let state = $state<StateType>({...});
    
    // Use $derived for computed values
    computedValue = $derived(() => this.state.value * 2);
