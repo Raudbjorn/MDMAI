@@ -20,8 +20,15 @@
 		const saved = localStorage.getItem('recent_uploads');
 		if (saved) {
 			try {
-				const parsed = JSON.parse(saved);
-				recentUploads = parsed.map((u: any) => ({
+				const parsed = JSON.parse(saved) as Array<{
+					id: string;
+					filename: string;
+					model: string;
+					timestamp: string; // Dates are stored as strings
+					status: 'success' | 'error';
+					message?: string;
+				}>;
+				recentUploads = parsed.map((u) => ({
 					...u,
 					timestamp: new Date(u.timestamp)
 				}));
@@ -36,46 +43,41 @@
 		currentUpload = event.detail;
 	}
 
-	function handleUploadSuccess(event: CustomEvent<{ message: string }>) {
-		uploadCount++;
-		
-		// Add to recent uploads using actual file and model info
+	function generateUUID(): string {
+		// Use crypto.randomUUID() if available, otherwise fallback to manual UUID generation
+		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+			return crypto.randomUUID();
+		}
+		// Fallback UUID generation for older browsers
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			const r = Math.random() * 16 | 0;
+			const v = c === 'x' ? r : (r & 0x3 | 0x8);
+			return v.toString(16);
+		});
+	}
+
+	function addRecentUpload(status: 'success' | 'error', message: string) {
 		const upload = {
-			id: crypto.randomUUID(),
+			id: generateUUID(),
 			filename: currentUpload?.file.name || 'document.pdf',
 			model: currentUpload?.model || 'Unknown Model',
 			timestamp: new Date(),
-			status: 'success' as const,
-			message: event.detail.message
+			status,
+			message
 		};
-		
+
 		recentUploads = [upload, ...recentUploads].slice(0, 5);
-		
-		// Save to localStorage
 		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
-		
-		// Clear current upload
 		currentUpload = null;
 	}
 
+	function handleUploadSuccess(event: CustomEvent<{ message: string }>) {
+		uploadCount++;
+		addRecentUpload('success', event.detail.message);
+	}
+
 	function handleUploadError(event: CustomEvent<{ error: string }>) {
-		// Add to recent uploads as error using actual file and model info
-		const upload = {
-			id: crypto.randomUUID(),
-			filename: currentUpload?.file.name || 'document.pdf',
-			model: currentUpload?.model || 'Unknown Model',
-			timestamp: new Date(),
-			status: 'error' as const,
-			message: event.detail.error
-		};
-		
-		recentUploads = [upload, ...recentUploads].slice(0, 5);
-		
-		// Save to localStorage
-		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
-		
-		// Clear current upload
-		currentUpload = null;
+		addRecentUpload('error', event.detail.error);
 	}
 
 	function formatTimestamp(date: Date): string {

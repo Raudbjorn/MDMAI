@@ -98,6 +98,8 @@ class MDMAIApp:
         )
         
         # Configure CORS - use environment variable or defaults for development
+        allowed_origins = self._get_cors_origins()
+        # Only allow credentials with specific origins, not wildcards
         allow_credentials = all(origin.strip() != "*" for origin in allowed_origins)
         self.app.add_middleware(
             CORSMiddleware,
@@ -239,14 +241,4 @@ def create_app(
 app = create_app()
 
 
-if __name__ == "__main__":
-    """Run the API server."""
-    import uvicorn
-    
-    uvicorn.run(
-        "src.api.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+# Remove duplicate entry point - use run_api.py instead

@@ -47,6 +47,7 @@ async def upload_and_process_pdf(
     # Check file size (max 100MB)
     max_size = 100 * 1024 * 1024  # 100MB
     file_size = 0
+    tmp_path = None
     
     # Create temporary file
     try:
@@ -105,7 +106,7 @@ async def upload_and_process_pdf(
         )
     finally:
         # Clean up temporary file
-        if os.path.exists(tmp_path):
+        if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
             except Exception as e:
