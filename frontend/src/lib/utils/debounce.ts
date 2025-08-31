@@ -1,16 +1,41 @@
 /**
+ * A debounced function with additional control methods.
+ * @template T - The original function type
+ */
+export interface DebouncedFunction<T extends (...args: any[]) => any> {
+	(...args: Parameters<T>): ReturnType<T>;
+	/**
+	 * Immediately invoke the debounced function and return the result.
+	 */
+	flush(): ReturnType<T>;
+	/**
+	 * Cancel the delayed function invocation.
+	 */
+	cancel(): void;
+}
+
+/**
  * Creates a debounced version of a function that delays invoking func until after
  * wait milliseconds have elapsed since the last time the debounced function was invoked.
+ * 
+ * @template T - The function type to debounce
+ * @param func - The function to debounce
+ * @param wait - The number of milliseconds to delay
+ * @param options - Optional configuration
+ * @returns A debounced function with flush and cancel methods
  */
 export function debounce<T extends (...args: any[]) => any>(
 	func: T,
 	wait: number,
 	options?: {
+		/** Invoke on the leading edge of the timeout */
 		leading?: boolean;
+		/** Invoke on the trailing edge of the timeout */
 		trailing?: boolean;
+		/** Maximum time func is allowed to be delayed before it's invoked */
 		maxWait?: number;
 	}
-): T & { flush: () => void; cancel: () => void } {
+): DebouncedFunction<T> {
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let lastCallTime: number | null = null;
 	let lastThis: any;
@@ -151,21 +176,30 @@ export function debounce<T extends (...args: any[]) => any>(
 	debounced.cancel = cancel;
 	debounced.flush = flush;
 
-	return debounced as unknown as T & { flush: () => void; cancel: () => void };
+	// Type-safe return without assertions
+	return debounced as DebouncedFunction<T>;
 }
 
 /**
  * Creates a throttled version of a function that only invokes func at most once per
  * every wait milliseconds.
+ * 
+ * @template T - The function type to throttle
+ * @param func - The function to throttle
+ * @param wait - The number of milliseconds to throttle invocations to
+ * @param options - Optional configuration
+ * @returns A throttled function with flush and cancel methods
  */
 export function throttle<T extends (...args: any[]) => any>(
 	func: T,
 	wait: number,
 	options?: {
+		/** Invoke on the leading edge of the timeout */
 		leading?: boolean;
+		/** Invoke on the trailing edge of the timeout */
 		trailing?: boolean;
 	}
-): T & { flush: () => void; cancel: () => void } {
+): DebouncedFunction<T> {
 	const leading = options?.leading !== false;
 	const trailing = options?.trailing !== false;
 

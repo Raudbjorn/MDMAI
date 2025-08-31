@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { collaborationStore } from '$lib/stores/collaboration.svelte';
+	import type { CollaborativeRoom } from '$lib/types/collaboration';
 	import {
 		CollaborativeCanvas,
 		PresenceIndicator,
@@ -14,7 +15,7 @@
 	const demoUsername = `Player${Math.floor(Math.random() * 1000)}`;
 	
 	let isConnected = $state(false);
-	let currentRoom = $state<any>(null);
+	let currentRoom = $state<CollaborativeRoom | null>(null);
 	let showCanvas = $state(true);
 	let showPresence = $state(true);
 	let showActivity = $state(true);

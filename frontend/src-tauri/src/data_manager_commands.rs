@@ -9,6 +9,7 @@ use crate::data_manager::{
     integrity::IntegrityChecker,
     file_manager::FileManager,
     backup::BackupManager,
+    salt_storage::{SaltStorage, SaltStorageConfig},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,16 +77,21 @@ pub struct DataManagerState {
     pub integrity: Arc<IntegrityChecker>,
     pub file_manager: Arc<FileManager>,
     pub backup: Arc<BackupManager>,
+    pub salt_storage: Arc<SaltStorage>,
     pub config: DataManagerConfig,
 }
 
 impl DataManagerState {
-    pub fn new(config: DataManagerConfig) -> Result<Self> {
+    pub fn new(config: DataManagerConfig, tauri_config: &tauri::Config) -> Result<Self> {
         let cache = Arc::new(CacheManager::new(config.cache_size_mb * 1024 * 1024)?);
         let encryption = ThreadSafeEncryptionManager::new();
         let integrity = Arc::new(IntegrityChecker::new());
         let file_manager = Arc::new(FileManager::new()?);
         let backup = Arc::new(BackupManager::new(config.backup_retention_days)?);
+        
+        // Initialize salt storage with secure configuration
+        let salt_config = SaltStorageConfig::default();
+        let salt_storage = Arc::new(SaltStorage::new(salt_config, tauri_config)?);
 
         Ok(Self {
             encryption,
@@ -93,6 +99,7 @@ impl DataManagerState {
             integrity,
             file_manager,
             backup,
+            salt_storage,
             config,
         })
     }
@@ -105,19 +112,51 @@ pub async fn initialize_data_manager(
     salt: Option<Vec<u8>>,
     state: State<'_, DataManagerState>,
 ) -> Result<(), String> {
-    let salt = salt.unwrap_or_else(|| {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        (0..32).map(|_| rng.gen()).collect()
-    });
+    if password.is_empty() {
+        return Err("Password cannot be empty".to_string());
+    }
 
-    state.encryption.initialize_with_password(&password, &salt)
-        .map_err(|e| format!("Failed to initialize encryption: {}", e))?;
+    // Handle salt securely - either use provided salt or load/create from secure storage
+    let salt = match salt {
+        Some(provided_salt) => {
+            if provided_salt.len() < 16 {
+                return Err("Provided salt must be at least 16 bytes".to_string());
+            }
+            log::debug!("Using provided salt for initialization");
+            
+            // If salt is provided, we should still store it for future use
+            if let Err(e) = state.salt_storage.store_salt(&provided_salt) {
+                log::warn!("Failed to store provided salt: {}", e);
+                // Don't fail initialization if storage fails - continue with provided salt
+            }
+            
+            provided_salt
+        }
+        None => {
+            // Use secure salt management - load existing or create new
+            match state.salt_storage.get_or_create_salt(32) {
+                Ok(stored_salt) => {
+                    log::info!("Successfully loaded or created salt from secure storage");
+                    stored_salt
+                }
+                Err(e) => {
+                    log::error!("Critical error: Failed to manage salt storage: {}", e);
+                    return Err(format!("Salt storage error: {}", e));
+                }
+            }
+        }
+    };
+
+    // Initialize encryption with the secure salt
+    if let Err(e) = state.encryption.initialize_with_password(&password, &salt) {
+        log::error!("Failed to initialize encryption: {}", e);
+        return Err(format!("Encryption initialization failed: {}", e));
+    }
 
     // Initialize other components
     state.cache.clear().await;
     
-    log::info!("Data manager initialized successfully");
+    log::info!("Data manager initialized successfully with secure salt management");
     Ok(())
 }
 
@@ -315,4 +354,61 @@ pub async fn verify_data_integrity(
     };
     
     Ok(result)
+}
+
+/// Check if salt exists in secure storage
+#[tauri::command]
+pub async fn check_salt_exists(
+    state: State<'_, DataManagerState>,
+) -> Result<bool, String> {
+    Ok(state.salt_storage.salt_exists())
+}
+
+/// Regenerate salt (WARNING: This will make existing encrypted data inaccessible!)
+#[tauri::command]
+pub async fn regenerate_salt(
+    confirm_data_loss: bool,
+    state: State<'_, DataManagerState>,
+) -> Result<(), String> {
+    if !confirm_data_loss {
+        return Err("Salt regeneration requires explicit confirmation of data loss risk".to_string());
+    }
+
+    log::warn!("CRITICAL: Regenerating salt - existing encrypted data will become inaccessible!");
+    
+    // Delete existing salt
+    if let Err(e) = state.salt_storage.delete_salt() {
+        log::warn!("Failed to delete old salt: {}", e);
+    }
+
+    // Generate new salt
+    let new_salt = state.salt_storage.get_or_create_salt(32)
+        .map_err(|e| format!("Failed to generate new salt: {}", e))?;
+
+    log::warn!("New salt generated - {} bytes. Previous encrypted data is now inaccessible.", new_salt.len());
+    
+    // Clear cache to prevent inconsistency
+    state.cache.clear().await;
+    
+    Ok(())
+}
+
+/// Get salt storage status for debugging
+#[tauri::command]
+pub async fn get_salt_storage_status(
+    state: State<'_, DataManagerState>,
+) -> Result<serde_json::Value, String> {
+    let salt_exists = state.salt_storage.salt_exists();
+    let app_data_dir = state.salt_storage.app_data_dir.clone();
+    
+    Ok(serde_json::json!({
+        "salt_exists": salt_exists,
+        "storage_path": app_data_dir.to_string_lossy(),
+        "config": {
+            "use_keychain": state.salt_storage.config.use_keychain,
+            "use_backup": state.salt_storage.config.use_backup,
+            "app_id": state.salt_storage.config.app_id,
+            "salt_file": state.salt_storage.config.salt_file,
+        }
+    }))
 }

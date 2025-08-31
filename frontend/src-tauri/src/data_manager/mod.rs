@@ -15,12 +15,14 @@ pub mod cache;
 pub mod integrity;
 pub mod file_manager;
 pub mod backup;
+pub mod salt_storage;
 
 pub use encryption::EncryptionManager;
 pub use cache::{CacheManager, CacheStats};
 pub use integrity::{IntegrityChecker, FileIntegrityRecord, VerificationResult};
 pub use file_manager::{FileManager, FileMetadata, DuplicateGroup, FileOperationStats};
 pub use backup::{BackupManager, BackupMetadata, DatabaseExport, SqlColumnType, TypedColumnValue};
+pub use salt_storage::{SaltStorage, SaltStorageConfig, SaltMetadata, StoredSalt};
 
 use anyhow::Result;
 use serde::{Serialize, Deserialize};

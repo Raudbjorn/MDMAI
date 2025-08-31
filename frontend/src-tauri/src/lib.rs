@@ -58,8 +58,11 @@ pub fn create_app() -> tauri::App {
         panic!("Invalid configuration: {}", e);
     }
 
+    // Get the tauri config for initializing components that need it
+    let tauri_config = generate_context!().config();
+    
     // Initialize data manager state
-    let data_manager_state = match DataManagerState::new(config) {
+    let data_manager_state = match DataManagerState::new(config, &tauri_config) {
         Ok(state) => state,
         Err(e) => {
             panic!("Failed to initialize data manager: {}", e);
@@ -85,6 +88,10 @@ pub fn create_app() -> tauri::App {
             data_manager_commands::restore_backup,
             data_manager_commands::list_backups,
             data_manager_commands::verify_data_integrity,
+            // Salt management commands
+            data_manager_commands::check_salt_exists,
+            data_manager_commands::regenerate_salt,
+            data_manager_commands::get_salt_storage_status,
             // Native features commands  
             get_system_status,
             get_file_info,
