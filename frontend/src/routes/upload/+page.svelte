@@ -1,384 +1,398 @@
 <script lang="ts">
+	import PDFUpload from '$lib/components/upload/PDFUpload.svelte';
+	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Upload, FileText, AlertCircle, CheckCircle, X } from 'lucide-svelte';
-	import { 
-		type UploadResult, 
-		type UploadProgress, 
-		type RecentUpload 
-	} from '$lib/types/upload';
-	import { 
-		addRecentUpload, 
-		getRecentUploads,
-		removeRecentUpload 
-	} from '$lib/utils/upload';
 
-	// Svelte 5 runes for reactive state
-	let dragOver = $state(false);
-	let uploading = $state(false);
-	let uploadProgress = $state<UploadProgress[]>([]);
-	let recentUploads = $state<RecentUpload[]>([]);
-	let selectedFiles = $state<FileList | null>(null);
+	// Local state
+	let uploadCount = $state(0);
+	let currentUpload = $state<{file: File; model: string} | null>(null);
+	let recentUploads = $state<Array<{
+		id: string;
+		filename: string;
+		model: string;
+		timestamp: Date;
+		status: 'success' | 'error';
+		message?: string;
+	}>>([]);
 
-	// Load recent uploads on component mount
 	onMount(() => {
-		const uploadData = getRecentUploads();
-		recentUploads = uploadData.recentUploads;
+		// Load recent uploads from localStorage
+		const saved = localStorage.getItem('recent_uploads');
+		if (saved) {
+			try {
+				const parsed = JSON.parse(saved) as Array<{
+					id: string;
+					filename: string;
+					model: string;
+					timestamp: string; // Dates are stored as strings
+					status: 'success' | 'error';
+					message?: string;
+				}>;
+				recentUploads = parsed.map((u) => ({
+					...u,
+					timestamp: new Date(u.timestamp)
+				}));
+			} catch (e) {
+				console.error('Failed to load recent uploads:', e);
+			}
+		}
 	});
 
-	/**
-	 * Handles successful upload completion
-	 * Uses shared addRecentUpload helper to eliminate code duplication
-	 */
-	function handleUploadSuccess(uploadResult: UploadResult): void {
-		// Use actual upload data instead of hardcoded placeholder values
-		const displayName = uploadResult.filename;
-		const tags = ['upload', uploadResult.type.split('/')[0]]; // e.g., ['upload', 'application'] for PDFs
-		
-		// Add to recent uploads using shared helper
-		addRecentUpload(uploadResult, displayName, tags);
-		
-		// Update local state to reflect the change
-		const uploadData = getRecentUploads();
-		recentUploads = uploadData.recentUploads;
-		
-		// Update upload progress state
-		const progressIndex = uploadProgress.findIndex(p => p.file.name === uploadResult.filename);
-		if (progressIndex !== -1) {
-			uploadProgress[progressIndex] = {
-				...uploadProgress[progressIndex],
-				status: 'success',
-				progress: 100,
-				result: uploadResult
-			};
+	function handleUploadStart(event: CustomEvent<{ file: File; model: string }>) {
+		// Store current upload info for success handler
+		currentUpload = event.detail;
+	}
+
+	function generateUUID(): string {
+		// Use crypto.randomUUID() if available, otherwise fallback to manual UUID generation
+		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+			return crypto.randomUUID();
 		}
-		
-		console.log('Upload successful:', uploadResult);
-	}
-
-	/**
-	 * Handles upload errors
-	 * Uses shared addRecentUpload helper to eliminate code duplication
-	 */
-	function handleUploadError(file: File, errorMessage: string): void {
-		// Create error upload result with actual file data instead of placeholder values
-		const errorUploadResult: UploadResult = {
-			id: `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-			filename: file.name,
-			size: file.size,
-			type: file.type,
-			uploadedAt: new Date(),
-			status: 'error',
-			errorMessage
-		};
-		
-		const displayName = file.name;
-		const tags = ['upload', 'error', file.type.split('/')[0]];
-		
-		// Add to recent uploads using shared helper
-		addRecentUpload(errorUploadResult, displayName, tags);
-		
-		// Update local state to reflect the change
-		const uploadData = getRecentUploads();
-		recentUploads = uploadData.recentUploads;
-		
-		// Update upload progress state
-		const progressIndex = uploadProgress.findIndex(p => p.file.name === file.name);
-		if (progressIndex !== -1) {
-			uploadProgress[progressIndex] = {
-				...uploadProgress[progressIndex],
-				status: 'error',
-				errorMessage,
-				result: errorUploadResult
-			};
-		}
-		
-		console.error('Upload failed:', errorMessage, file);
-	}
-
-	/**
-	 * Simulates file upload process
-	 * In a real implementation, this would call the actual upload API
-	 */
-	async function uploadFile(file: File): Promise<void> {
-		const progress: UploadProgress = {
-			file,
-			progress: 0,
-			status: 'uploading'
-		};
-		
-		uploadProgress = [...uploadProgress, progress];
-		
-		try {
-			// Simulate upload progress
-			for (let i = 0; i <= 100; i += 10) {
-				await new Promise(resolve => setTimeout(resolve, 100));
-				const progressIndex = uploadProgress.findIndex(p => p.file === file);
-				if (progressIndex !== -1) {
-					uploadProgress[progressIndex] = { ...uploadProgress[progressIndex], progress: i };
-				}
-			}
-			
-			// Simulate successful upload result with actual file data
-			const uploadResult: UploadResult = {
-				id: `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-				filename: file.name,
-				size: file.size,
-				type: file.type,
-				uploadedAt: new Date(),
-				status: 'success',
-				url: `/uploads/${file.name}`, // Use actual file name instead of placeholder
-				progress: 100
-			};
-			
-			handleUploadSuccess(uploadResult);
-			
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-			handleUploadError(file, errorMessage);
-		}
-	}
-
-	/**
-	 * Handles file selection from input or drag-and-drop
-	 */
-	async function handleFiles(files: FileList | null): Promise<void> {
-		if (!files || files.length === 0) return;
-		
-		uploading = true;
-		
-		try {
-			const uploadPromises = Array.from(files).map(file => uploadFile(file));
-			await Promise.all(uploadPromises);
-		} finally {
-			uploading = false;
-		}
-	}
-
-	/**
-	 * Handles file input change
-	 */
-	function handleFileInput(event: Event): void {
-		const target = event.target as HTMLInputElement;
-		selectedFiles = target.files;
-		handleFiles(selectedFiles);
-	}
-
-	/**
-	 * Handles drag and drop events
-	 */
-	function handleDrop(event: DragEvent): void {
-		event.preventDefault();
-		dragOver = false;
-		
-		const files = event.dataTransfer?.files;
-		handleFiles(files);
-	}
-
-	function handleDragOver(event: DragEvent): void {
-		event.preventDefault();
-		dragOver = true;
-	}
-
-	function handleDragLeave(): void {
-		dragOver = false;
-	}
-
-	/**
-	 * Removes an upload from recent uploads
-	 */
-	function removeUpload(uploadId: string): void {
-		removeRecentUpload(uploadId);
-		const uploadData = getRecentUploads();
-		recentUploads = uploadData.recentUploads;
-	}
-
-	/**
-	 * Formats file size for display
-	 */
-	function formatFileSize(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-	}
-
-	/**
-	 * Formats date for display
-	 */
-	function formatDate(date: Date): string {
-		return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
-			hour: '2-digit', 
-			minute: '2-digit' 
+		// Fallback UUID generation for older browsers
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			const r = Math.random() * 16 | 0;
+			const v = c === 'x' ? r : (r & 0x3 | 0x8);
+			return v.toString(16);
 		});
+	}
+
+	function addRecentUpload(status: 'success' | 'error', message: string) {
+		const upload = {
+			id: generateUUID(),
+			filename: currentUpload?.file.name || 'document.pdf',
+			model: currentUpload?.model || 'Unknown Model',
+			timestamp: new Date(),
+			status,
+			message
+		};
+
+		recentUploads = [upload, ...recentUploads].slice(0, 5);
+		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
+		currentUpload = null;
+	}
+
+	function handleUploadSuccess(event: CustomEvent<{ message: string }>) {
+		uploadCount++;
+		addRecentUpload('success', event.detail.message);
+	}
+
+	function handleUploadError(event: CustomEvent<{ error: string }>) {
+		addRecentUpload('error', event.detail.error);
+	}
+
+	function formatTimestamp(date: Date): string {
+		const now = new Date();
+		const diff = now.getTime() - date.getTime();
+		const minutes = Math.floor(diff / 60000);
+		const hours = Math.floor(diff / 3600000);
+		const days = Math.floor(diff / 86400000);
+
+		if (minutes < 1) return 'Just now';
+		if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+		if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+		if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+		
+		return date.toLocaleDateString();
+	}
+
+	function clearRecentUploads() {
+		recentUploads = [];
+		localStorage.removeItem('recent_uploads');
 	}
 </script>
 
 <svelte:head>
-	<title>Upload Files - TTRPG Assistant</title>
-	<meta name="description" content="Upload TTRPG rulebooks and documents" />
+	<title>Upload PDF - TTRPG Assistant</title>
+	<meta name="description" content="Upload and process PDF documents for your TTRPG campaigns" />
 </svelte:head>
 
-<div class="container mx-auto max-w-4xl py-8 px-4">
-	<div class="space-y-6">
-		<!-- Page Header -->
-		<div class="text-center space-y-2">
-			<h1 class="text-3xl font-bold">Upload Files</h1>
-			<p class="text-muted-foreground">
-				Upload your TTRPG rulebooks, character sheets, and campaign documents
+<div class="upload-page">
+	<div class="page-header">
+		<div class="header-content">
+			<h1 class="page-title">Upload PDF Document</h1>
+			<p class="page-description">
+				Process your TTRPG rulebooks, adventures, and campaign materials for intelligent search and analysis
 			</p>
 		</div>
+		<div class="header-actions">
+			<button
+				onclick={() => goto('/dashboard')}
+				class="back-button"
+			>
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+				</svg>
+				Back to Dashboard
+			</button>
+		</div>
+	</div>
 
-		<!-- Upload Area -->
-		<Card>
-			<CardHeader>
-				<CardTitle>Select Files</CardTitle>
-				<CardDescription>
-					Choose files to upload or drag and drop them below
-				</CardDescription>
-			</CardHeader>
-			<CardContent>
-				<div
-					class="relative border-2 border-dashed rounded-lg p-8 text-center transition-colors {dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25'}"
-					ondrop={handleDrop}
-					ondragover={handleDragOver}
-					ondragleave={handleDragLeave}
-					role="button"
-					tabindex="0"
-				>
-					<Upload class="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-					<div class="space-y-2">
-						<p class="text-lg font-medium">
-							{dragOver ? 'Drop files here' : 'Drop files here or click to browse'}
-						</p>
-						<p class="text-sm text-muted-foreground">
-							Supports PDF, DOC, DOCX, TXT files up to 100MB each
-						</p>
+	<div class="content-grid">
+		<!-- Main Upload Section -->
+		<div class="upload-section">
+			<div class="upload-card">
+				<h2 class="section-title">Select Document</h2>
+				<PDFUpload
+					maxFileSize={100}
+					onupload={handleUploadStart}
+					onsuccess={handleUploadSuccess}
+					onerror={handleUploadError}
+				/>
+			</div>
+
+			<!-- Tips Section -->
+			<div class="tips-card">
+				<h3 class="tips-title">
+					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+					</svg>
+					Tips for Best Results
+				</h3>
+				<ul class="tips-list">
+					<li>Ensure PDFs contain searchable text (not just scanned images)</li>
+					<li>Larger documents may take longer to process</li>
+					<li>Embedding models are optimized for semantic search</li>
+					<li>Use Ollama models for better quality, Sentence Transformers for speed</li>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Sidebar -->
+		<aside class="sidebar">
+			<!-- Statistics -->
+			<div class="stats-card">
+				<h3 class="card-title">Processing Statistics</h3>
+				<div class="stats-grid">
+					<div class="stat">
+						<span class="stat-value">{uploadCount}</span>
+						<span class="stat-label">Documents Today</span>
 					</div>
-					<input
-						type="file"
-						multiple
-						accept=".pdf,.doc,.docx,.txt"
-						class="absolute inset-0 opacity-0 cursor-pointer"
-						onchange={handleFileInput}
-						disabled={uploading}
-					/>
+					<div class="stat">
+						<span class="stat-value">{recentUploads.filter(u => u.status === 'success').length}</span>
+						<span class="stat-label">Successful</span>
+					</div>
 				</div>
-			</CardContent>
-		</Card>
+			</div>
 
-		<!-- Upload Progress -->
-		{#if uploadProgress.length > 0}
-			<Card>
-				<CardHeader>
-					<CardTitle>Upload Progress</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<div class="space-y-3">
-						{#each uploadProgress as progress}
-							<div class="flex items-center space-x-3">
-								<div class="flex-shrink-0">
-									{#if progress.status === 'uploading'}
-										<div class="animate-spin rounded-full h-5 w-5 border-2 border-primary border-t-transparent"></div>
-									{:else if progress.status === 'success'}
-										<CheckCircle class="h-5 w-5 text-green-500" />
-									{:else if progress.status === 'error'}
-										<AlertCircle class="h-5 w-5 text-red-500" />
-									{/if}
-								</div>
-								<div class="flex-1 min-w-0">
-									<p class="text-sm font-medium truncate">{progress.file.name}</p>
-									<div class="flex items-center space-x-2">
-										<div class="flex-1 bg-muted rounded-full h-2">
-											<div
-												class="bg-primary h-2 rounded-full transition-all {progress.status === 'error' ? 'bg-red-500' : ''}"
-												style="width: {progress.progress}%"
-											></div>
-										</div>
-										<span class="text-xs text-muted-foreground">
-											{progress.progress}%
-										</span>
-									</div>
-									{#if progress.errorMessage}
-										<p class="text-xs text-red-500 mt-1">{progress.errorMessage}</p>
-									{/if}
-								</div>
-							</div>
-						{/each}
+			<!-- Recent Uploads -->
+			{#if recentUploads.length > 0}
+				<div class="recent-card">
+					<div class="card-header">
+						<h3 class="card-title">Recent Uploads</h3>
+						<button
+							onclick={clearRecentUploads}
+							class="clear-button"
+							aria-label="Clear history"
+						>
+							Clear
+						</button>
 					</div>
-				</CardContent>
-			</Card>
-		{/if}
-
-		<!-- Recent Uploads -->
-		{#if recentUploads.length > 0}
-			<Card>
-				<CardHeader>
-					<CardTitle>Recent Uploads</CardTitle>
-					<CardDescription>
-						Your recently uploaded files
-					</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div class="space-y-3">
-						{#each recentUploads as recent}
-							<div class="flex items-start space-x-3 p-3 bg-muted/20 rounded-lg">
-								<div class="flex-shrink-0 mt-1">
-									{#if recent.upload.status === 'success'}
-										<CheckCircle class="h-5 w-5 text-green-500" />
-									{:else if recent.upload.status === 'error'}
-										<AlertCircle class="h-5 w-5 text-red-500" />
+					<ul class="recent-list">
+						{#each recentUploads as upload}
+							<li class="recent-item">
+								<div class="item-icon {upload.status}">
+									{#if upload.status === 'success'}
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+											<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+										</svg>
 									{:else}
-										<FileText class="h-5 w-5 text-blue-500" />
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+											<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+										</svg>
 									{/if}
 								</div>
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center justify-between">
-										<p class="text-sm font-medium truncate">{recent.displayName}</p>
-										<Button
-											variant="ghost"
-											size="sm"
-											onclick={() => removeUpload(recent.upload.id)}
-											class="flex-shrink-0 h-6 w-6 p-0"
-										>
-											<X class="h-4 w-4" />
-										</Button>
-									</div>
-									<div class="flex items-center space-x-4 mt-1">
-										<span class="text-xs text-muted-foreground">
-											{formatFileSize(recent.upload.size)}
-										</span>
-										<span class="text-xs text-muted-foreground">
-											{formatDate(recent.upload.uploadedAt)}
-										</span>
-										<span class="text-xs px-2 py-1 rounded-md {
-											recent.upload.status === 'success' ? 'bg-green-100 text-green-700' :
-											recent.upload.status === 'error' ? 'bg-red-100 text-red-700' :
-											'bg-blue-100 text-blue-700'
-										}">
-											{recent.upload.status}
-										</span>
-									</div>
-									{#if recent.upload.errorMessage}
-										<p class="text-xs text-red-500 mt-1">{recent.upload.errorMessage}</p>
-									{/if}
-									{#if recent.tags.length > 0}
-										<div class="flex flex-wrap gap-1 mt-2">
-											{#each recent.tags as tag}
-												<span class="text-xs px-2 py-1 bg-muted rounded-md">
-													{tag}
-												</span>
-											{/each}
-										</div>
+								<div class="item-content">
+									<p class="item-name">{upload.filename}</p>
+									<p class="item-meta">
+										{upload.model} • {formatTimestamp(upload.timestamp)}
+									</p>
+									{#if upload.message}
+										<p class="item-message {upload.status}">
+											{upload.message}
+										</p>
 									{/if}
 								</div>
-							</div>
+							</li>
 						{/each}
-					</div>
-				</CardContent>
-			</Card>
-		{/if}
+					</ul>
+				</div>
+			{/if}
+
+			<!-- Help Section -->
+			<div class="help-card">
+				<h3 class="card-title">Need Help?</h3>
+				<p class="help-text">
+					Check our documentation for detailed guides on PDF processing and model selection.
+				</p>
+				<a href="/docs" class="help-link">
+					View Documentation
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+					</svg>
+				</a>
+			</div>
+		</aside>
 	</div>
 </div>
+
+<style>
+	.upload-page {
+		@apply min-h-screen bg-gray-50 dark:bg-gray-900;
+	}
+
+	.page-header {
+		@apply bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700;
+		@apply px-4 sm:px-6 lg:px-8 py-6;
+	}
+
+	.header-content {
+		@apply max-w-7xl mx-auto;
+	}
+
+	.page-title {
+		@apply text-2xl font-bold text-gray-900 dark:text-gray-100;
+	}
+
+	.page-description {
+		@apply mt-2 text-sm text-gray-600 dark:text-gray-400;
+	}
+
+	.header-actions {
+		@apply max-w-7xl mx-auto mt-4;
+	}
+
+	.back-button {
+		@apply inline-flex items-center gap-2 px-4 py-2;
+		@apply text-sm font-medium text-gray-700 dark:text-gray-300;
+		@apply bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600;
+		@apply rounded-md hover:bg-gray-50 dark:hover:bg-gray-600;
+		@apply transition-colors;
+	}
+
+	.content-grid {
+		@apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8;
+		@apply grid grid-cols-1 lg:grid-cols-3 gap-8;
+	}
+
+	.upload-section {
+		@apply lg:col-span-2 space-y-6;
+	}
+
+	.upload-card {
+		@apply bg-white dark:bg-gray-800 rounded-lg shadow p-6;
+	}
+
+	.section-title {
+		@apply text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4;
+	}
+
+	.tips-card {
+		@apply bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4;
+	}
+
+	.tips-title {
+		@apply flex items-center gap-2 text-sm font-medium text-blue-900 dark:text-blue-300 mb-3;
+	}
+
+	.tips-list {
+		@apply space-y-2 text-sm text-blue-800 dark:text-blue-400;
+	}
+
+	.tips-list li {
+		@apply flex items-start;
+	}
+
+	.tips-list li::before {
+		content: "•";
+		@apply mr-2 font-bold;
+	}
+
+	.sidebar {
+		@apply space-y-6;
+	}
+
+	.stats-card, .recent-card, .help-card {
+		@apply bg-white dark:bg-gray-800 rounded-lg shadow p-4;
+	}
+
+	.card-title {
+		@apply text-sm font-medium text-gray-900 dark:text-gray-100 mb-3;
+	}
+
+	.card-header {
+		@apply flex items-center justify-between mb-3;
+	}
+
+	.clear-button {
+		@apply text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200;
+	}
+
+	.stats-grid {
+		@apply grid grid-cols-2 gap-4;
+	}
+
+	.stat {
+		@apply text-center;
+	}
+
+	.stat-value {
+		@apply block text-2xl font-bold text-gray-900 dark:text-gray-100;
+	}
+
+	.stat-label {
+		@apply block text-xs text-gray-500 dark:text-gray-400 mt-1;
+	}
+
+	.recent-list {
+		@apply space-y-3;
+	}
+
+	.recent-item {
+		@apply flex gap-3;
+	}
+
+	.item-icon {
+		@apply w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0;
+	}
+
+	.item-icon.success {
+		@apply bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400;
+	}
+
+	.item-icon.error {
+		@apply bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400;
+	}
+
+	.item-content {
+		@apply flex-1 min-w-0;
+	}
+
+	.item-name {
+		@apply text-sm font-medium text-gray-900 dark:text-gray-100 truncate;
+	}
+
+	.item-meta {
+		@apply text-xs text-gray-500 dark:text-gray-400;
+	}
+
+	.item-message {
+		@apply text-xs mt-1;
+	}
+
+	.item-message.success {
+		@apply text-green-600 dark:text-green-400;
+	}
+
+	.item-message.error {
+		@apply text-red-600 dark:text-red-400;
+	}
+
+	.help-text {
+		@apply text-sm text-gray-600 dark:text-gray-400 mb-3;
+	}
+
+	.help-link {
+		@apply inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400;
+		@apply hover:text-blue-700 dark:hover:text-blue-300;
+	}
+</style>

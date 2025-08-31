@@ -23,23 +23,29 @@ class PDFProcessingPipeline:
     """Orchestrates the complete PDF processing workflow."""
 
     def __init__(self, enable_parallel: bool = True, max_workers: Optional[int] = None, 
-                 prompt_for_ollama: bool = True):
+                 prompt_for_ollama: bool = True, model_name: Optional[str] = None):
         """Initialize the PDF processing pipeline.
 
         Args:
             enable_parallel: Whether to enable parallel processing
             max_workers: Maximum number of parallel workers
             prompt_for_ollama: Whether to prompt user for Ollama model selection
+            model_name: Specific model to use for embeddings (e.g., "nomic-embed-text")
         """
         self.parser = PDFParser()
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
         
-        # Prompt for embedding model choice if not already configured
-        if prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
+        # Initialize embedding generator with specified model if provided
+        if model_name:
+            # Use the specified model directly
+            self.embedding_generator = EmbeddingGenerator(model_name=model_name)
+        elif prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
+            # Prompt for model selection if not specified
             self.embedding_generator = EmbeddingGenerator.prompt_and_create()
             PDFProcessingPipeline._embedding_generator_prompted = True
         else:
+            # Use default configuration
             self.embedding_generator = EmbeddingGenerator()
             
         self.db = get_db_manager()

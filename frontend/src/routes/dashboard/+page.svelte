@@ -2,8 +2,9 @@
 	import { sessionStore } from '$lib/stores/session.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { BookOpen, Users, Brain, Shield, Search, Plus, Settings } from 'lucide-svelte';
+	import { BookOpen, Users, Brain, Shield, Search, Plus, Settings, Upload } from 'lucide-svelte';
 	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 
 	let searchQuery = $state('');
 	let searchResults = $state<any[]>([]);
@@ -32,6 +33,9 @@
 	async function quickAction(action: string) {
 		try {
 			switch (action) {
+				case 'upload_pdf':
+					goto('/upload');
+					break;
 				case 'roll_dice':
 					const diceResult = await sessionStore.callTool('roll_dice', { 
 						dice_notation: '1d20' 
@@ -148,7 +152,17 @@
 		</Card>
 
 		<!-- Quick Actions -->
-		<div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+		<div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('upload_pdf')}>
+				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+					<CardTitle class="text-sm font-medium">Upload PDF</CardTitle>
+					<Upload class="h-4 w-4 text-muted-foreground" />
+				</CardHeader>
+				<CardContent>
+					<p class="text-xs text-muted-foreground">Process game documents</p>
+				</CardContent>
+			</Card>
+
 			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('new_session')}>
 				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
 					<CardTitle class="text-sm font-medium">New Session</CardTitle>

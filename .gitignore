@@ -208,3 +208,18 @@ __marimo__/
 
 # Claude-specific files
 .claude/
+
+# Node.js / Frontend build artifacts
+node_modules/
+.svelte-kit/
+.nuxt/
+.output/
+.vercel/
+.netlify/
+*.tsbuildinfo
+
+# Desktop app build artifacts
+desktop/frontend/node_modules/
+desktop/frontend/.svelte-kit/
+desktop/frontend/build/
+desktop/frontend/dist/
