@@ -183,7 +183,7 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json"
+        "${UPDATE_URL:-https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json}"
       ],
       "dialog": true,
       "pubkey": ""

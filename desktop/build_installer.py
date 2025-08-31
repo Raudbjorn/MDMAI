@@ -113,10 +113,13 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from websocket_adapter import start_websocket_server
+from main import main
 
 if __name__ == "__main__":
-    start_websocket_server()
+    # Run in stdio mode for Tauri
+    import os
+    os.environ['MCP_STDIO_MODE'] = 'true'
+    main()
 """)
         
         # For development, we'll just copy the Python files
@@ -162,8 +165,11 @@ def prepare_tauri_resources(root: Path) -> int:
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'backend'))
-from websocket_adapter import start_websocket_server
-start_websocket_server()
+from main import main
+# Run in stdio mode for Tauri
+import os
+os.environ['MCP_STDIO_MODE'] = 'true'
+main()
 """)
         wrapper.chmod(0o755)
         return 0

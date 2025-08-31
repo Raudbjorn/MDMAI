@@ -87,14 +87,13 @@ The desktop application uses a multi-layer architecture:
 
 5. **Run in development mode**:
    ```bash
-   # Start Python backend
-   cd backend
-   python websocket_adapter.py &
-   
-   # Start Tauri frontend
-   cd ../frontend
+   # The Python backend is automatically managed by Tauri
+   cd frontend
    npm run tauri dev
    ```
+   
+   The Tauri application will automatically start the Python MCP server
+   as a subprocess using stdio communication.
 
 ## Building for Production
 

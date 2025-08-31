@@ -261,14 +261,14 @@ impl MCPManager {
         
         let python_dist = resource_dir.join("python-dist");
         
-        // Spawn Python MCP server
-        let mut child = Command::new(python_cmd)
-            .current_dir(&python_dist)
-            .args(&["-m", "src.main", "--stdio"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        // Spawn Python MCP server using Tauri sidecar
+        // Note: In production, use Command::new_sidecar("mcp-server")
+        // This example shows the development approach
+        let mut child = tauri::api::process::Command::new_sidecar("mcp-server")
+            .expect("failed to create sidecar command")
+            .env("MCP_STDIO_MODE", "true")
+            .spawn()
+            .expect("Failed to spawn sidecar");
         
         let stdin = Box::new(child.stdin.take().unwrap());
         let stdout = child.stdout.take().unwrap();
