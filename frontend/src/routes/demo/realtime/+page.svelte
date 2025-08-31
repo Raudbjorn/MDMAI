@@ -20,30 +20,34 @@
 	let showActivity = $state(true);
 	let showChat = $state(true);
 	
-	onMount(async () => {
+	onMount(() => {
 		// Connect to collaboration service
-		await collaborationStore.connect(demoUserId);
+		const init = async () => {
+			await collaborationStore.connect(demoUserId);
+			
+			// Create or join demo room
+			currentRoom = await collaborationStore.createRoom(
+				'Demo Session',
+				'demo-campaign',
+				{
+					max_participants: 20,
+					allow_spectators: true,
+					enable_voice: false,
+					enable_video: false,
+					auto_save: true,
+					save_interval: 30
+				}
+			);
+			
+			isConnected = true;
+			
+			// Simulate some activity for demo
+			setTimeout(() => {
+				collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
+			}, 1000);
+		};
 		
-		// Create or join demo room
-		currentRoom = await collaborationStore.createRoom(
-			'Demo Session',
-			'demo-campaign',
-			{
-				max_participants: 20,
-				allow_spectators: true,
-				enable_voice: false,
-				enable_video: false,
-				auto_save: true,
-				save_interval: 30
-			}
-		);
-		
-		isConnected = true;
-		
-		// Simulate some activity for demo
-		setTimeout(() => {
-			collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
-		}, 1000);
+		init();
 		
 		return () => {
 			collaborationStore.leaveRoom();
@@ -165,7 +169,7 @@
 					{#if showChat}
 						<div class="feature-section chat-section">
 							<h3>Chat</h3>
-							<ChatPanel maxHeight={300} />
+							<ChatPanel />
 						</div>
 					{/if}
 					

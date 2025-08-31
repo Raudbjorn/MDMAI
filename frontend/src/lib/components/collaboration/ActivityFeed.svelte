@@ -32,13 +32,12 @@
 	}
 	
 	let activities = $state<ActivityItem[]>([]);
+	let filters = $state<Set<ActivityItem['type']>>(new Set());
 	let filteredActivities = $derived(
 		filters.size === 0 
 			? activities 
 			: activities.filter(a => filters.has(a.type))
 	);
-	
-	let filters = $state<Set<ActivityItem['type']>>(new Set());
 	let sseClient: EnhancedSSEClient | null = null;
 	let feedContainer: HTMLElement;
 	
@@ -245,8 +244,8 @@
 				{#each Object.entries(activityConfig) as [type, config]}
 					<button 
 						class="filter-btn"
-						class:active={filters.has(type)}
-						onclick={() => toggleFilter(type)}
+						class:active={filters.has(type as ActivityItem['type'])}
+						onclick={() => toggleFilter(type as ActivityItem['type'])}
 						title={config.label}
 					>
 						<span class="filter-icon">{config.icon}</span>

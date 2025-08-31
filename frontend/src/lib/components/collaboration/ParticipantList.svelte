@@ -198,8 +198,9 @@
 				<div class="font-medium">{selectedParticipant.username}</div>
 				
 				<div class="space-y-2">
-					<label class="block text-sm font-medium mb-2">Role</label>
+					<label for="participant-role" class="block text-sm font-medium mb-2">Role</label>
 					<select 
+						id="participant-role"
 						class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
 						value={selectedParticipant.role}
 						onchange={(e) => changeRole(selectedParticipant!, e.currentTarget.value as ParticipantRole)}
@@ -214,7 +215,7 @@
 				</div>
 				
 				<div class="space-y-2">
-					<label class="block text-sm font-medium mb-2">Permissions</label>
+					<div class="block text-sm font-medium mb-2">Permissions</div>
 					
 					<label class="flex items-center gap-2">
 						<input type="checkbox" />
