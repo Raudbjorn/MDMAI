@@ -6,10 +6,9 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from config.logging_config import get_logger
-from config.settings import settings
 
 from src.security.security_manager import SecurityManager, SecurityConfig
 from src.security.auth_providers import (
@@ -18,10 +17,10 @@ from src.security.auth_providers import (
 from src.security.jwt_manager import JWTManager, JWTConfig
 from src.security.session_store import SessionStore, SessionStoreConfig
 from src.security.process_sandbox import ProcessSandbox, SandboxConfig, SandboxPolicy
-from src.security.security_monitor import SecurityMonitor, ThreatLevel
+from src.security.security_monitor import SecurityMonitor
 from src.security.models import (
-    AuthProvider, EnhancedUser, WebSession, ApiKey, TokenPair,
-    SessionStatus, SecurityRole, TokenType
+    EnhancedUser, WebSession, ApiKey, TokenPair,
+    SecurityRole, TokenType
 )
 from src.security.security_audit import SecurityEventType, SecuritySeverity
 

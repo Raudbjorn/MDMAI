@@ -9,16 +9,13 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum, auto
-from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Set, TypeVar
 
 from .error_handling import (
     BaseError,
     CircuitBreaker,
-    DatabaseError,
-    NetworkError,
-    ServiceError,
     error_aggregator,
 )
 

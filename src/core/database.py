@@ -1,9 +1,6 @@
 """ChromaDB database integration for TTRPG Assistant."""
 
-import asyncio
-import json
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import chromadb

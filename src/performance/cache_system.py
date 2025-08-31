@@ -2,15 +2,13 @@
 
 import hashlib
 import json
-import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from threading import Event, Lock, Thread
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -443,7 +441,7 @@ class CacheSystem:
             # For complex objects, try string representation
             try:
                 return len(str(obj).encode())
-            except:
+            except Exception:
                 # Last resort: assume 1KB
                 return 1024
 

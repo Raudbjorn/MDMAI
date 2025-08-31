@@ -388,7 +388,7 @@ class CacheInvalidator:
         try:
             # Check if cache has required attributes
             if not hasattr(cache, "lock") or not hasattr(cache, "cache"):
-                logger.warning(f"Cache missing required attributes for rule application")
+                logger.warning("Cache missing required attributes for rule application")
                 return 0
 
             with cache.lock:

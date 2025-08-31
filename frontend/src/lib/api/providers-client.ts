@@ -29,7 +29,7 @@ async function handleResponse<T>(response: Response): Promise<Result<T>> {
 		const error = await response.text().catch(() => 'Unknown error');
 		return {
 			ok: false,
-			error: new Error(`${response.status}: ${error}`)
+			error: `${response.status}: ${error}`
 		};
 	}
 
@@ -39,7 +39,7 @@ async function handleResponse<T>(response: Response): Promise<Result<T>> {
 	} catch (error) {
 		return {
 			ok: false,
-			error: error instanceof Error ? error : new Error('Failed to parse response')
+			error: error instanceof Error ? error.message : 'Failed to parse response'
 		};
 	}
 }
@@ -52,7 +52,7 @@ async function handleVoidResponse(response: Response): Promise<Result<void>> {
 		const error = await response.text().catch(() => 'Unknown error');
 		return {
 			ok: false,
-			error: new Error(`${response.status}: ${error}`)
+			error: `${response.status}: ${error}`
 		};
 	}
 
@@ -90,7 +90,10 @@ export class ProviderApiClient {
 		configs: ProviderConfig[], 
 		budgets?: CostBudget[]
 	): Promise<Result<ProviderConfigResponse>> {
-		const request: ProviderConfigRequest = { configs, budgets };
+		const request: ProviderConfigRequest = { 
+			data: { configs, budgets },
+			timestamp: new Date()
+		};
 		
 		const response = await fetch(`${this.baseUrl}/providers/configure`, {
 			method: 'POST',
@@ -185,9 +188,9 @@ export class ProviderApiClient {
 	 */
 	async getProviderStats(request?: ProviderStatsRequest): Promise<Result<ProviderStatsResponse>> {
 		const params = new URLSearchParams();
-		if (request?.provider_type) params.append('provider_type', request.provider_type);
-		if (request?.start_date) params.append('start_date', request.start_date);
-		if (request?.end_date) params.append('end_date', request.end_date);
+		if (request?.data?.provider_type) params.append('provider_type', request.data.provider_type);
+		if (request?.data?.start_date) params.append('start_date', request.data.start_date);
+		if (request?.data?.end_date) params.append('end_date', request.data.end_date);
 
 		const response = await fetch(`${this.baseUrl}/providers/stats?${params}`, {
 			headers: this.headers

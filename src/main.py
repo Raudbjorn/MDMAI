@@ -2,9 +2,7 @@
 
 import asyncio
 import atexit
-import json
 import sys
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,7 +27,6 @@ from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
 from src.search.search_service import SearchService
 from src.security import (
-    AccessLevel,
     FilePathParameters,
     OperationType,
     Permission,
@@ -38,8 +35,6 @@ from src.security import (
     SecurityConfig,
     SecurityEventType,
     SecurityManager,
-    SecuritySeverity,
-    get_security_manager,
     initialize_security,
     secure_mcp_tool,
 )
@@ -880,7 +875,6 @@ def main():
         register_performance_tools(mcp)
 
         # Register parallel processing tools
-        initialize_parallel_tools()
         register_parallel_tools(mcp)
 
         # Initialize campaign management system

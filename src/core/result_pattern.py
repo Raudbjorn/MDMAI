@@ -13,13 +13,9 @@ import functools
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
-from returns.functions import tap
-from returns.future import FutureResult, future_safe
-from returns.io import IOResult, impure_safe
-from returns.pipeline import flow, pipe
-from returns.result import Failure, Result, Success, safe
+from returns.result import Failure, Result, Success
 
 logger = logging.getLogger(__name__)
 

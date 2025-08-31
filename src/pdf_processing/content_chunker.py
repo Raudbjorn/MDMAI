@@ -3,7 +3,7 @@
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
 from config.settings import settings
@@ -101,7 +101,7 @@ class ContentChunker:
         chunks = self._deduplicate_chunks(chunks)
 
         logger.info(
-            f"Document chunked",
+            "Document chunked",
             total_chunks=len(chunks),
             source=source_metadata.get("rulebook_name", "Unknown"),
         )

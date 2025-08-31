@@ -9,17 +9,15 @@ import asyncio
 import json
 import logging
 import logging.handlers
-import os
 import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import structlog
-from pythonjsonlogger import jsonlogger
 
 
 class LogLevel(Enum):

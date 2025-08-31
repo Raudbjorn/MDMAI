@@ -4,7 +4,7 @@ import sys
 import time
 from collections import OrderedDict
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
 from config.settings import settings

@@ -2,14 +2,29 @@
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+# Validation error message constants
+VALIDATION_ERRORS = {
+    "PATH_NOT_IN_ALLOWED_DIRS": "Path not within allowed directories",
+    "PATH_DOES_NOT_EXIST": "Path does not exist",
+    "SQL_INJECTION": "Potential SQL injection detected",
+    "XSS_ATTACK": "Potential XSS attack detected",
+    "PATH_TRAVERSAL": "Path traversal attempt detected",
+    "COMMAND_INJECTION": "Potential command injection detected",
+    "INPUT_TOO_LONG": "Input exceeds maximum length",
+    "INVALID_CHARACTERS": "Input contains invalid characters",
+    "FORBIDDEN_PATTERN": "Input matches forbidden pattern",
+    "TYPE_MISMATCH": "Expected type mismatch",
+    "MISSING_FIELD": "Missing required field",
+}
 
 
 class ValidationResult:
@@ -262,17 +277,17 @@ class InputValidator:
         # Check for injection attacks based on input type
         if input_type in ["query", "general", "metadata"]:
             if self.detect_sql_injection(str_value):
-                errors.append("Potential SQL injection detected")
+                errors.append(VALIDATION_ERRORS["SQL_INJECTION"])
 
             if self.detect_xss(str_value):
-                errors.append("Potential XSS attack detected")
+                errors.append(VALIDATION_ERRORS["XSS_ATTACK"])
 
         if input_type in ["path", "filename"]:
             if self.detect_path_traversal(str_value):
-                errors.append("Path traversal attempt detected")
+                errors.append(VALIDATION_ERRORS["PATH_TRAVERSAL"])
 
             if self.detect_command_injection(str_value):
-                errors.append("Potential command injection detected")
+                errors.append(VALIDATION_ERRORS["COMMAND_INJECTION"])
 
         # Check allowed characters
         if allowed_chars and not re.match(allowed_chars, str_value):
@@ -553,12 +568,12 @@ class InputValidator:
 
                 if not is_allowed:
                     return ValidationResult(
-                        False, None, [f"Path not within allowed directories"]
+                        False, None, [VALIDATION_ERRORS["PATH_NOT_IN_ALLOWED_DIRS"]]
                     )
 
             # Check existence
             if must_exist and not path_obj.exists():
-                return ValidationResult(False, None, [f"Path does not exist: {path_obj}"])
+                return ValidationResult(False, None, [f"{VALIDATION_ERRORS['PATH_DOES_NOT_EXIST']}: {path_obj}"])
 
             return ValidationResult(True, str(path_obj))
 

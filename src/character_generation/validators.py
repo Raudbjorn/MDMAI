@@ -2,9 +2,9 @@
 
 import logging
 from dataclasses import fields
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from .models import NPC, Character, CharacterClass, CharacterRace, CharacterStats, NPCRole
+from .models import NPC, Character, CharacterClass, CharacterRace, CharacterStats
 
 logger = logging.getLogger(__name__)
 

@@ -2,9 +2,8 @@
 
 import json
 import time
-import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
 from src.campaign.models import NPC, Campaign, CampaignVersion, Character, Location, PlotPoint

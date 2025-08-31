@@ -8,19 +8,9 @@
 <ModeWatcher />
 <Toaster richColors position="top-right" />
 
-<div class="app-layout">
+<div class="min-h-screen bg-gray-50 dark:bg-gray-950">
 	<Navigation />
-	<main class="main-content">
+	<main class="flex-1">
 		<slot />
 	</main>
 </div>
-
-<style>
-	.app-layout {
-		@apply min-h-screen bg-gray-50 dark:bg-gray-950;
-	}
-	
-	.main-content {
-		@apply flex-1;
-	}
-</style>

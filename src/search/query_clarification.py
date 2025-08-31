@@ -4,10 +4,10 @@ import difflib
 import re
 from collections import Counter
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
-from src.search.error_handler import SearchError, handle_search_errors
+from src.search.error_handler import handle_search_errors
 
 logger = get_logger(__name__)
 

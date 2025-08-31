@@ -1,6 +1,5 @@
 """User interaction utilities for MCP tools."""
 
-import asyncio
 from typing import Any, Dict, Optional
 
 from config.logging_config import get_logger

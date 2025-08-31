@@ -2,58 +2,60 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-from uuid import UUID, uuid4
+from enum import StrEnum, auto
+from functools import cached_property
+from typing import Annotated, Any, Dict, List, Optional
+from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from typing_extensions import Self
 
 
-class ContextType(Enum):
+class ContextType(StrEnum):
     """Types of contexts that can be managed."""
     
-    CONVERSATION = "conversation"
-    SESSION = "session"
-    CAMPAIGN = "campaign"
-    CHARACTER = "character"
-    COLLABORATIVE = "collaborative"
-    PROVIDER_SPECIFIC = "provider_specific"
+    CONVERSATION = auto()
+    SESSION = auto()
+    CAMPAIGN = auto()
+    CHARACTER = auto()
+    COLLABORATIVE = auto()
+    PROVIDER_SPECIFIC = auto()
 
 
-class ContextState(Enum):
+class ContextState(StrEnum):
     """Lifecycle states for contexts."""
     
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-    ARCHIVED = "archived"
-    DELETED = "deleted"
-    SYNCING = "syncing"
-    CONFLICT = "conflict"
+    ACTIVE = auto()
+    INACTIVE = auto()
+    ARCHIVED = auto()
+    DELETED = auto()
+    SYNCING = auto()
+    CONFLICT = auto()
 
 
-class CompressionType(Enum):
+class CompressionType(StrEnum):
     """Supported compression algorithms."""
     
-    NONE = "none"
-    GZIP = "gzip"
-    LZ4 = "lz4"
-    ZSTD = "zstd"
-    BROTLI = "brotli"
+    NONE = auto()
+    GZIP = auto()
+    LZ4 = auto()
+    ZSTD = auto()
+    BROTLI = auto()
 
 
-class ConflictResolutionStrategy(Enum):
+class ConflictResolutionStrategy(StrEnum):
     """Strategies for resolving context conflicts."""
     
-    LATEST_WINS = "latest_wins"
-    MANUAL_MERGE = "manual_merge"
-    PROVIDER_PRIORITY = "provider_priority"
-    USER_CHOICE = "user_choice"
-    AUTOMATIC_MERGE = "automatic_merge"
+    LATEST_WINS = auto()
+    MANUAL_MERGE = auto()
+    PROVIDER_PRIORITY = auto()
+    USER_CHOICE = auto()
+    AUTOMATIC_MERGE = auto()
 
 
-@dataclass
+@dataclass(frozen=True)
 class ContextVersion:
-    """Represents a version of a context with metadata."""
+    """Immutable version of a context with metadata."""
     
     version_id: str = field(default_factory=lambda: str(uuid4()))
     context_id: str = ""
@@ -68,6 +70,16 @@ class ContextVersion:
     size_bytes: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
     tags: List[str] = field(default_factory=list)
+    
+    @cached_property
+    def is_main_branch(self) -> bool:
+        """Check if this version is on the main branch."""
+        return self.branch == "main"
+    
+    @cached_property
+    def has_parent(self) -> bool:
+        """Check if this version has a parent."""
+        return self.parent_version is not None
 
 
 class Context(BaseModel):
@@ -113,38 +125,42 @@ class Context(BaseModel):
     expires_at: Optional[datetime] = None
     auto_archive_days: Optional[int] = 90
     
-    def update_access(self) -> None:
-        """Update access tracking."""
+    def update_access(self) -> Self:
+        """Update access tracking with fluent interface."""
         self.last_accessed = datetime.now(timezone.utc)
         self.access_count += 1
+        return self
     
-    def add_collaborator(self, user_id: str, permissions: List[str] = None) -> None:
-        """Add a collaborator with specified permissions."""
+    def add_collaborator(self, user_id: str, permissions: Optional[List[str]] = None) -> Self:
+        """Add a collaborator with specified permissions using fluent interface."""
         if user_id not in self.collaborators:
             self.collaborators.append(user_id)
         
         if permissions:
             self.permissions[user_id] = permissions
+        return self
     
     def has_permission(self, user_id: str, permission: str) -> bool:
         """Check if user has specific permission."""
-        if self.owner_id == user_id:
-            return True
-        return permission in self.permissions.get(user_id, [])
+        return self.owner_id == user_id or permission in self.permissions.get(user_id, [])
+    
+    @cached_property
+    def days_since_last_access(self) -> int:
+        """Calculate days since last access."""
+        return (datetime.now(timezone.utc) - self.last_accessed).days
     
     def should_archive(self) -> bool:
         """Check if context should be automatically archived."""
-        if not self.auto_archive_days:
-            return False
-        
-        days_inactive = (datetime.now(timezone.utc) - self.last_accessed).days
-        return days_inactive >= self.auto_archive_days
+        return bool(
+            self.auto_archive_days 
+            and self.days_since_last_access >= self.auto_archive_days
+        )
 
 
 class ConversationContext(Context):
     """Context for conversation threads."""
     
-    context_type: ContextType = Field(default=ContextType.CONVERSATION, const=True)
+    context_type: ContextType = Field(default=ContextType.CONVERSATION)
     
     # Conversation-specific data
     messages: List[Dict[str, Any]] = Field(default_factory=list)
@@ -161,24 +177,33 @@ class ConversationContext(Context):
     conversation_state: str = "active"
     last_message_at: Optional[datetime] = None
     
-    def add_message(self, message: Dict[str, Any]) -> None:
-        """Add a message to the conversation."""
-        message["timestamp"] = datetime.now(timezone.utc).isoformat()
-        message["turn"] = self.current_turn
+    def add_message(self, message: Dict[str, Any]) -> Self:
+        """Add a message to the conversation with fluent interface."""
+        now = datetime.now(timezone.utc)
+        message.update({
+            "timestamp": now.isoformat(),
+            "turn": self.current_turn
+        })
         self.messages.append(message)
         self.current_turn += 1
-        self.last_message_at = datetime.now(timezone.utc)
-        self.last_modified = datetime.now(timezone.utc)
+        self.last_message_at = now
+        self.last_modified = now
+        return self
     
     def get_recent_messages(self, count: int = 10) -> List[Dict[str, Any]]:
         """Get the most recent messages."""
         return self.messages[-count:] if len(self.messages) > count else self.messages
+    
+    @cached_property
+    def is_at_turn_limit(self) -> bool:
+        """Check if conversation has reached turn limit."""
+        return self.max_turns is not None and self.current_turn >= self.max_turns
 
 
 class SessionContext(Context):
     """Context for user sessions."""
     
-    context_type: ContextType = Field(default=ContextType.SESSION, const=True)
+    context_type: ContextType = Field(default=ContextType.SESSION)
     
     # Session-specific data
     session_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -195,22 +220,33 @@ class SessionContext(Context):
     session_duration_seconds: int = 0
     last_interaction: Optional[datetime] = None
     
-    def add_conversation(self, conversation_id: str) -> None:
-        """Add a conversation to this session."""
+    def add_conversation(self, conversation_id: str) -> Self:
+        """Add a conversation to this session with fluent interface."""
         if conversation_id not in self.active_conversations:
             self.active_conversations.append(conversation_id)
+        return self
     
-    def record_interaction(self) -> None:
-        """Record user interaction."""
+    def record_interaction(self) -> Self:
+        """Record user interaction with fluent interface."""
+        now = datetime.now(timezone.utc)
         self.total_interactions += 1
-        self.last_interaction = datetime.now(timezone.utc)
-        self.last_modified = datetime.now(timezone.utc)
+        self.last_interaction = now
+        self.last_modified = now
+        return self
+    
+    @cached_property
+    def is_active(self) -> bool:
+        """Check if session is currently active."""
+        if not self.last_interaction:
+            return False
+        elapsed = (datetime.now(timezone.utc) - self.last_interaction).total_seconds()
+        return elapsed < self.session_timeout if hasattr(self, 'session_timeout') else True
 
 
 class CollaborativeContext(Context):
     """Context for collaborative sessions."""
     
-    context_type: ContextType = Field(default=ContextType.COLLABORATIVE, const=True)
+    context_type: ContextType = Field(default=ContextType.COLLABORATIVE)
     
     # Collaboration-specific data
     room_id: str = Field(default_factory=lambda: str(uuid4()))
@@ -230,19 +266,21 @@ class CollaborativeContext(Context):
     locked_at: Optional[datetime] = None
     lock_timeout_seconds: int = 300
     
-    def add_participant(self, user_id: str) -> None:
-        """Add a participant to the collaborative session."""
+    def add_participant(self, user_id: str) -> Self:
+        """Add a participant to the collaborative session with fluent interface."""
         if user_id not in self.active_participants:
             self.active_participants.append(user_id)
+        return self
     
-    def remove_participant(self, user_id: str) -> None:
-        """Remove a participant from the collaborative session."""
+    def remove_participant(self, user_id: str) -> Self:
+        """Remove a participant from the collaborative session with fluent interface."""
         if user_id in self.active_participants:
             self.active_participants.remove(user_id)
         
         # Release lock if held by this user
         if self.locked_by == user_id:
             self.release_lock()
+        return self
     
     def acquire_lock(self, user_id: str) -> bool:
         """Acquire exclusive lock for editing."""
@@ -260,6 +298,11 @@ class CollaborativeContext(Context):
             return True
         return False
     
+    @cached_property
+    def is_locked(self) -> bool:
+        """Check if context is currently locked."""
+        return self.locked_by is not None and not self._is_lock_expired()
+    
     def _is_lock_expired(self) -> bool:
         """Check if current lock has expired."""
         if not self.locked_at:
@@ -270,29 +313,39 @@ class CollaborativeContext(Context):
 
 
 class ProviderContext(BaseModel):
-    """Provider-specific context data."""
+    """Provider-specific context data with enhanced validation."""
     
-    provider_type: str
+    provider_type: Annotated[str, Field(min_length=1, max_length=50)]
     provider_context_id: str = Field(default_factory=lambda: str(uuid4()))
     
     # Provider-specific data
     context_data: Dict[str, Any] = Field(default_factory=dict)
-    format_version: str = "1.0"
+    format_version: Annotated[str, Field(pattern=r"^\d+\.\d+$")] = "1.0"
     
     # Synchronization tracking
     last_sync: Optional[datetime] = None
-    sync_status: str = "synced"
+    sync_status: str = Field(default="synced", pattern="^(synced|pending|failed|syncing)$")
     
     # Translation metadata
     translation_metadata: Dict[str, Any] = Field(default_factory=dict)
     requires_translation: bool = False
     
     # Performance tracking
-    size_bytes: int = 0
-    compression_ratio: float = 1.0
+    size_bytes: Annotated[int, Field(ge=0)] = 0
+    compression_ratio: Annotated[float, Field(ge=0.0, le=1.0)] = 1.0
     
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    
+    @cached_property
+    def is_synced(self) -> bool:
+        """Check if provider context is synced."""
+        return self.sync_status == "synced"
+    
+    @cached_property
+    def compression_percentage(self) -> float:
+        """Calculate compression percentage."""
+        return (1 - self.compression_ratio) * 100
 
 
 class ContextEvent(BaseModel):
@@ -338,7 +391,7 @@ class ContextDiff(BaseModel):
 
 
 class ContextQuery(BaseModel):
-    """Query model for context retrieval."""
+    """Query model for context retrieval with enhanced validation."""
     
     # Filters
     context_ids: Optional[List[str]] = None
@@ -348,7 +401,7 @@ class ContextQuery(BaseModel):
     states: Optional[List[ContextState]] = None
     
     # Search
-    search_text: Optional[str] = None
+    search_text: Optional[Annotated[str, Field(min_length=1, max_length=500)]] = None
     metadata_filters: Dict[str, Any] = Field(default_factory=dict)
     
     # Time range
@@ -359,13 +412,38 @@ class ContextQuery(BaseModel):
     accessed_after: Optional[datetime] = None
     
     # Pagination
-    limit: int = 50
-    offset: int = 0
+    limit: Annotated[int, Field(ge=1, le=1000)] = 50
+    offset: Annotated[int, Field(ge=0)] = 0
     
     # Sorting
-    sort_by: str = "last_modified"
-    sort_order: str = "desc"  # asc or desc
+    sort_by: str = Field(
+        default="last_modified",
+        pattern="^(last_modified|created_at|last_accessed|title|access_count|size_bytes)$"
+    )
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
     
     # Options
     include_archived: bool = False
     include_deleted: bool = False
+    
+    @field_validator("created_before", "modified_before")
+    @classmethod
+    def validate_before_dates(cls, v: Optional[datetime], info) -> Optional[datetime]:
+        """Ensure 'before' dates are not in the future."""
+        if v and v > datetime.now(timezone.utc):
+            raise ValueError("'before' dates cannot be in the future")
+        return v
+    
+    @cached_property
+    def has_time_filters(self) -> bool:
+        """Check if query has time-based filters."""
+        return any([
+            self.created_after, self.created_before,
+            self.modified_after, self.modified_before,
+            self.accessed_after
+        ])
+    
+    @cached_property
+    def is_paginated(self) -> bool:
+        """Check if query uses pagination."""
+        return self.limit < 1000 or self.offset > 0

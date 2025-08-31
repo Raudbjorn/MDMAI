@@ -1,14 +1,11 @@
 """Ollama embedding provider for local model support."""
 
 import json
-import shlex
 import subprocess
 from typing import List, Optional, Dict, Any
 import requests
-from pathlib import Path
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import asyncio
 
 from config.logging_config import get_logger
 

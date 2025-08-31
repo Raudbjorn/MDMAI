@@ -10,7 +10,7 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple
 from pydantic import BaseModel, Field
 
 from config.logging_config import get_logger
-from src.security.models import SecurityMetrics, SessionStatus
+from src.security.models import SecurityMetrics
 from src.security.security_audit import SecurityEventType, SecuritySeverity
 
 logger = get_logger(__name__)

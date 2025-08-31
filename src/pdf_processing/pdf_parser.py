@@ -1,21 +1,16 @@
 """PDF parsing and extraction module for TTRPG Assistant."""
 
 import hashlib
-import os
-import re
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import pdfplumber
 import PyPDF2
 from PyPDF2 import PdfReader
 
 from config.logging_config import get_logger
-from config.settings import settings
 from src.utils.exceptions import (
     InvalidPDFError,
-    PDFParseError,
     PDFProcessingException as PDFProcessingError,
     PDFReadError,
     PDFSizeError,
@@ -100,7 +95,7 @@ class PDFParser:
             }
 
             logger.info(
-                f"PDF extraction complete",
+                "PDF extraction complete",
                 file=pdf_path.name,
                 pages=result["total_pages"],
                 tables=len(result["tables"]),
@@ -176,7 +171,7 @@ class PDFParser:
                 }
 
         except Exception as e:
-            logger.error(f"PyPDF2 extraction failed", error=str(e))
+            logger.error("PyPDF2 extraction failed", error=str(e))
             return {
                 "metadata": {},
                 "total_pages": 0,
@@ -233,7 +228,7 @@ class PDFParser:
             }
 
         except Exception as e:
-            logger.error(f"pdfplumber extraction failed", error=str(e))
+            logger.error("pdfplumber extraction failed", error=str(e))
             return {
                 "pages": [],
                 "tables": [],
