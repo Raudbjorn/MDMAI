@@ -67,7 +67,7 @@ class SecureApiKeyHandler {
         const encrypted = await crypto.subtle.encrypt(
             {
                 name: 'AES-GCM',
-                iv: iv
+                iv: iv as BufferSource
             },
             key,
             data
@@ -83,7 +83,7 @@ class SecureApiKeyHandler {
         const decrypted = await crypto.subtle.decrypt(
             {
                 name: 'AES-GCM',
-                iv: iv
+                iv: iv as BufferSource
             },
             key,
             encrypted
