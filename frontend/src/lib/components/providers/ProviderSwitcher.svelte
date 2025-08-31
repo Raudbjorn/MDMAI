@@ -33,6 +33,11 @@
 			name: 'Gemini', 
 			icon: '🌐', 
 			color: 'blue' 
+		},
+		[ProviderType.OLLAMA]: { 
+			name: 'Ollama', 
+			icon: '🦙', 
+			color: 'orange' 
 		}
 	};
 	
@@ -384,7 +389,7 @@
 							{/if}
 						</div>
 						<div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-							Last updated: {new Date(activeHealth.last_check).toLocaleTimeString()}
+							Last updated: {new Date(activeHealth.updated_at).toLocaleTimeString()}
 						</div>
 					</div>
 				{/if}

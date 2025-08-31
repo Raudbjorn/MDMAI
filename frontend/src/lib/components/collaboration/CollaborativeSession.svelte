@@ -266,8 +266,8 @@
 				});
 			}
 			
-			// Remove from conflicts list
-			collaborationStore.conflicts.splice(conflictIndex, 1);
+			// Remove from conflicts list using store method
+			collaborationStore.removeConflict(conflictIndex);
 			
 			return { ok: true, value: undefined };
 		} catch (error) {

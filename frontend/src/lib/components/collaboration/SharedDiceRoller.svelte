@@ -1,6 +1,6 @@
 <script lang="ts">
 		import { collaborationStore } from '$lib/stores/collaboration.svelte';
-	import type { DiceRoll } from '$lib/types/collaboration';
+	import type { DiceRoll, CollaborationMessage } from '$lib/types/collaboration';
 
 	interface DicePreset {
 		name: string;
@@ -44,10 +44,11 @@
 
 	const purposes = ['Attack Roll', 'Damage', 'Saving Throw', 'Ability Check', 'Initiative', 'Death Save', 'Concentration', 'Custom'];
 	let selectedPurpose = $state('Custom');
-	let unsubscribe: (() => void) | null = null;
-	
 	$effect(() => {
-		unsubscribe = collaborationStore.onMessage('dice_roll', handleDiceRoll);
+		const unsubscribe = collaborationStore.onMessage('dice_roll', (msg) => {
+			const roll = msg.data as DiceRoll;
+			handleDiceRoll(roll);
+		});
 		const room = collaborationStore.currentRoom;
 		if (room) rollHistory = room.state.dice_rolls.slice(-maxHistory);
 		return () => unsubscribe?.();
@@ -404,7 +405,7 @@
 	{#if showAnimation && animatingDice.length > 0}
 		<div class="dice-animation">
 			<div class="animated-dice">
-				{#each animatingDice as die}
+				{#each animatingDice as die (die.id)}
 					<div class="animated-die" data-die-id={die.id}>
 						<span class="die-value">{die.value}</span>
 					</div>
