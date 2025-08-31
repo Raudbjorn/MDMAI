@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Build Script for TTRPG Assistant MCP Server Backend
-# Supports cross-platform architecture detection and building
+# Enhanced version with improved error handling and platform support
 #
 # Supported platforms:
 #   - macOS: x86_64 (Intel), aarch64 (Apple Silicon M1/M2/M3)
@@ -11,201 +11,462 @@
 
 set -euo pipefail
 
-# Color codes for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Script metadata
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LOG_FILE="${SCRIPT_DIR}/build.log"
 
-# Logging functions
+# Color codes for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly CYAN='\033[0;36m'
+readonly BOLD='\033[1m'
+readonly NC='\033[0m' # No Color
+
+# Global variables
+BUILD_START_TIME=""
+TEMP_FILES=()
+
+# Cleanup function for trap
+cleanup() {
+    local exit_code=$?
+    
+    if [[ ${#TEMP_FILES[@]} -gt 0 ]]; then
+        log_debug "Cleaning up temporary files..."
+        for temp_file in "${TEMP_FILES[@]}"; do
+            [[ -f "$temp_file" ]] && rm -f "$temp_file"
+        done
+    fi
+    
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Build failed with exit code $exit_code"
+        log_info "Check $LOG_FILE for detailed logs"
+    fi
+    
+    exit $exit_code
+}
+
+# Set up trap for cleanup
+trap cleanup EXIT INT TERM
+
+# Enhanced logging functions with timestamps and file logging
+log_with_level() {
+    local level="$1"
+    local color="$2"
+    local message="$3"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Console output with colors
+    echo -e "${color}[${level}]${NC} ${message}"
+    
+    # File output without colors
+    echo "[$timestamp] [$level] $message" >> "$LOG_FILE"
+}
+
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    log_with_level "INFO" "$BLUE" "$1"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    log_with_level "SUCCESS" "$GREEN" "$1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    log_with_level "WARNING" "$YELLOW" "$1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
+    log_with_level "ERROR" "$RED" "$1" >&2
 }
 
-# Function to detect system architecture
+log_debug() {
+    if [[ "${DEBUG:-false}" == "true" ]]; then
+        log_with_level "DEBUG" "$CYAN" "$1"
+    fi
+}
+
+log_step() {
+    log_with_level "STEP" "$BOLD$BLUE" "$1"
+}
+
+# Progress tracking
+show_progress() {
+    local current=$1
+    local total=$2
+    local desc="$3"
+    local width=50
+    local percentage=$((current * 100 / total))
+    local completed=$((current * width / total))
+    local remaining=$((width - completed))
+    
+    printf "\r${CYAN}[%-${width}s] %d%% %s${NC}" \
+           "$(printf '%*s' "$completed" | tr ' ' '=')$(printf '%*s' "$remaining")" \
+           "$percentage" "$desc"
+    
+    if [[ $current -eq $total ]]; then
+        echo
+    fi
+}
+
+# Enhanced architecture detection with validation
 detect_architecture() {
-    local arch=$(uname -m)
-    local normalized_arch=""
+    local arch
+    arch=$(uname -m)
+    log_debug "Raw architecture: $arch"
     
     case "$arch" in
         x86_64|amd64)
-            normalized_arch="x86_64"
+            echo "x86_64"
             ;;
         arm64|aarch64)
             # ARM64 is reported as 'arm64' on macOS but needs 'aarch64' for Rust
-            normalized_arch="aarch64"
+            echo "aarch64"
             ;;
         armv7l|armv7)
-            normalized_arch="armv7"
+            echo "armv7"
             ;;
         i386|i686)
-            normalized_arch="i686"
+            echo "i686"
             ;;
         *)
             log_error "Unsupported architecture: $arch"
-            exit 1
+            log_info "Supported architectures: x86_64, aarch64, armv7, i686"
+            return 1
             ;;
     esac
-    
-    echo "$normalized_arch"
 }
 
-# Function to detect operating system
+# Enhanced OS detection with version information
 detect_os() {
-    local os=""
+    local kernel_name
+    kernel_name=$(uname -s)
+    log_debug "Kernel name: $kernel_name"
     
-    case "$(uname -s)" in
+    case "$kernel_name" in
         Darwin)
-            os="darwin"
+            local macos_version
+            macos_version=$(sw_vers -productVersion 2>/dev/null || echo "unknown")
+            log_debug "macOS version: $macos_version"
+            echo "darwin"
             ;;
         Linux)
-            os="linux"
+            local distro
+            if [[ -f /etc/os-release ]]; then
+                distro=$(. /etc/os-release; echo "$NAME $VERSION_ID")
+                log_debug "Linux distribution: $distro"
+            fi
+            echo "linux"
             ;;
         MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            os="windows"
+            log_debug "Windows environment detected: $kernel_name"
+            echo "windows"
             ;;
         *)
-            log_error "Unsupported operating system: $(uname -s)"
-            exit 1
+            log_error "Unsupported operating system: $kernel_name"
+            log_info "Supported systems: macOS (Darwin), Linux, Windows"
+            return 1
             ;;
     esac
-    
-    echo "$os"
 }
 
-# Function to get the full target triple for Rust
-get_rust_target() {
-    local arch="$1"
-    local os="$2"
-    local target=""
+# Validate system compatibility
+validate_system() {
+    log_step "Validating system compatibility..."
     
+    local arch os
+    arch=$(detect_architecture) || return 1
+    os=$(detect_os) || return 1
+    
+    log_info "Detected system: $os/$arch"
+    
+    # Additional checks
     case "$os" in
         darwin)
-            # macOS uses apple-darwin
-            target="${arch}-apple-darwin"
+            if ! command -v sw_vers >/dev/null 2>&1; then
+                log_warning "Cannot determine macOS version"
+            fi
             ;;
         linux)
-            # Detect libc variant (glibc vs musl)
-            if ldd --version 2>&1 | grep -q musl; then
-                target="${arch}-unknown-linux-musl"
-            else
-                target="${arch}-unknown-linux-gnu"
+            if [[ ! -f /etc/os-release ]]; then
+                log_warning "Cannot determine Linux distribution"
             fi
             ;;
         windows)
-            # Windows typically uses MSVC
-            target="${arch}-pc-windows-msvc"
-            ;;
-        *)
-            log_error "Cannot determine Rust target for OS: $os"
-            exit 1
+            log_info "Windows environment detected - ensure dependencies are available"
             ;;
     esac
     
-    echo "$target"
+    return 0
 }
 
-# Function to check if a command exists
+# Enhanced Rust target detection
+get_rust_target() {
+    local arch="$1"
+    local os="$2"
+    
+    log_debug "Determining Rust target for $os/$arch"
+    
+    case "$os" in
+        darwin)
+            echo "${arch}-apple-darwin"
+            ;;
+        linux)
+            # Detect libc variant with better checking
+            local libc_variant="gnu"
+            if command -v ldd >/dev/null 2>&1; then
+                if ldd --version 2>&1 | grep -qi musl; then
+                    libc_variant="musl"
+                    log_debug "Detected musl libc"
+                else
+                    log_debug "Detected glibc"
+                fi
+            else
+                log_debug "ldd not found, assuming glibc"
+            fi
+            echo "${arch}-unknown-linux-${libc_variant}"
+            ;;
+        windows)
+            # Prefer MSVC over GNU for Windows
+            echo "${arch}-pc-windows-msvc"
+            ;;
+        *)
+            log_error "Cannot determine Rust target for OS: $os"
+            return 1
+            ;;
+    esac
+}
+
+# Enhanced command existence check
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Function to check build dependencies
-check_dependencies() {
-    local missing_deps=()
+# Get command version
+get_command_version() {
+    local cmd="$1"
+    local version_flag="${2:---version}"
     
-    # Check for Python
-    if ! command_exists python3 && ! command_exists python; then
+    if command_exists "$cmd"; then
+        "$cmd" "$version_flag" 2>/dev/null | head -n1 || echo "unknown"
+    else
+        echo "not found"
+    fi
+}
+
+# Enhanced dependency checking with version information
+check_dependencies() {
+    log_step "Checking build dependencies..."
+    
+    local missing_deps=()
+    local warnings=()
+    
+    # Check Python
+    local python_cmd=""
+    if command_exists python3; then
+        python_cmd="python3"
+    elif command_exists python; then
+        python_cmd="python"
+    else
         missing_deps+=("python3")
     fi
     
-    # Check for pip
-    if ! command_exists pip3 && ! command_exists pip; then
+    if [[ -n "$python_cmd" ]]; then
+        local python_version
+        python_version=$(get_command_version "$python_cmd" --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        log_info "Python version: $python_version ($python_cmd)"
+        
+        # Check Python version compatibility
+        if [[ -n "$python_version" ]]; then
+            local major minor
+            major=$(echo "$python_version" | cut -d. -f1)
+            minor=$(echo "$python_version" | cut -d. -f2)
+            
+            if [[ $major -lt 3 ]] || [[ $major -eq 3 && $minor -lt 8 ]]; then
+                warnings+=("Python $python_version may be too old (recommend 3.8+)")
+            fi
+        fi
+    fi
+    
+    # Check pip
+    local pip_cmd=""
+    if command_exists pip3; then
+        pip_cmd="pip3"
+    elif command_exists pip; then
+        pip_cmd="pip"
+    else
         missing_deps+=("pip")
     fi
     
-    # Check for Rust (if using PyOxidizer)
+    if [[ -n "$pip_cmd" ]]; then
+        local pip_version
+        pip_version=$(get_command_version "$pip_cmd" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        log_info "Pip version: $pip_version ($pip_cmd)"
+    fi
+    
+    # Check Rust/Cargo for PyOxidizer builds
     if [[ "${USE_PYOXIDIZER:-false}" == "true" ]]; then
-        if ! command_exists cargo; then
-            missing_deps+=("rust/cargo")
+        if command_exists cargo; then
+            local cargo_version rust_version
+            cargo_version=$(get_command_version cargo | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            rust_version=$(get_command_version rustc | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            log_info "Cargo version: $cargo_version"
+            log_info "Rust version: $rust_version"
+        else
+            missing_deps+=("rust/cargo (required for PyOxidizer)")
         fi
     fi
     
-    # Check for PyInstaller (if using PyInstaller)
-    if [[ "${USE_PYINSTALLER:-true}" == "true" ]]; then
-        if ! python3 -c "import PyInstaller" 2>/dev/null; then
-            log_warning "PyInstaller not found, will attempt to install"
+    # Check PyInstaller availability
+    if [[ "${USE_PYINSTALLER:-true}" == "true" && -n "$python_cmd" ]]; then
+        if ! "$python_cmd" -c "import PyInstaller" 2>/dev/null; then
+            log_debug "PyInstaller not found, will install during setup"
+        else
+            local pyinstaller_version
+            pyinstaller_version=$("$python_cmd" -c "import PyInstaller; print(PyInstaller.__version__)" 2>/dev/null || echo "unknown")
+            log_info "PyInstaller version: $pyinstaller_version"
         fi
     fi
     
+    # Report missing dependencies
     if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        log_error "Missing dependencies: ${missing_deps[*]}"
+        log_error "Missing critical dependencies:"
+        for dep in "${missing_deps[@]}"; do
+            log_error "  - $dep"
+        done
         log_info "Please install the missing dependencies and try again"
-        exit 1
+        return 1
     fi
+    
+    # Report warnings
+    if [[ ${#warnings[@]} -gt 0 ]]; then
+        for warning in "${warnings[@]}"; do
+            log_warning "$warning"
+        done
+    fi
+    
+    log_success "All required dependencies are available"
+    return 0
 }
 
-# Function to setup Python virtual environment
+# Enhanced virtual environment setup
 setup_venv() {
     local venv_path="${1:-venv}"
+    log_step "Setting up Python virtual environment..."
+    
+    # Determine Python command
+    local python_cmd
+    python_cmd=$(command -v python3 || command -v python)
     
     if [[ ! -d "$venv_path" ]]; then
-        log_info "Creating Python virtual environment at $venv_path"
-        python3 -m venv "$venv_path"
+        log_info "Creating virtual environment at: $venv_path"
+        
+        if ! "$python_cmd" -m venv "$venv_path"; then
+            log_error "Failed to create virtual environment"
+            return 1
+        fi
+        
+        log_success "Virtual environment created"
+    else
+        log_info "Using existing virtual environment: $venv_path"
     fi
     
     # Activate virtual environment
+    local activate_script
     if [[ -f "$venv_path/bin/activate" ]]; then
-        source "$venv_path/bin/activate"
+        activate_script="$venv_path/bin/activate"
     elif [[ -f "$venv_path/Scripts/activate" ]]; then
-        source "$venv_path/Scripts/activate"
+        activate_script="$venv_path/Scripts/activate"
     else
-        log_error "Cannot find virtual environment activation script"
-        exit 1
+        log_error "Cannot find virtual environment activation script in $venv_path"
+        return 1
     fi
     
-    log_success "Virtual environment activated"
+    # shellcheck source=/dev/null
+    source "$activate_script"
+    
+    log_success "Virtual environment activated: $(which python)"
+    
+    # Verify activation
+    if [[ "$VIRTUAL_ENV" != *"$venv_path"* ]]; then
+        log_warning "Virtual environment may not be properly activated"
+    fi
+    
+    return 0
 }
 
-# Function to install Python dependencies
+# Enhanced dependency installation with progress tracking
 install_dependencies() {
-    log_info "Installing Python dependencies"
+    log_step "Installing Python dependencies..."
+    
+    local steps=0
+    local current_step=0
+    
+    # Count total steps
+    [[ "${SKIP_PIP_UPGRADE:-false}" != "true" ]] && ((steps++))
+    [[ -f "requirements.txt" || -f "pyproject.toml" ]] && ((steps++))
+    [[ "${USE_PYINSTALLER:-true}" == "true" ]] && ((steps++))
+    [[ "${USE_PYOXIDIZER:-false}" == "true" ]] && ((steps++))
     
     # Upgrade pip
-    pip install --upgrade pip --quiet
+    if [[ "${SKIP_PIP_UPGRADE:-false}" != "true" ]]; then
+        ((current_step++))
+        show_progress $current_step $steps "Upgrading pip..."
+        if pip install --upgrade pip --quiet; then
+            log_success "Pip upgraded"
+        else
+            log_warning "Failed to upgrade pip, continuing..."
+        fi
+    fi
     
     # Install project dependencies
+    ((current_step++))
+    show_progress $current_step $steps "Installing project dependencies..."
+    
     if [[ -f "requirements.txt" ]]; then
-        pip install -r requirements.txt --quiet
+        log_info "Installing from requirements.txt"
+        if ! pip install -r requirements.txt --quiet; then
+            log_error "Failed to install requirements"
+            return 1
+        fi
     elif [[ -f "pyproject.toml" ]]; then
-        pip install -e . --quiet
+        log_info "Installing from pyproject.toml"
+        if ! pip install -e . --quiet; then
+            log_error "Failed to install project"
+            return 1
+        fi
     else
         log_warning "No requirements.txt or pyproject.toml found"
     fi
     
     # Install build tools
     if [[ "${USE_PYINSTALLER:-true}" == "true" ]]; then
-        pip install pyinstaller --quiet
-        log_success "PyInstaller installed"
+        ((current_step++))
+        show_progress $current_step $steps "Installing PyInstaller..."
+        
+        if pip install pyinstaller --quiet; then
+            log_success "PyInstaller installed"
+        else
+            log_error "Failed to install PyInstaller"
+            return 1
+        fi
     fi
     
     if [[ "${USE_PYOXIDIZER:-false}" == "true" ]]; then
-        pip install pyoxidizer --quiet
-        log_success "PyOxidizer installed"
+        ((current_step++))
+        show_progress $current_step $steps "Installing PyOxidizer..."
+        
+        if pip install pyoxidizer --quiet; then
+            log_success "PyOxidizer installed"
+        else
+            log_error "Failed to install PyOxidizer"
+            return 1
+        fi
     fi
+    
+    log_success "All dependencies installed successfully"
+    return 0
 }
 
 # Function to build with PyInstaller
@@ -393,67 +654,178 @@ EOF
     log_success "Development bundle created: $output_dir/mcp-server"
 }
 
-# Main build function
+# Display usage information
+show_usage() {
+    cat << EOF
+Usage: $SCRIPT_NAME [OPTIONS] [BUILD_MODE]
+
+Enhanced build script for TTRPG Assistant MCP Server Backend
+
+BUILD_MODE:
+    release      Build optimized production binary (default)
+    dev          Create development bundle with source files
+    debug        Build with debug information
+
+OPTIONS:
+    -h, --help              Show this help message
+    -v, --verbose           Enable verbose logging
+    --debug                 Enable debug output
+    --skip-deps            Skip dependency installation
+    --skip-venv            Skip virtual environment setup
+    --use-pyoxidizer       Use PyOxidizer for building (requires Rust)
+    --use-pyinstaller      Use PyInstaller for building (default)
+    --clean-all            Clean all build artifacts before building
+
+ENVIRONMENT VARIABLES:
+    USE_PYINSTALLER=true|false    Choose PyInstaller (default: true)
+    USE_PYOXIDIZER=true|false     Choose PyOxidizer (default: false)
+    SKIP_DEPS=true|false          Skip dependency installation
+    SKIP_PIP_UPGRADE=true|false   Skip pip upgrade
+    DEBUG=true|false              Enable debug output
+
+Examples:
+    $SCRIPT_NAME                    # Build with default settings
+    $SCRIPT_NAME dev                # Create development bundle
+    $SCRIPT_NAME --debug release    # Build with debug output
+    USE_PYOXIDIZER=true $SCRIPT_NAME # Build with PyOxidizer
+
+EOF
+}
+
+# Enhanced main function with better argument parsing
 main() {
-    log_info "Starting build process"
+    BUILD_START_TIME=$(date '+%s')
+    
+    # Initialize log file
+    echo "=== Build started at $(date) ===" > "$LOG_FILE"
     
     # Parse command line arguments
-    BUILD_MODE="${1:-release}"
-    USE_PYINSTALLER="${USE_PYINSTALLER:-true}"
-    USE_PYOXIDIZER="${USE_PYOXIDIZER:-false}"
-    SKIP_DEPS="${SKIP_DEPS:-false}"
+    local build_mode="release"
+    local clean_all=false
+    local skip_deps=false
+    local skip_venv=false
     
-    # Detect system information
-    ARCH=$(detect_architecture)
-    OS=$(detect_os)
-    TARGET=$(get_rust_target "$ARCH" "$OS")
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -h|--help)
+                show_usage
+                exit 0
+                ;;
+            -v|--verbose)
+                export VERBOSE=true
+                ;;
+            --debug)
+                export DEBUG=true
+                ;;
+            --skip-deps)
+                skip_deps=true
+                ;;
+            --skip-venv)
+                skip_venv=true
+                ;;
+            --use-pyoxidizer)
+                export USE_PYOXIDIZER=true
+                export USE_PYINSTALLER=false
+                ;;
+            --use-pyinstaller)
+                export USE_PYINSTALLER=true
+                export USE_PYOXIDIZER=false
+                ;;
+            --clean-all)
+                clean_all=true
+                ;;
+            release|dev|debug)
+                build_mode="$1"
+                ;;
+            *)
+                log_error "Unknown argument: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+        shift
+    done
     
-    log_info "System Information:"
-    log_info "  Architecture: $ARCH"
-    log_info "  Operating System: $OS"
-    log_info "  Rust Target: $TARGET"
-    log_info "  Build Mode: $BUILD_MODE"
+    # Set defaults
+    export USE_PYINSTALLER="${USE_PYINSTALLER:-true}"
+    export USE_PYOXIDIZER="${USE_PYOXIDIZER:-false}"
+    export SKIP_DEPS="${skip_deps:-false}"
+    
+    log_info "${BOLD}Starting build process${NC}"
+    log_info "Build mode: $build_mode"
+    log_info "Log file: $LOG_FILE"
+    
+    # Validate system
+    validate_system || exit 1
+    
+    # Get system information
+    local arch os target
+    arch=$(detect_architecture) || exit 1
+    os=$(detect_os) || exit 1
+    target=$(get_rust_target "$arch" "$os") || exit 1
+    
+    log_info "${BOLD}System Information:${NC}"
+    log_info "  Architecture: $arch"
+    log_info "  Operating System: $os"
+    log_info "  Rust Target: $target"
     
     # Check dependencies
-    check_dependencies
+    check_dependencies || exit 1
     
-    # Setup virtual environment
-    if [[ "$SKIP_DEPS" != "true" ]]; then
-        setup_venv
-        install_dependencies
+    # Setup build environment
+    if [[ "$skip_venv" != "true" && "$SKIP_DEPS" != "true" ]]; then
+        setup_venv || exit 1
+        install_dependencies || exit 1
     fi
     
     # Clean previous builds
-    log_info "Cleaning previous builds"
-    rm -rf dist build __pycache__ *.spec
-    
-    # Build based on selected method
-    if [[ "$BUILD_MODE" == "dev" ]]; then
-        create_dev_bundle "$ARCH" "$OS" "$TARGET"
-    elif [[ "$USE_PYOXIDIZER" == "true" ]] && command_exists cargo; then
-        build_with_pyoxidizer "$ARCH" "$OS" "$TARGET"
-    elif [[ "$USE_PYINSTALLER" == "true" ]]; then
-        build_with_pyinstaller "$ARCH" "$OS" "$TARGET"
+    if [[ "$clean_all" == "true" ]]; then
+        log_step "Cleaning all build artifacts..."
+        rm -rf dist build __pycache__ *.spec venv .pytest_cache
+        log_success "Build artifacts cleaned"
     else
-        log_error "No build method available"
-        exit 1
+        log_step "Cleaning previous builds..."
+        rm -rf dist build __pycache__ *.spec
     fi
     
-    # Verify build output
-    local output_file="dist/${TARGET}/mcp-server"
-    if [[ "$OS" == "windows" ]]; then
-        output_file="${output_file}.exe"
-    fi
+    # Perform build
+    local output_file="dist/${target}/mcp-server"
+    [[ "$os" == "windows" ]] && output_file="${output_file}.exe"
     
+    case "$build_mode" in
+        dev)
+            create_dev_bundle "$arch" "$os" "$target" || exit 1
+            ;;
+        release|debug)
+            if [[ "$USE_PYOXIDIZER" == "true" ]] && command_exists cargo; then
+                build_with_pyoxidizer "$arch" "$os" "$target" || exit 1
+            elif [[ "$USE_PYINSTALLER" == "true" ]]; then
+                build_with_pyinstaller "$arch" "$os" "$target" || exit 1
+            else
+                log_error "No suitable build method available"
+                exit 1
+            fi
+            ;;
+        *)
+            log_error "Unknown build mode: $build_mode"
+            exit 1
+            ;;
+    esac
+    
+    # Verify and report results
     if [[ -f "$output_file" ]]; then
-        local size=$(du -h "$output_file" | cut -f1)
-        log_success "Build completed successfully!"
-        log_info "Output: $output_file ($size)"
+        local size elapsed
+        size=$(du -h "$output_file" | cut -f1)
+        elapsed=$(($(date '+%s') - BUILD_START_TIME))
         
         # Make executable on Unix systems
-        if [[ "$OS" != "windows" ]]; then
-            chmod +x "$output_file"
-        fi
+        [[ "$os" != "windows" ]] && chmod +x "$output_file"
+        
+        log_success "${BOLD}Build completed successfully!${NC}"
+        log_info "Output: $output_file ($size)"
+        log_info "Build time: ${elapsed}s"
+        
+        echo "=== Build completed successfully at $(date) ===" >> "$LOG_FILE"
     else
         log_error "Build output not found: $output_file"
         exit 1
