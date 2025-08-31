@@ -75,7 +75,7 @@ async def upload_and_process_pdf(
         )
         
         # Process the PDF
-        results = await pipeline.process_pdf(
+        results = pipeline.process_pdf(
             pdf_path=tmp_path,
             rulebook_name=rulebook_name,
             system=system,
