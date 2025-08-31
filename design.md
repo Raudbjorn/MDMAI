@@ -24,6 +24,9 @@ The project follows a phased approach to ensure incremental delivery and testing
 14. **Phase 18**: Frontend Development - SvelteKit responsive web application
 15. **Phase 19**: Integration Testing - End-to-end testing
 16. **Phase 20**: Performance Optimization - Final optimizations
+17. **Phase 21**: Mobile Support - Integrated into Phase 18 (responsive web)
+18. **Phase 22**: Testing & Documentation - Comprehensive test suite and docs
+19. **Phase 23**: Desktop Application - Native desktop app using Tauri
 
 Each phase builds on the previous ones, with clear interfaces between components.
 
@@ -1157,3 +1160,303 @@ export class MCPWebSocket {
 - **PDF Processing**: < 5s per document
 - **Search Latency**: < 50ms
 - **WebSocket Latency**: < 10ms
+
+## Phase 23: Desktop Application Architecture
+
+### Overview
+The desktop application provides a native experience for running the TTRPG Assistant MCP Server locally with an integrated user interface. Built using Tauri, it combines the efficiency of a Rust backend with the existing SvelteKit frontend, providing a lightweight, secure, and performant desktop experience.
+
+### Technology Stack
+
+#### Core Framework: Tauri
+- **Why Tauri**: 
+  - Small bundle size (3-10MB base vs 50-150MB for Electron)
+  - 90% less memory usage than Electron
+  - Native performance with Rust backend
+  - Direct reuse of existing SvelteKit frontend
+  - Built-in security with sandboxed WebView
+  - Cross-platform support (Windows, macOS, Linux)
+
+#### Architecture Components
+```
+┌─────────────────────────────────────────────┐
+│            Tauri Application                 │
+├─────────────────────────────────────────────┤
+│  ┌────────────────────────────────────┐     │
+│  │    SvelteKit Frontend (WebView)    │     │
+│  └────────────────────────────────────┘     │
+│                    ↕ IPC                     │
+│  ┌────────────────────────────────────┐     │
+│  │      Rust Backend (Tauri)          │     │
+│  │  - Process Management               │     │
+│  │  - File System Access               │     │
+│  │  - System Tray Integration          │     │
+│  └────────────────────────────────────┘     │
+│                    ↕ stdio                   │
+│  ┌────────────────────────────────────┐     │
+│  │    Python MCP Server (subprocess)   │     │
+│  │  - FastMCP Server                   │     │
+│  │  - ChromaDB/SQLite                  │     │
+│  │  - All existing functionality       │     │
+│  └────────────────────────────────────┘     │
+└─────────────────────────────────────────────┘
+```
+
+### Communication Architecture
+
+#### Stdio-Based IPC (Simple and Robust)
+- **Frontend ↔ Rust**: Tauri's built-in IPC using JSON serialization
+- **Rust ↔ Python**: JSON-RPC 2.0 over stdin/stdout (native MCP protocol)
+- **Protocol**: Line-delimited JSON-RPC messages
+- **Security**: Process sandboxing, command allowlisting, CSP enforcement
+
+#### Why Stdio Over WebSocket
+After careful evaluation, stdio communication provides:
+- **Zero Python changes** - MCP server already supports stdio perfectly
+- **Process isolation** - Complete memory separation between components
+- **Simpler deployment** - No network services or ports to manage
+- **Better error recovery** - Tauri can restart crashed processes cleanly
+- **Fewer dependencies** - No FastAPI, uvicorn, or WebSocket libraries needed
+
+#### Stdio Bridge Implementation
+```rust
+// Rust manages Python process lifecycle
+struct MCPBridge {
+    child: Child,
+    stdin: Arc<Mutex<ChildStdin>>,
+    stdout: Arc<Mutex<BufReader<ChildStdout>>>,
+}
+
+// Bridge translates between Tauri IPC and stdio
+async fn mcp_call(method: String, params: Value) -> Result<Value> {
+    // Send JSON-RPC request to Python stdin
+    // Read JSON-RPC response from Python stdout
+}
+```
+
+#### Data Flow
+1. User interaction in SvelteKit UI
+2. IPC command to Rust backend via Tauri
+3. Rust sends JSON-RPC to Python process via stdin
+4. Python MCP server processes request
+5. Response sent back via stdout
+6. Rust parses response and relays to frontend
+7. UI updates with results or error state
+
+#### Process Management
+- **Automatic Restart**: Rust monitors and restarts Python if it crashes
+- **Health Monitoring**: Regular heartbeat commands to verify process health
+- **Resource Limits**: CPU and memory limits enforced by OS
+- **Clean Shutdown**: Graceful termination on app close
+
+### Python Packaging Strategy
+
+#### PyOxidizer Integration
+- **Single Executable**: Bundle Python runtime + dependencies
+- **Size**: ~50MB for complete Python environment
+- **Startup Time**: ~700ms (vs 2-3s for traditional Python)
+- **Dependencies**: All included (ChromaDB, sentence-transformers, etc.)
+
+#### Distribution Structure
+```
+app/
+├── tauri-app.exe/app/dmg    # Platform-specific Tauri executable
+├── resources/
+│   ├── python/               # Embedded Python executable
+│   │   └── mcp-server        # PyOxidizer bundle
+│   ├── data/                 # User data directory
+│   │   ├── chromadb/         # Vector database
+│   │   ├── sqlite/           # Structured data
+│   │   └── config/           # User configuration
+│   └── assets/               # Static assets
+```
+
+### Platform-Specific Implementation
+
+#### Windows
+- **Installer**: MSI and NSIS installers
+- **WebView**: WebView2 (Chromium-based)
+- **Python**: Embedded via PyOxidizer
+- **Auto-start**: Windows service option
+- **Updates**: Built-in auto-updater
+
+#### macOS
+- **Distribution**: DMG and .app bundle
+- **WebView**: WKWebView (Safari-based)
+- **Code Signing**: Required for distribution
+- **Python**: Universal binary for Intel/Apple Silicon
+- **Updates**: Sparkle framework integration
+
+#### Linux
+- **Packages**: AppImage, .deb, .rpm
+- **WebView**: WebKitGTK
+- **Python**: System Python or embedded
+- **Desktop Integration**: .desktop file
+- **Updates**: AppImageUpdate or package manager
+
+### Security Considerations
+
+#### Process Isolation
+- Python runs as separate subprocess
+- Limited file system access
+- Network restrictions configurable
+- No direct system calls from frontend
+
+#### Data Protection
+- Local storage encryption for sensitive data
+- Secure credential storage using OS keychain
+- Session tokens with expiration
+- Audit logging for security events
+
+### Performance Optimizations
+
+#### Startup Performance
+- Lazy loading of Python modules
+- Pre-compiled Python bytecode
+- Background initialization of ChromaDB
+- Progressive UI loading
+
+#### Runtime Performance
+- Process pooling for parallel operations
+- Efficient IPC with message batching
+- Memory-mapped file sharing for large data
+- Native file dialogs and system integration
+
+### Development Workflow
+
+#### Build Process
+```bash
+# Development
+npm run tauri dev
+
+# Production Build
+npm run tauri build
+
+# Platform-specific builds
+npm run tauri build -- --target x86_64-pc-windows-msvc
+npm run tauri build -- --target x86_64-apple-darwin
+npm run tauri build -- --target x86_64-unknown-linux-gnu
+```
+
+#### Configuration
+```json
+// tauri.conf.json
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../build"
+  },
+  "package": {
+    "productName": "TTRPG Assistant",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "shell": {
+        "execute": true,
+        "scope": [{
+          "name": "run-mcp-server",
+          "cmd": "python",
+          "args": ["src/main.py"]
+        }]
+      }
+    }
+  }
+}
+```
+
+### Features Comparison
+
+| Feature | Web Version | Desktop Version |
+|---------|------------|-----------------|
+| MCP Server | Remote | Local (embedded) |
+| File Access | Limited | Full (sandboxed) |
+| Offline Mode | Service Worker | Native |
+| PDF Processing | Server-side | Local |
+| Performance | Network-dependent | Native speed |
+| Updates | Automatic | Auto-updater |
+| Installation | None | One-time |
+| System Integration | Limited | Full |
+
+### Migration Path
+
+#### From Web to Desktop
+1. User exports data from web version
+2. Desktop app imports existing campaigns/settings
+3. Automatic schema migration if needed
+4. Sync option for hybrid usage
+
+#### Shared Codebase Strategy
+- Frontend: 95% code reuse (SvelteKit)
+- Backend: 100% code reuse (Python MCP)
+- Desktop-specific: ~5% (Tauri commands)
+- Maintenance: Single codebase for core logic
+
+### Desktop-Specific Features
+
+#### System Tray Integration
+- Quick access to common functions
+- Background operation mode
+- Resource usage monitoring
+- Session status indicators
+- Dynamic icon states (active, syncing, error)
+
+#### Native File Handling
+- Drag-and-drop PDF import
+- OS file associations (.ttrpg files)
+- Native file dialogs
+- Recent files menu
+
+#### Offline Capabilities
+- Full functionality without internet
+- Local AI model support (optional)
+- Offline documentation
+- Local backup/restore
+
+### Visual Assets and Polish
+
+#### Required Icon Files
+```
+frontend/src-tauri/icons/
+├── icon.ico              # Windows icon (multi-size)
+├── 32x32.png            # Tray icon, taskbar
+├── 128x128.png          # Medium size
+├── 128x128@2x.png       # High DPI (256x256)
+├── icon.png             # Source (512x512+)
+└── tray/
+    ├── icon.ico         # Default tray
+    ├── icon-active.ico  # Connected state
+    ├── icon-error.ico   # Error state
+    └── icon-syncing.ico # Loading state
+```
+
+#### Windows Installer Graphics
+```
+frontend/src-tauri/installer/
+├── header.bmp           # 150x57px NSIS header
+├── welcome.bmp          # 164x314px welcome page
+└── icon.ico            # Installer executable icon
+
+frontend/src-tauri/wix/
+├── banner.bmp          # 493x58px MSI banner
+├── dialog.bmp          # 493x312px background
+└── license.rtf         # License agreement
+```
+
+#### Custom Window Styling
+- Modern titlebar with Windows 11 integration
+- Smooth animations and transitions
+- High DPI support via manifest
+- Custom scrollbars matching OS theme
+- Native Windows fonts (Inter + Iosevka for code)
+
+### Performance Targets
+
+#### Desktop Metrics
+- **Application Size**: < 65MB total
+- **Startup Time**: < 2 seconds
+- **Memory Usage**: < 150MB idle
+- **CPU Usage**: < 5% idle
+- **IPC Latency**: < 5ms
