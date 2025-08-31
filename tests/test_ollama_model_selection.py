@@ -105,7 +105,7 @@ class TestOllamaModelSelection:
         
         assert response.status_code == 200
         data = response.json()
-        assert data["running"] is True
+        assert data["is_running"] is True
     
     @patch('requests.get')
     def test_api_ollama_status_offline(self, mock_get, test_client):
