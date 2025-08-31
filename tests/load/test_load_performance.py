@@ -700,7 +700,7 @@ class StressTestScenarios:
                         else:
                             failed_connections += 1
                             return False
-            except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+            except Exception as e:
                 logger.error(f"Connection {conn_id} failed: {e}")
                 failed_connections += 1
                 return False
