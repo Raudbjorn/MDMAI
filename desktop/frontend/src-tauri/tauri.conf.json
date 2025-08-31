@@ -10,6 +10,11 @@
     "frontendDist": "../build"
   },
   "app": {
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    },
     "security": {
       "csp": "default-src 'self' tauri: asset:; script-src 'self' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: tauri: asset:; img-src 'self' data: blob: tauri: asset:; font-src 'self' data:; media-src 'self' tauri: asset:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';",
       "dangerousDisableAssetCspModification": false,
@@ -44,7 +49,7 @@
     ]
   },
   "bundle": {
-    "active": false
+    "active": true
   },
   "plugins": {
     "updater": {

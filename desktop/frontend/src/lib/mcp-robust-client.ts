@@ -472,6 +472,6 @@ export function getMCPClient(): RobustMCPClient {
 }
 
 // Export convenience stores
-export const mcpStatus = writable<ConnectionStatus>('disconnected');
-export const mcpError = writable<string | null>(null);
-export const mcpLoading = writable<boolean>(false);
+export const mcpStatus = browser ? getMCPClient().status : writable<ConnectionStatus>('disconnected');
+export const mcpError = browser ? getMCPClient().lastError : writable<string | null>(null);
+export const mcpLoading = browser ? getMCPClient().isLoading : writable<boolean>(false);
