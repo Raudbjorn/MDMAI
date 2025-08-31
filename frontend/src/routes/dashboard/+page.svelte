@@ -30,7 +30,8 @@
 	);
 
 	// Improved error handling with Result pattern
-	async function handleSearch(): Promise<void> {
+	async function handleSearch(event: Event): Promise<void> {
+		event.preventDefault();
 		const query = searchState.query.trim();
 		if (!query) return;
 
@@ -191,7 +192,7 @@
 				<CardDescription>Search rules, spells, monsters, and more</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<form on:submit|preventDefault={handleSearch} class="flex gap-2">
+				<form onsubmit={handleSearch} class="flex gap-2">
 					<input
 						type="text"
 						bind:value={searchState.query}

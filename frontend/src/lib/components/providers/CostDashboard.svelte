@@ -384,7 +384,7 @@
 
 <!-- Budget Modal -->
 {#if showBudgetModal}
-	<div class="modal-overlay" onclick={() => showBudgetModal = false}>
+	<div class="modal-overlay" onclick={() => (showBudgetModal = false)}>
 		<div class="modal-content" onclick={(e) => e.stopPropagation()}>
 			<h3 class="text-lg font-semibold mb-4">
 				{editingBudget ? 'Edit Budget' : 'Add Budget'}
