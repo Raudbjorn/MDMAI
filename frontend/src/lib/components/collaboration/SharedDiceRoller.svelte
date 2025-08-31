@@ -20,7 +20,7 @@
 	let { roomId, maxHistory = 20, showAnimation = true, compactMode = false }: Props = $props();
 
 	let customExpression = $state('');
-	let selectedPreset = $state<number | null>(null);
+	let selectedPreset = $state<DicePreset | null>(null);
 	let rollHistory = $state<DiceRoll[]>([]);
 	let isRolling = $state(false);
 	let animatedResult = $state<number | null>(null);
