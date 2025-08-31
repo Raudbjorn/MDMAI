@@ -195,7 +195,7 @@ class BridgeSessionManager:
             
             return result
             
-        except Exception:
+        except Exception as e:
             # Update session state on error
             session.state = SessionState.ERROR
             raise
