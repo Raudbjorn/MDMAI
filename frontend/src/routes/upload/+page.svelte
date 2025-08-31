@@ -5,6 +5,7 @@
 
 	// Local state
 	let uploadCount = $state(0);
+	let currentUpload = $state<{file: File; model: string} | null>(null);
 	let recentUploads = $state<Array<{
 		id: string;
 		filename: string;
@@ -30,14 +31,19 @@
 		}
 	});
 
+	function handleUploadStart(event: CustomEvent<{ file: File; model: string }>) {
+		// Store current upload info for success handler
+		currentUpload = event.detail;
+	}
+
 	function handleUploadSuccess(event: CustomEvent<{ message: string }>) {
 		uploadCount++;
 		
-		// Add to recent uploads
+		// Add to recent uploads using actual file and model info
 		const upload = {
 			id: crypto.randomUUID(),
-			filename: 'document.pdf', // This would come from the actual file
-			model: 'Selected Model', // This would come from the selected model
+			filename: currentUpload?.file.name || 'document.pdf',
+			model: currentUpload?.model || 'Unknown Model',
 			timestamp: new Date(),
 			status: 'success' as const,
 			message: event.detail.message
@@ -47,14 +53,17 @@
 		
 		// Save to localStorage
 		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
+		
+		// Clear current upload
+		currentUpload = null;
 	}
 
 	function handleUploadError(event: CustomEvent<{ error: string }>) {
-		// Add to recent uploads as error
+		// Add to recent uploads as error using actual file and model info
 		const upload = {
 			id: crypto.randomUUID(),
-			filename: 'document.pdf',
-			model: 'Selected Model',
+			filename: currentUpload?.file.name || 'document.pdf',
+			model: currentUpload?.model || 'Unknown Model',
 			timestamp: new Date(),
 			status: 'error' as const,
 			message: event.detail.error
@@ -64,6 +73,9 @@
 		
 		// Save to localStorage
 		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
+		
+		// Clear current upload
+		currentUpload = null;
 	}
 
 	function formatTimestamp(date: Date): string {
@@ -120,6 +132,7 @@
 				<h2 class="section-title">Select Document</h2>
 				<PDFUpload
 					maxFileSize={100}
+					onupload={handleUploadStart}
 					onsuccess={handleUploadSuccess}
 					onerror={handleUploadError}
 				/>

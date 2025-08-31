@@ -75,20 +75,14 @@ async def upload_and_process_pdf(
         )
         
         # Process the PDF
-        loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(
-            None,
-            lambda: asyncio.run(
-                pipeline.process_pdf(
-                    pdf_path=tmp_path,
-                    rulebook_name=rulebook_name,
-                    system=system,
-                    source_type=source_type,
-                    enable_adaptive_learning=enable_adaptive_learning,
-                    skip_size_check=False,
-                    user_confirmed=True  # Already validated size
-                )
-            )
+        results = await pipeline.process_pdf(
+            pdf_path=tmp_path,
+            rulebook_name=rulebook_name,
+            system=system,
+            source_type=source_type,
+            enable_adaptive_learning=enable_adaptive_learning,
+            skip_size_check=False,
+            user_confirmed=True  # Already validated size
         )
         
         # Add file info to results

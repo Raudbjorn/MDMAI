@@ -259,7 +259,7 @@ class OllamaRoutes:
                     )
                     if version_response.status_code == 200:
                         version = version_response.json().get("version")
-                except:
+                except requests.RequestException:
                     pass  # Version endpoint might not exist
                 
                 return Success(OllamaStatus(

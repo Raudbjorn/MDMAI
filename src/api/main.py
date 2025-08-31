@@ -1,8 +1,9 @@
 """Main FastAPI application for MDMAI API."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -95,10 +96,11 @@ class MDMAIApp:
             lifespan=lifespan
         )
         
-        # Configure CORS
+        # Configure CORS - use environment variable or defaults for development
+        allowed_origins = self._get_cors_origins()
         self.app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],  # Configure based on your needs
+            allow_origins=allowed_origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -134,6 +136,28 @@ class MDMAIApp:
         self._add_exception_handlers()
         
         return self.app
+    
+    def _get_cors_origins(self) -> List[str]:
+        """
+        Get CORS allowed origins from environment or use development defaults.
+        
+        Returns:
+            List of allowed origins
+        """
+        # Check for environment variable first
+        env_origins = os.getenv("CORS_ALLOWED_ORIGINS")
+        if env_origins:
+            return [origin.strip() for origin in env_origins.split(",")]
+        
+        # Development defaults - restrict to common local development ports
+        return [
+            "http://localhost:3000",      # SvelteKit dev server
+            "http://localhost:5173",      # Vite dev server
+            "http://127.0.0.1:3000",      # Alternative localhost
+            "http://127.0.0.1:5173",      # Alternative localhost
+            "tauri://localhost",          # Tauri desktop app
+            "https://tauri.localhost"     # Tauri desktop app (secure)
+        ]
     
     def _include_routers(self) -> None:
         """Include all API routers."""
