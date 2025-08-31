@@ -8,11 +8,44 @@
   },
   "package": {
     "productName": "TTRPG Assistant",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "authors": ["TTRPG Assistant Team"],
+    "defaultPermission": "world"
   },
   "tauri": {
     "allowlist": {
       "all": false,
+      "window": {
+        "all": false,
+        "create": false,
+        "center": true,
+        "requestUserAttention": true,
+        "setResizable": true,
+        "setTitle": true,
+        "maximize": true,
+        "unmaximize": true,
+        "minimize": true,
+        "unminimize": true,
+        "show": true,
+        "hide": true,
+        "close": true,
+        "setDecorations": true,
+        "setAlwaysOnTop": true,
+        "setSize": true,
+        "setMinSize": true,
+        "setMaxSize": true,
+        "setPosition": true,
+        "setFullscreen": true,
+        "setFocus": true,
+        "setIcon": true,
+        "setSkipTaskbar": true,
+        "setCursorGrab": true,
+        "setCursorVisible": true,
+        "setCursorIcon": true,
+        "setCursorPosition": true,
+        "startDragging": true,
+        "print": true
+      },
       "shell": {
         "all": false,
         "execute": true,
@@ -126,7 +159,21 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:* http://localhost:*; img-src 'self' data: https:; font-src 'self' data:"
+      "csp": {
+        "default-src": ["'self'", "tauri:", "asset:"],
+        "script-src": ["'self'", "'unsafe-inline'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "connect-src": ["'self'", "ipc:", "tauri:", "asset:"],
+        "img-src": ["'self'", "data:", "blob:", "tauri:", "asset:", "https:"],
+        "font-src": ["'self'", "data:"],
+        "media-src": ["'self'", "tauri:", "asset:"],
+        "frame-src": ["'none'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"]
+      },
+      "dangerousDisableAssetCspModification": false,
+      "freezePrototype": true,
+      "dangerousRemoteDomainIpcAccess": []
     },
     "systemTray": {
       "iconPath": "icons/tray/icon.ico",
@@ -156,6 +203,11 @@
         "fileDropEnabled": true,
         "theme": null,
         "titleBarStyle": "Overlay",
+        "userAgent": "TTRPG Assistant Desktop",
+        "incognito": false,
+        "alwaysOnTop": false,
+        "contentProtected": false,
+        "visibleOnAllWorkspaces": false,
         "hiddenTitle": false,
         "acceptFirstMouse": true,
         "tabbingIdentifier": "ttrpg-assistant",
