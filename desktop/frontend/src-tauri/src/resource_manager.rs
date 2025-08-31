@@ -71,6 +71,7 @@ pub struct ResourceLimits {
     pub max_file_handles: u32,
     pub max_concurrent_tasks: u32,
     pub cleanup_timeout_ms: u64,
+    pub stale_resource_timeout_secs: u64,
 }
 
 impl Default for ResourceLimits {
@@ -82,6 +83,7 @@ impl Default for ResourceLimits {
             max_file_handles: 1000,
             max_concurrent_tasks: 50,
             cleanup_timeout_ms: 10000, // 10 seconds
+            stale_resource_timeout_secs: 3600, // 1 hour
         }
     }
 }
@@ -251,9 +253,14 @@ impl ResourceManager {
                             continue;
                         }
                         
-                        // Check for stale resources (older than 1 hour without being critical)
+                        // Check for stale resources based on configurable timeout
+                        let stale_timeout_secs = {
+                            let limits = limits_clone.read().await;
+                            limits.stale_resource_timeout_secs
+                        };
+                        
                         if !resource.info.is_critical && 
-                           now.duration_since(resource.info.created_at) > Duration::from_secs(3600) {
+                           now.duration_since(resource.info.created_at) > Duration::from_secs(stale_timeout_secs) {
                             to_cleanup.push((id.clone(), resource.clone()));
                         }
                     }
@@ -767,6 +774,32 @@ mod tests {
         // Shutdown should clean all resources
         manager.shutdown().await.unwrap();
         
+        let stats = manager.get_stats().await;
+        assert_eq!(stats.active_resources, 0);
+    }
+    
+    #[tokio::test]
+    async fn test_configurable_stale_timeout() {
+        // Test 1: Verify default timeout is 3600 seconds (1 hour)
+        let default_limits = ResourceLimits::default();
+        assert_eq!(default_limits.stale_resource_timeout_secs, 3600);
+        
+        // Test 2: Verify custom timeout can be set
+        let custom_limits = ResourceLimits {
+            max_memory_mb: 1024,
+            max_processes: 5,
+            max_connections: 50,
+            max_file_handles: 500,
+            max_concurrent_tasks: 25,
+            cleanup_timeout_ms: 5000,
+            stale_resource_timeout_secs: 1800, // 30 minutes
+        };
+        assert_eq!(custom_limits.stale_resource_timeout_secs, 1800);
+        
+        // Test 3: Verify ResourceManager can use custom limits
+        let manager = ResourceManager::with_limits(custom_limits);
+        
+        // Verify the manager was created successfully (implicit test that our struct changes don't break construction)
         let stats = manager.get_stats().await;
         assert_eq!(stats.active_resources, 0);
     }
