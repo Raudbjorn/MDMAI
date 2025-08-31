@@ -265,8 +265,6 @@ class BackstoryGenerator:
         """
         logger.info(f"Generating {depth} backstory for {character.name}")
 
-        # Store current character for context in helper methods
-        self._current_character = character
 
         backstory = Backstory()
 
