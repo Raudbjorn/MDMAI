@@ -37,7 +37,8 @@ cd frontend && git add src/lib/components/collaboration/ParticipantList.svelte
 1. **Clean Setup**: Remove old environments and create fresh ones
    ```bash
    rm -rf venv test_venv .venv
-   python3 -m venv venv
+   # Try python3 first, fallback to python if python3 is not available
+   python3 -m venv venv || python -m venv venv
    source venv/bin/activate
    pip install --upgrade pip setuptools wheel
    ```

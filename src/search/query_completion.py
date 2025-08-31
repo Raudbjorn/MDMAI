@@ -143,12 +143,13 @@ class QueryPatternMatcher:
 class QueryCompletionEngine:
     """ML-based query completion engine with learning capabilities."""
 
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: Optional[str] = None, context_window: int = 5):
         """
         Initialize query completion engine.
 
         Args:
             model_dir: Optional directory for saving/loading models
+            context_window: Size of the context window for session context
         """
         self.model_dir = Path(model_dir) if model_dir else None
         self.lock = Lock()
@@ -185,7 +186,7 @@ class QueryCompletionEngine:
         # Learning parameters
         self.min_frequency_threshold = 2
         self.learning_rate = 0.1
-        self.context_window = 5  # Default context window size
+        self.context_window = context_window
 
         # Load existing model if available
         if self.model_dir:
@@ -564,14 +565,15 @@ class QueryCompletionEngine:
 class QueryCompletionService:
     """High-level service for query completion functionality."""
 
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: Optional[str] = None, context_window: int = 5):
         """
         Initialize query completion service.
 
         Args:
             model_dir: Optional directory for model persistence
+            context_window: Size of the context window for session context
         """
-        self.engine = QueryCompletionEngine(model_dir)
+        self.engine = QueryCompletionEngine(model_dir, context_window)
 
         # Pre-load common TTRPG queries for better initial suggestions
         self._load_default_queries()

@@ -18,6 +18,12 @@ from config.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+# Docker configuration constants
+DOCKER_WORKDIR = "/sandbox"
+DOCKER_IMAGE = "python:3.11-slim"
+DOCKER_SANDBOX_MOUNT_PATH = "/sandbox"
+
+
 class SandboxPolicy(Enum):
     """Sandbox security policies."""
 
@@ -368,9 +374,9 @@ class ProcessSandbox:
                 f"--cpus={self.config.resource_limits.cpu_percent/100}",
                 f"--pids-limit={self.config.resource_limits.max_processes}",
                 "--network=none" if not self.config.network_policy.allow_network else "",
-                "--workdir=/sandbox",
-                f"-v", f"{sandbox_dir}:/sandbox",
-                "python:3.11-slim",
+                f"--workdir={DOCKER_WORKDIR}",
+                f"-v", f"{sandbox_dir}:{DOCKER_SANDBOX_MOUNT_PATH}",
+                DOCKER_IMAGE,
             ])
         
         sandboxed.extend(command)

@@ -331,14 +331,7 @@ impl CacheManager {
         evicted_count
     }
 
-    /// Helper method to update size after removal
-    fn update_size_after_removal(&self, entry: &CacheEntry, key: &str) {
-        let size_to_remove = entry.size + key.len();
-        let mut stats = self.stats.write();
-        stats.current_size_bytes = stats.current_size_bytes.saturating_sub(size_to_remove);
-    }
-
-    /// Find the least recently used key
+    /// Find the least recently used key (O(n) operation)
     fn find_lru_key(&self) -> Option<String> {
         self.entries
             .iter()

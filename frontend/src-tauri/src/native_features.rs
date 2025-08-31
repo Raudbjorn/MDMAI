@@ -1,13 +1,12 @@
-use anyhow::{anyhow, Context, Result};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use parking_lot::RwLock;
-use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Custom error types for better error handling
+/// Native features error types with context
 #[derive(Debug, Error)]
 pub enum NativeError {
     #[error("System metric collection failed: {0}")]
@@ -18,7 +17,11 @@ pub enum NativeError {
     Notification(String),
     #[error("Cache operation failed: {0}")]
     Cache(String),
+    #[error("Task execution failed: {0}")]
+    TaskExecution(String),
 }
+
+type Result<T> = std::result::Result<T, NativeError>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemStatus {
@@ -30,10 +33,21 @@ pub struct SystemStatus {
 }
 
 impl SystemStatus {
-    /// Check if the status is considered stale
+    /// Check if status exceeds maximum age threshold
     pub fn is_stale(&self, max_age: Duration) -> bool {
         let age = chrono::Utc::now() - self.last_updated;
         age.to_std().unwrap_or(Duration::MAX) > max_age
+    }
+
+    /// Create a new system status with current timestamp
+    pub fn new(cpu_usage: f32, memory_usage: f64, disk_usage: f64, network_active: bool) -> Self {
+        Self {
+            cpu_usage,
+            memory_usage,
+            disk_usage,
+            network_active,
+            last_updated: chrono::Utc::now(),
+        }
     }
 }
 
@@ -49,36 +63,35 @@ pub struct FileSystemInfo {
 }
 
 impl FileSystemInfo {
-    /// Create FileSystemInfo from a path
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, NativeError> {
+    /// Create FileSystemInfo from a path with comprehensive metadata
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path_ref = path.as_ref();
         let path_string = path_ref.to_string_lossy().into_owned();
         
         let metadata = std::fs::metadata(path_ref);
         let exists = metadata.is_ok();
         
-        if let Ok(meta) = metadata {
-            let modified = meta.modified()
-                .ok()
-                .and_then(|time| {
-                    time.duration_since(SystemTime::UNIX_EPOCH)
-                        .ok()
-                        .and_then(|dur| chrono::DateTime::from_timestamp(dur.as_secs() as i64, 0))
-                });
+        match metadata {
+            Ok(meta) => {
+                let modified = meta.modified()
+                    .ok()
+                    .and_then(|time| {
+                        time.duration_since(SystemTime::UNIX_EPOCH)
+                            .ok()
+                            .and_then(|dur| chrono::DateTime::from_timestamp(dur.as_secs() as i64, 0))
+                    });
 
-            let permissions = FilePermissions::from_metadata(&meta);
-
-            Ok(Self {
-                path: path_string,
-                exists: true,
-                is_file: meta.is_file(),
-                is_dir: meta.is_dir(),
-                size: Some(meta.len()),
-                modified,
-                permissions,
-            })
-        } else {
-            Ok(Self {
+                Ok(Self {
+                    path: path_string,
+                    exists: true,
+                    is_file: meta.is_file(),
+                    is_dir: meta.is_dir(),
+                    size: Some(meta.len()),
+                    modified,
+                    permissions: FilePermissions::from_metadata(&meta),
+                })
+            }
+            Err(_) => Ok(Self {
                 path: path_string,
                 exists: false,
                 is_file: false,
@@ -127,6 +140,7 @@ pub struct NotificationConfig {
 }
 
 impl NotificationConfig {
+    /// Create new notification with title and body
     pub fn new<T: Into<String>, B: Into<String>>(title: T, body: B) -> Self {
         Self {
             title: title.into(),
@@ -136,11 +150,13 @@ impl NotificationConfig {
         }
     }
 
-    pub fn with_urgency(mut self, urgency: NotificationUrgency) -> Self {
+    /// Set notification urgency level
+    pub const fn with_urgency(mut self, urgency: NotificationUrgency) -> Self {
         self.urgency = urgency;
         self
     }
 
+    /// Set notification icon
     pub fn with_icon<I: Into<String>>(mut self, icon: I) -> Self {
         self.icon = Some(icon.into());
         self
@@ -161,29 +177,39 @@ pub struct NativeFeaturesConfig {
     pub max_notification_history: usize,
 }
 
-impl Default for NativeFeaturesConfig {
-    fn default() -> Self {
+impl NativeFeaturesConfig {
+    /// Create configuration with custom values
+    pub const fn new(cache_max_age: Duration, max_notification_history: usize) -> Self {
         Self {
-            cache_max_age: Duration::from_secs(30),
-            max_notification_history: 100,
+            cache_max_age,
+            max_notification_history,
         }
     }
 }
 
-/// Trait for system metric collection - allows for dependency injection and testing
+impl Default for NativeFeaturesConfig {
+    fn default() -> Self {
+        Self::new(Duration::from_secs(30), 100)
+    }
+}
+
+/// Trait for system metric collection with dependency injection support
 pub trait SystemMetricsProvider: Send + Sync {
-    async fn get_cpu_usage(&self) -> Result<f32, NativeError>;
-    async fn get_memory_usage(&self) -> Result<f64, NativeError>;
-    async fn get_disk_usage(&self) -> Result<f64, NativeError>;
-    async fn check_network_activity(&self) -> Result<bool, NativeError>;
+    async fn get_cpu_usage(&self) -> Result<f32>;
+    async fn get_memory_usage(&self) -> Result<f64>;
+    async fn get_disk_usage(&self) -> Result<f64>;
+    async fn check_network_activity(&self) -> Result<bool>;
 }
 
-/// Trait for notification sending - allows for different notification backends
+/// Trait for notification sending with multiple backend support
 pub trait NotificationSender: Send + Sync {
-    async fn send_notification(&self, config: &NotificationConfig) -> Result<(), NativeError>;
+    async fn send_notification(&self, config: &NotificationConfig) -> Result<()>;
 }
 
-/// Thread-safe native features manager with dependency injection for testability
+/// Thread-safe native features manager with dependency injection
+/// 
+/// Provides system metrics collection, file system operations, and notifications
+/// with caching and efficient memory management.
 pub struct NativeFeaturesManager<M = DefaultMetricsProvider, N = DefaultNotificationSender> 
 where
     M: SystemMetricsProvider,
@@ -227,14 +253,14 @@ impl<M: SystemMetricsProvider, N: NotificationSender> NativeFeaturesManager<M, N
         }
     }
 
-    /// Get current system status with efficient caching
-    pub async fn get_system_status(&self) -> Result<SystemStatus, NativeError> {
-        // Check if cached status is still valid
+    /// Get current system status with intelligent caching
+    pub async fn get_system_status(&self) -> Result<SystemStatus> {
+        // Return cached status if still valid
         if let Some(status) = self.get_cached_status() {
             return Ok(status);
         }
 
-        // Collect fresh metrics and update cache
+        // Collect fresh metrics and cache result
         let status = self.collect_system_metrics().await?;
         self.update_cache(status.clone());
         Ok(status)
@@ -254,9 +280,8 @@ impl<M: SystemMetricsProvider, N: NotificationSender> NativeFeaturesManager<M, N
         *self.status_cache.write() = Some(status);
     }
 
-    /// Collect system metrics using dependency injection
-    async fn collect_system_metrics(&self) -> Result<SystemStatus, NativeError> {
-        // Use ? operator with parallel collection for efficiency
+    /// Collect system metrics using parallel execution
+    async fn collect_system_metrics(&self) -> Result<SystemStatus> {
         let (cpu_usage, memory_usage, disk_usage, network_active) = tokio::try_join!(
             self.metrics_provider.get_cpu_usage(),
             self.metrics_provider.get_memory_usage(),
@@ -264,41 +289,36 @@ impl<M: SystemMetricsProvider, N: NotificationSender> NativeFeaturesManager<M, N
             self.metrics_provider.check_network_activity(),
         )?;
 
-        Ok(SystemStatus {
-            cpu_usage,
-            memory_usage,
-            disk_usage,
-            network_active,
-            last_updated: chrono::Utc::now(),
-        })
+        Ok(SystemStatus::new(cpu_usage, memory_usage, disk_usage, network_active))
     }
 
-    /// Get file system information using the improved method
-    pub async fn get_file_info<P: AsRef<Path>>(&self, path: P) -> Result<FileSystemInfo, NativeError> {
+    /// Get file system information asynchronously
+    pub async fn get_file_info<P: AsRef<Path>>(&self, path: P) -> Result<FileSystemInfo> {
         let path_buf = path.as_ref().to_path_buf();
         tokio::task::spawn_blocking(move || FileSystemInfo::from_path(path_buf))
             .await
-            .map_err(|e| NativeError::MetricCollection(format!("Task join error: {}", e)))?
+            .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 
-    /// Send system notification with improved error handling
-    pub async fn send_notification(&self, config: NotificationConfig) -> Result<(), NativeError> {
-        // Store in history with size management
+    /// Send system notification with history tracking
+    pub async fn send_notification(&self, config: NotificationConfig) -> Result<()> {
+        // Add to history before sending to ensure tracking even on failure
         self.add_to_notification_history(config.clone());
         
-        // Send notification using injected sender
+        // Send notification using configured sender
         self.notification_sender.send_notification(&config).await
     }
 
-    /// Add notification to history with size limit
+    /// Add notification to history with automatic size management
     fn add_to_notification_history(&self, config: NotificationConfig) {
         let mut history = self.notification_history.write();
         history.push(config);
         
-        // Maintain size limit using efficient drain operation
-        if history.len() > self.config.max_notification_history {
-            let excess = history.len() - self.config.max_notification_history;
-            history.drain(0..excess);
+        // Efficiently maintain history size limit
+        let max_size = self.config.max_notification_history;
+        if history.len() > max_size {
+            let excess = history.len() - max_size;
+            history.drain(..excess);
         }
     }
 
@@ -312,32 +332,27 @@ impl<M: SystemMetricsProvider, N: NotificationSender> NativeFeaturesManager<M, N
         self.notification_history.write().clear();
     }
 
-    /// Get system information summary with better error handling
-    pub async fn get_system_info(&self) -> Result<HashMap<String, serde_json::Value>, NativeError> {
+    /// Get comprehensive system information summary
+    pub async fn get_system_info(&self) -> Result<HashMap<String, serde_json::Value>> {
         let mut info = HashMap::with_capacity(8);
         
-        // Add basic system information
-        info.insert("platform".to_owned(), serde_json::Value::String(std::env::consts::OS.to_owned()));
-        info.insert("architecture".to_owned(), serde_json::Value::String(std::env::consts::ARCH.to_owned()));
+        // Add basic system constants
+        info.extend([
+            ("platform".to_owned(), serde_json::Value::String(std::env::consts::OS.to_owned())),
+            ("architecture".to_owned(), serde_json::Value::String(std::env::consts::ARCH.to_owned())),
+            ("temp_dir".to_owned(), serde_json::Value::String(std::env::temp_dir().to_string_lossy().into_owned())),
+        ]);
         
-        // Add paths with proper error handling
+        // Add current directory if accessible
         if let Ok(current_dir) = std::env::current_dir() {
             info.insert("current_dir".to_owned(), 
                        serde_json::Value::String(current_dir.to_string_lossy().into_owned()));
         }
         
-        info.insert("temp_dir".to_owned(), 
-                   serde_json::Value::String(std::env::temp_dir().to_string_lossy().into_owned()));
-        
-        // Add system status if available
-        match self.get_system_status().await {
-            Ok(status) => {
-                if let Ok(status_json) = serde_json::to_value(status) {
-                    info.insert("status".to_owned(), status_json);
-                }
-            },
-            Err(e) => {
-                log::warn!("Failed to get system status: {}", e);
+        // Add system status with graceful error handling
+        if let Ok(status) = self.get_system_status().await {
+            if let Ok(status_json) = serde_json::to_value(status) {
+                info.insert("status".to_owned(), status_json);
             }
         }
         
@@ -350,7 +365,7 @@ impl<M: SystemMetricsProvider, N: NotificationSender> NativeFeaturesManager<M, N
 pub struct DefaultMetricsProvider;
 
 impl SystemMetricsProvider for DefaultMetricsProvider {
-    async fn get_cpu_usage(&self) -> Result<f32, NativeError> {
+    async fn get_cpu_usage(&self) -> Result<f32> {
         tokio::task::spawn_blocking(|| {
             #[cfg(target_os = "linux")]
             {
@@ -396,10 +411,10 @@ impl SystemMetricsProvider for DefaultMetricsProvider {
             }
         })
         .await
-        .map_err(|e| NativeError::MetricCollection(format!("Task join error: {}", e)))?
+        .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 
-    async fn get_memory_usage(&self) -> Result<f64, NativeError> {
+    async fn get_memory_usage(&self) -> Result<f64> {
         tokio::task::spawn_blocking(|| {
             #[cfg(target_os = "linux")]
             {
@@ -435,10 +450,10 @@ impl SystemMetricsProvider for DefaultMetricsProvider {
             }
         })
         .await
-        .map_err(|e| NativeError::MetricCollection(format!("Task join error: {}", e)))?
+        .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 
-    async fn get_disk_usage(&self) -> Result<f64, NativeError> {
+    async fn get_disk_usage(&self) -> Result<f64> {
         tokio::task::spawn_blocking(|| {
             let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             
@@ -479,10 +494,10 @@ impl SystemMetricsProvider for DefaultMetricsProvider {
             }
         })
         .await
-        .map_err(|e| NativeError::MetricCollection(format!("Task join error: {}", e)))?
+        .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 
-    async fn check_network_activity(&self) -> Result<bool, NativeError> {
+    async fn check_network_activity(&self) -> Result<bool> {
         tokio::task::spawn_blocking(|| {
             #[cfg(target_os = "linux")]
             {
@@ -511,7 +526,7 @@ impl SystemMetricsProvider for DefaultMetricsProvider {
             }
         })
         .await
-        .map_err(|e| NativeError::MetricCollection(format!("Task join error: {}", e)))?
+        .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 }
 
@@ -520,7 +535,7 @@ impl SystemMetricsProvider for DefaultMetricsProvider {
 pub struct DefaultNotificationSender;
 
 impl NotificationSender for DefaultNotificationSender {
-    async fn send_notification(&self, config: &NotificationConfig) -> Result<(), NativeError> {
+    async fn send_notification(&self, config: &NotificationConfig) -> Result<()> {
         let config = config.clone();
         tokio::task::spawn_blocking(move || {
             #[cfg(target_os = "linux")]
@@ -570,7 +585,7 @@ impl NotificationSender for DefaultNotificationSender {
             Ok(())
         })
         .await
-        .map_err(|e| NativeError::Notification(format!("Task join error: {}", e)))?
+        .map_err(|e| NativeError::TaskExecution(format!("Task join error: {}", e)))?
     }
 }
 
@@ -630,19 +645,19 @@ mod tests {
     }
 
     impl SystemMetricsProvider for MockMetricsProvider {
-        async fn get_cpu_usage(&self) -> Result<f32, NativeError> {
+        async fn get_cpu_usage(&self) -> Result<f32> {
             Ok(self.cpu_usage)
         }
 
-        async fn get_memory_usage(&self) -> Result<f64, NativeError> {
+        async fn get_memory_usage(&self) -> Result<f64> {
             Ok(self.memory_usage)
         }
 
-        async fn get_disk_usage(&self) -> Result<f64, NativeError> {
+        async fn get_disk_usage(&self) -> Result<f64> {
             Ok(self.disk_usage)
         }
 
-        async fn check_network_activity(&self) -> Result<bool, NativeError> {
+        async fn check_network_activity(&self) -> Result<bool> {
             Ok(self.network_active)
         }
     }
@@ -664,7 +679,7 @@ mod tests {
     }
 
     impl NotificationSender for MockNotificationSender {
-        async fn send_notification(&self, _config: &NotificationConfig) -> Result<(), NativeError> {
+        async fn send_notification(&self, _config: &NotificationConfig) -> Result<()> {
             self.sent_count.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }

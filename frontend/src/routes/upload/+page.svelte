@@ -2,102 +2,191 @@
 	import PDFUpload from '$lib/components/upload/PDFUpload.svelte';
 	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
+	import type { Result } from '$lib/types/providers.js';
 
-	// Local state
-	let uploadCount = $state(0);
-	let currentUpload = $state<{file: File; model: string} | null>(null);
-	let recentUploads = $state<Array<RecentUpload>>([]);
-	
-	type RecentUpload = {
-		id: string;
-		filename: string;
-		model: string;
-		timestamp: Date;
-		status: 'success' | 'error';
-		message?: string;
+	// Enhanced type definitions
+	interface RecentUpload {
+		readonly id: string;
+		readonly filename: string;
+		readonly model: string;
+		readonly timestamp: Date;
+		readonly status: 'success' | 'error';
+		readonly message?: string;
+	}
+
+	interface UploadState {
+		count: number;
+		current: { file: File; model: string } | null;
+		history: readonly RecentUpload[];
+	}
+
+	// Enhanced state management with better organization
+	let uploadState = $state<UploadState>({
+		count: 0,
+		current: null,
+		history: []
+	});
+
+	// Type-safe localStorage operations
+	const STORAGE_KEY = 'recent_uploads' as const;
+	const MAX_HISTORY_SIZE = 5 as const;
+
+	// Utility functions with better error handling
+	const generateUUID = (): string => 
+		crypto.randomUUID?.() ?? 
+		`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+	const parseStoredUploads = (data: string): Result<RecentUpload[]> => {
+		try {
+			const parsed = JSON.parse(data) as unknown;
+			
+			if (!Array.isArray(parsed)) {
+				return { ok: false, error: 'Invalid data format' };
+			}
+
+			const uploads = parsed
+				.filter((item): item is Record<string, unknown> => 
+					item && typeof item === 'object' && item !== null
+				)
+				.map((item): RecentUpload => ({
+					id: typeof item.id === 'string' ? item.id : generateUUID(),
+					filename: typeof item.filename === 'string' ? item.filename : 'Unknown File',
+					model: typeof item.model === 'string' ? item.model : 'Unknown Model',
+					timestamp: new Date(item.timestamp as string),
+					status: (item.status === 'success' || item.status === 'error') ? item.status : 'success',
+					message: typeof item.message === 'string' ? item.message : undefined
+				}))
+				.filter(upload => upload.timestamp instanceof Date && !isNaN(upload.timestamp.getTime()));
+
+			return { ok: true, value: uploads };
+		} catch (error) {
+			return { 
+				ok: false, 
+				error: error instanceof Error ? error.message : 'Parse error',
+				context: { originalData: data }
+			};
+		}
 	};
 
+	const saveUploadsToStorage = (uploads: readonly RecentUpload[]): void => {
+		try {
+			const serializable = uploads.map(upload => ({
+				...upload,
+				timestamp: upload.timestamp.toISOString()
+			}));
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(serializable));
+		} catch (error) {
+			console.warn('Failed to save uploads to localStorage:', error);
+		}
+	};
+
+	// Enhanced mount function with better error handling
 	onMount(() => {
-		const saved = localStorage.getItem('recent_uploads');
-		if (saved) {
-			try {
-				const parsed = JSON.parse(saved) as Array<{
-					id: string;
-					filename: string;
-					model: string;
-					timestamp: string;
-					status: 'success' | 'error';
-					message?: string;
-				}>;
-				// Validate and transform the data with proper type safety
-				recentUploads = parsed.map((u) => ({
-					id: u.id || crypto.randomUUID?.() || Math.random().toString(36),
-					filename: u.filename || 'Unknown',
-					model: u.model || 'default',
-					timestamp: new Date(u.timestamp),
-					status: u.status || 'success',
-					message: u.message
-				}));
-			} catch (e) {
-				console.error('Failed to load recent uploads:', e);
-			}
+		const stored = localStorage.getItem(STORAGE_KEY);
+		if (!stored) return;
+
+		const result = parseStoredUploads(stored);
+		if (result.ok) {
+			uploadState.history = result.value;
+		} else {
+			console.warn('Failed to load recent uploads:', result.error);
+			// Clear corrupted data
+			localStorage.removeItem(STORAGE_KEY);
 		}
 	});
 
-	const generateUUID = () => crypto.randomUUID?.() || 
-		'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-			const r = Math.random() * 16 | 0;
-			return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-		});
+	// More robust upload management
+	const addRecentUpload = (status: RecentUpload['status'], message: string): void => {
+		if (!uploadState.current) {
+			console.warn('No current upload to record');
+			return;
+		}
 
-	const addRecentUpload = (status: 'success' | 'error', message: string) => {
-		const upload: RecentUpload = {
+		const newUpload: RecentUpload = {
 			id: generateUUID(),
-			filename: currentUpload?.file.name || 'document.pdf',
-			model: currentUpload?.model || 'Unknown Model',
+			filename: uploadState.current.file.name,
+			model: uploadState.current.model,
 			timestamp: new Date(),
 			status,
 			message
 		};
 
-		recentUploads = [upload, ...recentUploads].slice(0, 5);
-		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
-		currentUpload = null;
+		const updatedHistory = [newUpload, ...uploadState.history].slice(0, MAX_HISTORY_SIZE);
+		uploadState = {
+			...uploadState,
+			history: updatedHistory,
+			current: null
+		};
+		
+		saveUploadsToStorage(updatedHistory);
 	};
 
-	const handleUploadStart = (event: CustomEvent<{ file: File; model: string }>) => {
-		currentUpload = event.detail;
+	// Type-safe event handlers
+	const handleUploadStart = (event: CustomEvent<{ file: File; model: string }>): void => {
+		uploadState.current = event.detail;
 	};
 
-	const handleUploadSuccess = (event: CustomEvent<{ message: string }>) => {
-		uploadCount++;
+	const handleUploadSuccess = (event: CustomEvent<{ message: string }>): void => {
+		uploadState.count++;
 		addRecentUpload('success', event.detail.message);
 	};
 
-	const handleUploadError = (event: CustomEvent<{ error: string }>) => {
+	const handleUploadError = (event: CustomEvent<{ error: string }>): void => {
 		addRecentUpload('error', event.detail.error);
 	};
 
+	// Enhanced timestamp formatting with better UX
 	const formatTimestamp = (date: Date): string => {
-		const diff = Date.now() - date.getTime();
+		const now = new Date();
+		const diff = now.getTime() - date.getTime();
 		const minutes = Math.floor(diff / 60000);
 		const hours = Math.floor(diff / 3600000);
 		const days = Math.floor(diff / 86400000);
 
 		if (minutes < 1) return 'Just now';
-		if (minutes < 60) return `${minutes}m ago`;
-		if (hours < 24) return `${hours}h ago`;
-		if (days < 7) return `${days}d ago`;
-		return date.toLocaleDateString();
+		if (minutes === 1) return '1 minute ago';
+		if (minutes < 60) return `${minutes} minutes ago`;
+		if (hours === 1) return '1 hour ago';
+		if (hours < 24) return `${hours} hours ago`;
+		if (days === 1) return 'Yesterday';
+		if (days < 7) return `${days} days ago`;
+		
+		// Use relative date for older items
+		return new Intl.RelativeTimeFormat('en', { numeric: 'auto' })
+			.format(-Math.floor(diff / 86400000), 'day');
 	};
 
-	const clearRecentUploads = () => {
-		recentUploads = [];
-		localStorage.removeItem('recent_uploads');
+	const clearRecentUploads = (): void => {
+		uploadState.history = [];
+		localStorage.removeItem(STORAGE_KEY);
 	};
 
-	// Derived state for statistics
-	const successfulUploads = $derived(recentUploads.filter(u => u.status === 'success').length);
+	// Enhanced derived state with type safety
+	const uploadStats = $derived(() => {
+		const successful = uploadState.history.filter(u => u.status === 'success').length;
+		const failed = uploadState.history.filter(u => u.status === 'error').length;
+		
+		return {
+			total: uploadState.count,
+			successful,
+			failed,
+			successRate: uploadState.history.length > 0 
+				? Math.round((successful / uploadState.history.length) * 100)
+				: 0
+		} as const;
+	});
+
+	// Keyboard navigation support
+	const handleKeydown = (event: KeyboardEvent): void => {
+		if (event.ctrlKey || event.metaKey) {
+			switch (event.key) {
+				case 'Escape':
+					event.preventDefault();
+					goto('/dashboard');
+					break;
+			}
+		}
+	};
 </script>
 
 <svelte:head>
@@ -105,7 +194,9 @@
 	<meta name="description" content="Upload and process PDF documents for your TTRPG campaigns" />
 </svelte:head>
 
-<div class="upload-page">
+<svelte:window on:keydown={handleKeydown} />
+
+<div class="upload-page" role="main">
 	<div class="page-header">
 		<div class="header-content">
 			<h1 class="page-title">Upload PDF Document</h1>
@@ -117,11 +208,14 @@
 			<button
 				onclick={() => goto('/dashboard')}
 				class="back-button"
+				type="button"
+				aria-label="Return to dashboard (Escape key)"
 			>
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
 				</svg>
 				Back to Dashboard
+				<span class="sr-only">(Esc)</span>
 			</button>
 		</div>
 	</div>
@@ -129,7 +223,7 @@
 	<div class="content-grid">
 		<!-- Main Upload Section -->
 		<div class="upload-section">
-			<div class="upload-card">
+			<section class="upload-card" aria-label="Document upload">
 				<h2 class="section-title">Select Document</h2>
 				<PDFUpload
 					maxFileSize={100}
@@ -137,76 +231,95 @@
 					onsuccess={handleUploadSuccess}
 					onerror={handleUploadError}
 				/>
-			</div>
+			</section>
 
-			<!-- Tips Section -->
-			<div class="tips-card">
+			<!-- Enhanced Tips Section -->
+			<aside class="tips-card" aria-label="Upload tips">
 				<h3 class="tips-title">
-					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+					<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
 						<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
 					</svg>
 					Tips for Best Results
 				</h3>
-				<ul class="tips-list">
-					<li>Ensure PDFs contain searchable text (not just scanned images)</li>
-					<li>Larger documents may take longer to process</li>
-					<li>Embedding models are optimized for semantic search</li>
-					<li>Use Ollama models for better quality, Sentence Transformers for speed</li>
+				<ul class="tips-list" role="list">
+					<li>📄 Ensure PDFs contain searchable text (not just scanned images)</li>
+					<li>⏱️ Larger documents may take longer to process</li>
+					<li>🔍 Embedding models are optimized for semantic search</li>
+					<li>⚡ Use Ollama models for quality, Sentence Transformers for speed</li>
+					<li>📊 Monitor processing statistics in the sidebar</li>
 				</ul>
-			</div>
+			</aside>
 		</div>
 
 		<!-- Sidebar -->
 		<aside class="sidebar">
-			<!-- Statistics -->
-			<div class="stats-card">
+			<!-- Enhanced Statistics -->
+			<section class="stats-card" aria-label="Upload statistics">
 				<h3 class="card-title">Processing Statistics</h3>
 				<div class="stats-grid">
 					<div class="stat">
-						<span class="stat-value">{uploadCount}</span>
+						<span class="stat-value" aria-label="{uploadStats().total} documents processed today">{uploadStats().total}</span>
 						<span class="stat-label">Documents Today</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{successfulUploads}</span>
+						<span class="stat-value" aria-label="{uploadStats().successful} successful uploads">{uploadStats().successful}</span>
 						<span class="stat-label">Successful</span>
 					</div>
+					<div class="stat">
+						<span class="stat-value" aria-label="{uploadStats().successRate}% success rate">{uploadStats().successRate}%</span>
+						<span class="stat-label">Success Rate</span>
+					</div>
+					{#if uploadStats().failed > 0}
+						<div class="stat">
+							<span class="stat-value text-red-600" aria-label="{uploadStats().failed} failed uploads">{uploadStats().failed}</span>
+							<span class="stat-label">Failed</span>
+						</div>
+					{/if}
 				</div>
-			</div>
+			</section>
 
-			<!-- Recent Uploads -->
-			{#if recentUploads.length > 0}
-				<div class="recent-card">
+			<!-- Enhanced Recent Uploads -->
+			{#if uploadState.history.length > 0}
+				<section class="recent-card" aria-label="Recent uploads history">
 					<div class="card-header">
 						<h3 class="card-title">Recent Uploads</h3>
 						<button
 							onclick={clearRecentUploads}
+							type="button"
 							class="clear-button"
-							aria-label="Clear history"
+							aria-label="Clear upload history"
 						>
 							Clear
 						</button>
 					</div>
-					<ul class="recent-list">
-						{#each recentUploads as upload}
-							<li class="recent-item">
-								<div class="item-icon {upload.status}">
+					<ul class="recent-list" role="list">
+						{#each uploadState.history as upload, index}
+							<li class="recent-item" role="listitem">
+								<div 
+									class="item-icon {upload.status}" 
+									aria-label="{upload.status === 'success' ? 'Success' : 'Failed'}"
+								>
 									{#if upload.status === 'success'}
-										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
 											<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
 										</svg>
 									{:else}
-										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+										<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
 											<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
 										</svg>
 									{/if}
 								</div>
 								<div class="item-content">
-									<p class="item-name">{upload.filename}</p>
+									<h4 class="item-name" title={upload.filename}>{upload.filename}</h4>
 									<p class="item-meta">
-										{upload.model} • {formatTimestamp(upload.timestamp)}
+										<span class="model-tag">{upload.model}</span>
+										<span aria-hidden="true"> • </span>
+										<time datetime={upload.timestamp.toISOString()}>
+											{formatTimestamp(upload.timestamp)}
+										</time>
 									</p>
 									{#if upload.message}
-										<p class="item-message {upload.status}">
+										<p class="item-message {upload.status}" role="status">
 											{upload.message}
 										</p>
 									{/if}
@@ -214,22 +327,36 @@
 							</li>
 						{/each}
 					</ul>
+				</section>
+			{:else}
+				<div class="empty-state">
+					<div class="empty-icon">📄</div>
+					<h3 class="empty-title">No uploads yet</h3>
+					<p class="empty-text">Your upload history will appear here after you process your first document.</p>
 				</div>
 			{/if}
 
-			<!-- Help Section -->
-			<div class="help-card">
+			<!-- Enhanced Help Section -->
+			<aside class="help-card" aria-label="Help and documentation">
 				<h3 class="card-title">Need Help?</h3>
 				<p class="help-text">
-					Check our documentation for detailed guides on PDF processing and model selection.
+					Check our documentation for detailed guides on PDF processing, model selection, and troubleshooting.
 				</p>
-				<a href="/docs" class="help-link">
-					View Documentation
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-					</svg>
-				</a>
-			</div>
+				<div class="help-links">
+					<a href="/docs" class="help-link" aria-label="View documentation">
+						📚 Documentation
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+						</svg>
+					</a>
+					<a href="/troubleshooting" class="help-link" aria-label="View troubleshooting guide">
+						🔧 Troubleshooting
+						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+						</svg>
+					</a>
+				</div>
+			</aside>
 		</aside>
 	</div>
 </div>
@@ -327,7 +454,7 @@
 	}
 
 	.stats-grid {
-		@apply grid grid-cols-2 gap-4;
+		@apply grid grid-cols-2 lg:grid-cols-3 gap-4;
 	}
 
 	.stat {
@@ -390,8 +517,40 @@
 		@apply text-sm text-gray-600 dark:text-gray-400 mb-3;
 	}
 
+	.help-links {
+		@apply space-y-2;
+	}
+
 	.help-link {
-		@apply inline-flex items-center gap-1 text-sm font-medium text-blue-600 dark:text-blue-400;
-		@apply hover:text-blue-700 dark:hover:text-blue-300;
+		@apply flex items-center justify-between w-full p-2 text-sm font-medium text-blue-600 dark:text-blue-400;
+		@apply bg-blue-50 dark:bg-blue-900/20 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30;
+		@apply transition-colors;
+	}
+
+	.model-tag {
+		@apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+		@apply bg-primary/10 text-primary;
+	}
+
+	.empty-state {
+		@apply text-center py-8 px-4 bg-white dark:bg-gray-800 rounded-lg shadow;
+	}
+
+	.empty-icon {
+		@apply text-4xl mb-3;
+	}
+
+	.empty-title {
+		@apply text-lg font-medium text-gray-900 dark:text-gray-100 mb-2;
+	}
+
+	.empty-text {
+		@apply text-sm text-muted-foreground;
+	}
+
+	.sr-only {
+		@apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
 	}
 </style>
