@@ -63,46 +63,10 @@ jobs:
           # Define build matrix based on event type
           if [[ "${{ steps.version.outputs.is_release }}" == "true" || "${{ github.event.inputs.enable_signing }}" == "true" ]]; then
             # Full matrix for releases and signed builds
-            matrix='{
-              "include": [
-                {
-                  "os": "windows-latest",
-                  "target": "x86_64-pc-windows-msvc",
-                  "installer_targets": "msi,nsis",
-                  "rust_cache_key": "windows"
-                },
-                {
-                  "os": "macos-latest", 
-                  "target": "x86_64-apple-darwin",
-                  "installer_targets": "dmg",
-                  "rust_cache_key": "macos-x64"
-                },
-                {
-                  "os": "macos-latest",
-                  "target": "aarch64-apple-darwin", 
-                  "installer_targets": "dmg",
-                  "rust_cache_key": "macos-arm64"
-                },
-                {
-                  "os": "ubuntu-latest",
-                  "target": "x86_64-unknown-linux-gnu",
-                  "installer_targets": "deb,rpm,appimage",
-                  "rust_cache_key": "linux"
-                }
-              ]
-            }'
+            matrix='{"include":[{"os":"windows-latest","target":"x86_64-pc-windows-msvc","installer_targets":"msi,nsis","rust_cache_key":"windows"},{"os":"macos-latest","target":"x86_64-apple-darwin","installer_targets":"dmg","rust_cache_key":"macos-x64"},{"os":"macos-latest","target":"aarch64-apple-darwin","installer_targets":"dmg","rust_cache_key":"macos-arm64"},{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","installer_targets":"deb,rpm,appimage","rust_cache_key":"linux"}]}'
           else
             # Limited matrix for development builds
-            matrix='{
-              "include": [
-                {
-                  "os": "ubuntu-latest",
-                  "target": "x86_64-unknown-linux-gnu", 
-                  "installer_targets": "appimage",
-                  "rust_cache_key": "linux"
-                }
-              ]
-            }'
+            matrix='{"include":[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","installer_targets":"appimage","rust_cache_key":"linux"}]}'
           fi
           echo "matrix=${matrix}" >> $GITHUB_OUTPUT
 
