@@ -129,6 +129,22 @@ pub struct ProcessStats {
     pub events: Vec<ProcessEvent>,
 }
 
+impl Default for ProcessStats {
+    fn default() -> Self {
+        ProcessStats {
+            state: ProcessState::Stopped,
+            health: HealthStatus::Unknown,
+            pid: None,
+            start_time: None,
+            restart_count: 0,
+            health_check_failures: 0,
+            last_health_check: None,
+            resource_usage: None,
+            events: Vec::new(),
+        }
+    }
+}
+
 /// Process manager for handling subprocess lifecycle
 pub struct ProcessManager {
     config: Arc<RwLock<ProcessConfig>>,
@@ -140,43 +156,33 @@ pub struct ProcessManager {
 }
 
 impl ProcessManager {
-    /// Create a new process manager with default configuration
+    /// Create a new process manager with optional custom configuration
     pub fn new() -> Self {
-        ProcessManager {
-            config: Arc::new(RwLock::new(ProcessConfig::default())),
-            stats: Arc::new(RwLock::new(ProcessStats {
-                state: ProcessState::Stopped,
-                health: HealthStatus::Unknown,
-                pid: None,
-                start_time: None,
-                restart_count: 0,
-                health_check_failures: 0,
-                last_health_check: None,
-                resource_usage: None,
-                events: Vec::new(),
-            })),
-            health_check_handle: Arc::new(Mutex::new(None)),
-            resource_monitor_handle: Arc::new(Mutex::new(None)),
-            app_handle: Arc::new(Mutex::new(None)),
-            system_info: Arc::new(Mutex::new(System::new_all())),
+        Self::with_config(ProcessConfig::default())
+    }
+
+    /// Get current timestamp in seconds since Unix epoch
+    fn current_timestamp() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    }
+
+    /// Add event to stats and emit to frontend
+    async fn add_and_emit_event(&self, event: ProcessEvent) {
+        {
+            let mut stats = self.stats.write().await;
+            stats.events.push(event.clone());
         }
+        self.emit_event(event).await;
     }
 
     /// Create with custom configuration
     pub fn with_config(config: ProcessConfig) -> Self {
         ProcessManager {
             config: Arc::new(RwLock::new(config)),
-            stats: Arc::new(RwLock::new(ProcessStats {
-                state: ProcessState::Stopped,
-                health: HealthStatus::Unknown,
-                pid: None,
-                start_time: None,
-                restart_count: 0,
-                health_check_failures: 0,
-                last_health_check: None,
-                resource_usage: None,
-                events: Vec::new(),
-            })),
+            stats: Arc::new(RwLock::new(ProcessStats::default())),
             health_check_handle: Arc::new(Mutex::new(None)),
             resource_monitor_handle: Arc::new(Mutex::new(None)),
             app_handle: Arc::new(Mutex::new(None)),
@@ -206,22 +212,17 @@ impl ProcessManager {
         stats.state = ProcessState::Running;
         stats.health = HealthStatus::Unknown;
         stats.pid = Some(pid);
-        stats.start_time = Some(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs()
-        );
+        stats.start_time = Some(Self::current_timestamp());
         stats.health_check_failures = 0;
         
         let event = ProcessEvent::Started {
             pid,
             timestamp: stats.start_time.unwrap(),
         };
-        stats.events.push(event.clone());
+        drop(stats);
         
         // Emit event
-        self.emit_event(event).await;
+        self.add_and_emit_event(event).await;
         
         info!("Process started with PID: {}", pid);
         
@@ -241,19 +242,16 @@ impl ProcessManager {
         stats.health = HealthStatus::Unknown;
         stats.pid = None;
         
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = Self::current_timestamp();
         
         let event = ProcessEvent::Stopped {
             exit_code,
             timestamp,
         };
-        stats.events.push(event.clone());
+        drop(stats);
         
         // Emit event
-        self.emit_event(event).await;
+        self.add_and_emit_event(event).await;
         
         // Check if this was a crash
         if was_running && exit_code != Some(0) {
@@ -270,25 +268,20 @@ impl ProcessManager {
         
         stats.state = ProcessState::Crashed;
         
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = Self::current_timestamp();
         
         let event = ProcessEvent::Crashed {
             error: format!("Process crashed with exit code: {:?}", exit_code),
             timestamp,
         };
-        stats.events.push(event.clone());
         
-        // Emit event
         let should_restart = config.auto_restart_on_crash && 
                            stats.restart_count < config.max_restart_attempts;
         
         drop(stats);
         drop(config);
         
-        self.emit_event(event).await;
+        self.add_and_emit_event(event).await;
         
         if should_restart {
             self.schedule_restart().await;
@@ -305,10 +298,7 @@ impl ProcessManager {
         stats.restart_count += 1;
         stats.state = ProcessState::Restarting;
         
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = Self::current_timestamp();
         
         let event = ProcessEvent::Restarting {
             attempt: stats.restart_count,
@@ -468,10 +458,7 @@ impl ProcessManager {
         let config = self.config.read().await;
         let mut stats = self.stats.write().await;
         
-        let timestamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        let timestamp = Self::current_timestamp();
         
         stats.last_health_check = Some(timestamp);
         
@@ -572,9 +559,6 @@ impl ProcessManagerState {
         ProcessManagerState(Arc::new(ProcessManager::new()))
     }
     
-    pub fn with_config(config: ProcessConfig) -> Self {
-        ProcessManagerState(Arc::new(ProcessManager::with_config(config)))
-    }
 }
 
 // Tauri commands for process management

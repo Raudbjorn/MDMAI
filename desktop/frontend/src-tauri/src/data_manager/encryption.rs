@@ -11,7 +11,7 @@ use aes_gcm::{
     aead::{Aead, AeadCore, KeyInit, OsRng, rand_core::RngCore},
     Aes256Gcm, Key, Nonce,
 };
-use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::{
+use argon2::{Argon2, PasswordHasher, password_hash::{
     rand_core::OsRng as Argon2OsRng, PasswordHash, SaltString
 }};
 use sha2::{Sha256, Digest};

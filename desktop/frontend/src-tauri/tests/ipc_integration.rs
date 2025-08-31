@@ -2,12 +2,11 @@
 mod ipc_integration_tests {
     use std::sync::Arc;
     use std::time::Duration;
-    use tokio::sync::Mutex;
     use serde_json::json;
     
-    // Import from parent modules
-    use crate::ipc::{IpcManager, QueueConfig, JsonRpcResponse, JsonRpcNotification, RequestId};
-    use crate::process_manager::{ProcessManager, ProcessConfig};
+    // Import from the library crate
+    use ttrpg_assistant::ipc::{IpcManager, QueueConfig, JsonRpcResponse, JsonRpcNotification, RequestId};
+    use ttrpg_assistant::process_manager::{ProcessManager, ProcessConfig};
     
     /// Helper to create a test IPC manager
     fn create_test_ipc_manager() -> Arc<IpcManager> {
@@ -332,7 +331,7 @@ mod ipc_integration_tests {
         manager.set_stdin_channel(tx).await;
         
         // Simulate receiving stream chunks
-        use crate::ipc::StreamChunk;
+        use ttrpg_assistant::ipc::StreamChunk;
         
         let chunks = vec![
             StreamChunk {
@@ -369,8 +368,8 @@ mod ipc_integration_tests {
 
 #[cfg(test)]
 mod process_integration_tests {
-    use super::*;
-    use crate::process_manager::{ProcessManager, ProcessConfig, ProcessState, HealthStatus};
+    use std::time::Duration;
+    use ttrpg_assistant::process_manager::{ProcessManager, ProcessConfig, ProcessState, HealthStatus};
     
     #[tokio::test]
     async fn test_process_lifecycle() {

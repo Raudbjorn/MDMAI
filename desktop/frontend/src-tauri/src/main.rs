@@ -10,12 +10,42 @@ mod error_handling;
 mod data_manager;
 mod data_manager_commands;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use tokio::sync::Mutex;
-use tauri::{Manager, Emitter};
+use tauri::{Manager, Emitter, DragDropEvent};
 use process_manager::ProcessManagerState;
-use native_features::NativeFeaturesState;
+use native_features::{NativeFeaturesState, DragDropEvent as CustomDragDropEvent};
 use data_manager_commands::DataManagerStateWrapper;
+
+/// Convert paths to string vector
+fn paths_to_strings(paths: &[std::path::PathBuf]) -> Vec<String> {
+    paths.iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect()
+}
+
+/// Helper function to create drag drop events and emit them to the window
+fn create_and_emit_drag_event(
+    window: &tauri::Window,
+    event_type: &str,
+    files: Vec<String>,
+    position: Option<(f64, f64)>,
+    event_name: &str,
+) {
+    let drop_event = CustomDragDropEvent {
+        event_type: event_type.to_string(),
+        files,
+        position,
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+    
+    if let Err(e) = window.emit(event_name, &drop_event) {
+        log::error!("Failed to emit {}: {}", event_name, e);
+    }
+}
 
 fn main() {
     // Initialize logging
@@ -86,11 +116,10 @@ fn main() {
         .setup(|app| {
             // Initialize native features
             let native_features = app.state::<NativeFeaturesState>();
-            let native_features_clone = native_features.inner().clone();
             let app_handle = app.handle().clone();
             
             tauri::async_runtime::block_on(async {
-                if let Err(e) = native_features_clone.initialize(&app_handle).await {
+                if let Err(e) = native_features.inner().initialize(&app_handle).await {
                     log::error!("Failed to initialize native features: {}", e);
                 }
             });
@@ -113,76 +142,18 @@ fn main() {
                     });
                 },
                 WindowEvent::DragDrop(drag_event) => {
-                    use tauri::DragDropEvent;
                     match drag_event {
                         DragDropEvent::Drop { paths, position } => {
-                            let files: Vec<String> = paths.iter()
-                                .map(|p| p.to_string_lossy().to_string())
-                                .collect();
-                            
-                            let drop_event = native_features::DragDropEvent {
-                                event_type: "drop".to_string(),
-                                files,
-                                position: Some((position.x, position.y)),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-                            
-                            // Emit drag drop event to frontend
-                            if let Err(e) = window.emit("drag-drop", &drop_event) {
-                                log::error!("Failed to emit drag-drop event: {}", e);
-                            }
+                            create_and_emit_drag_event(window, "drop", paths_to_strings(paths), Some((position.x, position.y)), "drag-drop");
                         },
                         DragDropEvent::Enter { paths, position } => {
-                            let files: Vec<String> = paths.iter()
-                                .map(|p| p.to_string_lossy().to_string())
-                                .collect();
-                            
-                            let drop_event = native_features::DragDropEvent {
-                                event_type: "enter".to_string(),
-                                files,
-                                position: Some((position.x, position.y)),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-                            
-                            if let Err(e) = window.emit("drag-enter", &drop_event) {
-                                log::error!("Failed to emit drag-enter event: {}", e);
-                            }
+                            create_and_emit_drag_event(window, "enter", paths_to_strings(paths), Some((position.x, position.y)), "drag-enter");
                         },
                         DragDropEvent::Over { position } => {
-                            let drop_event = native_features::DragDropEvent {
-                                event_type: "over".to_string(),
-                                files: vec![],
-                                position: Some((position.x, position.y)),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-                            
-                            if let Err(e) = window.emit("drag-over", &drop_event) {
-                                log::error!("Failed to emit drag-over event: {}", e);
-                            }
+                            create_and_emit_drag_event(window, "over", vec![], Some((position.x, position.y)), "drag-over");
                         },
                         DragDropEvent::Leave => {
-                            let drop_event = native_features::DragDropEvent {
-                                event_type: "leave".to_string(),
-                                files: vec![],
-                                position: None,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::SystemTime::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                            };
-                            
-                            if let Err(e) = window.emit("drag-leave", &drop_event) {
-                                log::error!("Failed to emit drag-leave event: {}", e);
-                            }
+                            create_and_emit_drag_event(window, "leave", vec![], None, "drag-leave");
                         },
                         _ => {}
                     }

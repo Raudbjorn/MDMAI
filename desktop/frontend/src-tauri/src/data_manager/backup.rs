@@ -9,14 +9,11 @@
 
 use super::*;
 use tokio::fs::{self, File};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-use std::path::{Path, PathBuf};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
+use std::path::Path;
 use tar::{Archive, Builder as TarBuilder};
 use walkdir::WalkDir;
 use zstd::stream::{Encoder as ZstdEncoder, Decoder as ZstdDecoder};
-use futures::stream::{self, StreamExt};
-use tokio::sync::mpsc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use sqlx::Row;
 
 /// Backup manager for handling all backup operations

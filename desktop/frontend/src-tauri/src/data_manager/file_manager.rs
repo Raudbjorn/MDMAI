@@ -11,11 +11,8 @@ use super::*;
 use std::path::{Path, PathBuf};
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio_stream::{wrappers::ReadDirStream, StreamExt};
 use walkdir::WalkDir;
 use std::collections::HashMap;
-use futures::stream::{self, StreamExt as FuturesStreamExt};
-use bytes::{Bytes, BytesMut};
 
 /// File manager for handling all file operations
 pub struct FileManager {

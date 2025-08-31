@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     AppHandle, Manager, Runtime, Emitter,
     tray::{TrayIcon, TrayIconBuilder},
-    menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
+    menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
 };
 use log::{info, error, warn, debug};
 
-use crate::process_manager::{ProcessManagerState, ProcessState, HealthStatus};
+use crate::process_manager::{ProcessState, HealthStatus};
 
 /// System tray manager for TTRPG Assistant
 pub struct SystemTrayManager<R: Runtime = tauri::Wry> {

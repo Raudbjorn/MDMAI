@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri_plugin_shell::{ShellExt, process::{CommandEvent, CommandChild}};
 use log::{info, error, debug, warn};
-use crate::process_manager::{ProcessManager, ProcessState, ProcessEvent};
+use crate::process_manager::ProcessManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JsonRpcRequest {
@@ -178,19 +178,6 @@ impl MCPBridge {
         Ok(())
     }
     
-    // Helper method to create a clone for restart logic
-    fn clone_for_restart(&self) -> Self {
-        MCPBridge {
-            stdin_tx: self.stdin_tx.clone(),
-            request_id: self.request_id.clone(),
-            pending: self.pending.clone(),
-            is_running: self.is_running.clone(),
-            child_process: self.child_process.clone(),
-            process_manager: self.process_manager.clone(),
-            app_handle: self.app_handle.clone(),
-            restart_handle: self.restart_handle.clone(),
-        }
-    }
 
     pub async fn stop(&self) -> Result<(), String> {
         if *self.is_running.read().await {

@@ -4,8 +4,7 @@
 //! CRUD operations for all TTRPG data models.
 
 use super::*;
-use sqlx::{Pool, Sqlite, SqlitePool, Row};
-use std::path::Path;
+use sqlx::{SqlitePool, Row};
 use std::collections::HashMap;
 
 /// SQLite storage manager with encryption support

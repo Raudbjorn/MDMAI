@@ -7,8 +7,33 @@ import { invoke } from '@tauri-apps/api/core';
 import { writable, type Writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
 
-// Result type for error handling (error-as-values pattern)
-export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+// Enhanced Result type for error handling (error-as-values pattern)
+export interface Result<T, E = string> {
+  readonly ok: boolean;
+  readonly data?: T;
+  readonly error?: E;
+  readonly metadata?: Record<string, unknown>;
+}
+
+export type Success<T> = { ok: true; data: T; metadata?: Record<string, unknown> };
+export type Failure<E = string> = { ok: false; error: E; metadata?: Record<string, unknown> };
+
+// Helper functions for Result type
+export const createSuccess = <T>(data: T, metadata?: Record<string, unknown>): Success<T> => ({ 
+  ok: true, 
+  data, 
+  ...(metadata && { metadata }) 
+});
+
+export const createFailure = <E = string>(error: E, metadata?: Record<string, unknown>): Failure<E> => ({ 
+  ok: false, 
+  error, 
+  ...(metadata && { metadata }) 
+});
+
+// Result utility functions
+export const isSuccess = <T, E>(result: Result<T, E>): result is Success<T> => result.ok;
+export const isFailure = <T, E>(result: Result<T, E>): result is Failure<E> => !result.ok;
 
 // Connection status
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'degraded';
@@ -58,7 +83,7 @@ export class RobustMCPClient {
     
     constructor() {
         // Auto-connect if in Tauri environment
-        if (browser && window.__TAURI__) {
+        if (browser && (window as any).__TAURI__) {
             this.connect();
         }
         
@@ -88,7 +113,7 @@ export class RobustMCPClient {
             }
             
             this.status.set('error');
-            return result;
+            return result as Result<void, string>;
             
         } catch (e) {
             const error = this.formatError(e);
@@ -117,11 +142,13 @@ export class RobustMCPClient {
      */
     async callWithRetry<T>(
         method: string,
-        params: any = {},
+        params: Record<string, unknown> = {},
         options: { 
             skipCache?: boolean;
             cacheTTL?: number;
             fallback?: T;
+            timeout?: number;
+            retryAttempts?: number;
         } = {}
     ): Promise<Result<T>> {
         const startTime = performance.now();
@@ -132,7 +159,7 @@ export class RobustMCPClient {
             const cached = this.getFromCache<T>(method, params);
             if (cached) {
                 this.metrics.cacheHits++;
-                return { ok: true, data: cached };
+                return createSuccess(cached, { cached: true, method });
             }
         }
         
@@ -141,14 +168,16 @@ export class RobustMCPClient {
             method,
             params,
             1,
-            options.fallback
+            options.fallback,
+            options.retryAttempts ?? this.retryConfig.maxAttempts,
+            options.timeout
         );
         
         // Update metrics
         const latency = performance.now() - startTime;
         this.updateLatencyMetric(latency);
         
-        if (result.ok) {
+        if (result.ok && result.data !== undefined) {
             this.metrics.successfulCalls++;
             // Cache successful results
             this.saveToCache(method, params, result.data, options.cacheTTL);
@@ -160,46 +189,77 @@ export class RobustMCPClient {
     }
     
     /**
-     * Internal call with exponential backoff
+     * Internal call with exponential backoff and comprehensive error handling
      */
     private async callWithExponentialBackoff<T>(
         method: string,
-        params: any,
+        params: Record<string, unknown>,
         attempt: number,
-        fallback?: T
+        fallback?: T,
+        maxAttempts?: number,
+        timeout?: number
     ): Promise<Result<T>> {
+        const actualMaxAttempts = maxAttempts ?? this.retryConfig.maxAttempts;
+        
         try {
             this.isLoading.set(true);
             
+            // Create timeout promise if specified
+            let callPromise: Promise<T> = invoke<T>('mcp_call', { method, params });
+            
+            if (timeout) {
+                const timeoutPromise = new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error(`Call timeout after ${timeout}ms`)), timeout)
+                );
+                callPromise = Promise.race([callPromise, timeoutPromise]);
+            }
+            
             // Make the actual call
-            const result = await invoke<T>('mcp_call', { method, params });
+            const result = await callPromise;
             
             this.isLoading.set(false);
-            return { ok: true, data: result };
+            return createSuccess(result, {
+                method,
+                attempt,
+                timestamp: Date.now()
+            });
             
         } catch (error) {
             this.isLoading.set(false);
-            const errorStr = this.formatError(error);
+            const errorInfo = this.categorizeError(error);
             
-            console.warn(`MCP call failed (attempt ${attempt}/${this.retryConfig.maxAttempts}):`, {
+            console.warn(`MCP call failed (attempt ${attempt}/${actualMaxAttempts}):`, {
                 method,
                 params: this.sanitizeForLogging(params),
-                error: errorStr
+                error: errorInfo.message,
+                category: errorInfo.category,
+                retriable: errorInfo.retriable
             });
             
             // Check if we should retry
-            if (attempt < this.retryConfig.maxAttempts && this.isRetriableError(errorStr)) {
+            if (attempt < actualMaxAttempts && errorInfo.retriable) {
                 const delay = this.calculateBackoff(attempt);
                 await this.delay(delay);
                 
-                return this.callWithExponentialBackoff(method, params, attempt + 1, fallback);
+                return this.callWithExponentialBackoff(
+                    method, 
+                    params, 
+                    attempt + 1, 
+                    fallback, 
+                    maxAttempts, 
+                    timeout
+                );
             }
             
             // Try fallback if provided
             if (fallback !== undefined) {
                 console.info('Using fallback value for failed MCP call:', method);
                 this.status.set('degraded');
-                return { ok: true, data: fallback };
+                return createSuccess(fallback, {
+                    method,
+                    fallback: true,
+                    originalError: errorInfo.message
+                });
             }
             
             // Check for cached stale data as last resort
@@ -207,11 +267,22 @@ export class RobustMCPClient {
             if (staleCache) {
                 console.info('Using stale cache for failed MCP call:', method);
                 this.status.set('degraded');
-                return { ok: true, data: staleCache };
+                return createSuccess(staleCache, {
+                    method,
+                    staleCache: true,
+                    originalError: errorInfo.message
+                });
             }
             
-            this.lastError.set(errorStr);
-            return { ok: false, error: errorStr };
+            this.lastError.set(errorInfo.message);
+            return createFailure(errorInfo.message, {
+                method,
+                attempt,
+                maxAttempts: actualMaxAttempts,
+                category: errorInfo.category,
+                retriable: errorInfo.retriable,
+                timestamp: Date.now()
+            });
         }
     }
     
@@ -234,21 +305,48 @@ export class RobustMCPClient {
     }
     
     /**
-     * Check if error is retriable
+     * Categorize errors for better handling
      */
-    private isRetriableError(error: string): boolean {
-        const retriablePatterns = [
-            'not running',
-            'disconnected',
-            'timeout',
-            'ECONNREFUSED',
-            'EPIPE',
-            'ENOTFOUND'
-        ];
+    private categorizeError(error: unknown): {
+        message: string;
+        category: 'network' | 'timeout' | 'process' | 'validation' | 'unknown';
+        retriable: boolean;
+    } {
+        const message = this.formatError(error);
+        const lowerMessage = message.toLowerCase();
         
-        return retriablePatterns.some(pattern => 
-            error.toLowerCase().includes(pattern.toLowerCase())
-        );
+        // Network errors (retriable)
+        if (lowerMessage.includes('econnrefused') || 
+            lowerMessage.includes('enotfound') ||
+            lowerMessage.includes('network') ||
+            lowerMessage.includes('dns')) {
+            return { message, category: 'network', retriable: true };
+        }
+        
+        // Timeout errors (retriable)
+        if (lowerMessage.includes('timeout') ||
+            lowerMessage.includes('timed out')) {
+            return { message, category: 'timeout', retriable: true };
+        }
+        
+        // Process errors (retriable)
+        if (lowerMessage.includes('not running') ||
+            lowerMessage.includes('disconnected') ||
+            lowerMessage.includes('epipe') ||
+            lowerMessage.includes('process died')) {
+            return { message, category: 'process', retriable: true };
+        }
+        
+        // Validation errors (not retriable)
+        if (lowerMessage.includes('invalid') ||
+            lowerMessage.includes('validation') ||
+            lowerMessage.includes('malformed') ||
+            lowerMessage.includes('bad request')) {
+            return { message, category: 'validation', retriable: false };
+        }
+        
+        // Default to unknown (not retriable to be safe)
+        return { message, category: 'unknown', retriable: false };
     }
     
     /**
@@ -365,13 +463,41 @@ export class RobustMCPClient {
     }
     
     /**
-     * Format error for consistency
+     * Enhanced error formatting with context preservation
      */
-    private formatError(error: any): string {
-        if (typeof error === 'string') return error;
-        if (error?.message) return error.message;
-        if (error?.toString) return error.toString();
-        return 'Unknown error occurred';
+    private formatError(error: unknown): string {
+        if (typeof error === 'string') {
+            return error;
+        }
+        
+        if (error instanceof Error) {
+            // Include stack trace in development
+            if (import.meta.env.DEV && error.stack) {
+                return `${error.message}\nStack: ${error.stack}`;
+            }
+            return error.message;
+        }
+        
+        if (error && typeof error === 'object') {
+            // Handle Tauri error format
+            if ('message' in error && typeof error.message === 'string') {
+                return error.message;
+            }
+            
+            // Try toString
+            if ('toString' in error && typeof error.toString === 'function') {
+                return error.toString();
+            }
+            
+            // Fallback to JSON stringification
+            try {
+                return JSON.stringify(error);
+            } catch {
+                return '[Object object - could not serialize]';
+            }
+        }
+        
+        return `Unknown error occurred (type: ${typeof error})`;
     }
     
     /**
@@ -440,26 +566,117 @@ export class RobustMCPClient {
         };
     }
     
-    // Convenience methods with proper typing and fallbacks
+    // Enhanced convenience methods with proper typing and fallbacks
     
-    async search(query: string, options: any = {}): Promise<Result<any>> {
+    async search(
+        query: string, 
+        options: Record<string, unknown> = {}
+    ): Promise<Result<{
+        results: Array<{
+            title: string;
+            content: string;
+            source: string;
+            relevance: number;
+            page?: number;
+        }>;
+        query: string;
+        total: number;
+        metadata: Record<string, unknown>;
+    }>> {
         return this.callWithRetry('search', { query, ...options }, {
-            fallback: { results: [], query, error: 'Search temporarily unavailable' }
+            fallback: {
+                results: [],
+                query,
+                total: 0,
+                metadata: { error: 'Search temporarily unavailable' }
+            },
+            timeout: 15000 // 15 second timeout for searches
         });
     }
     
-    async rollDice(notation: string): Promise<Result<any>> {
-        // Don't cache dice rolls
+    async rollDice(notation: string): Promise<Result<{
+        notation: string;
+        result: number;
+        breakdown: Array<{ die: string; roll: number }>;
+        timestamp: string;
+    }>> {
+        // Don't cache dice rolls - they should always be fresh
         return this.callWithRetry('roll_dice', { notation }, {
-            skipCache: true
+            skipCache: true,
+            retryAttempts: 2, // Fewer retries for dice rolls
+            timeout: 5000 // Quick timeout
         });
     }
     
-    async listSources(): Promise<Result<any>> {
+    async listSources(): Promise<Result<Array<{
+        id: string;
+        name: string;
+        system: string;
+        pageCount: number;
+        status: 'processing' | 'ready' | 'error';
+        addedAt: string;
+    }>>> {
         return this.callWithRetry('list_sources', {}, {
             cacheTTL: 10 * 60 * 1000, // Cache for 10 minutes
-            fallback: { sources: [] }
+            fallback: [],
+            timeout: 10000
         });
+    }
+    
+    /**
+     * Add source document (PDF rulebook)
+     */
+    async addSource(
+        pdfPath: string,
+        rulebookName: string,
+        system: string,
+        metadata?: Record<string, unknown>
+    ): Promise<Result<{ sourceId: string; pagesProcessed: number }>> {
+        return this.callWithRetry('add_source', {
+            pdf_path: pdfPath,
+            rulebook_name: rulebookName,
+            system,
+            ...(metadata && { metadata })
+        }, {
+            timeout: 30000, // PDF processing can take time
+            retryAttempts: 1 // Don't retry file operations
+        });
+    }
+    
+    /**
+     * Batch multiple calls with error isolation
+     */
+    async batchCall<T extends Record<string, { method: string; params: Record<string, unknown> }>>(
+        calls: T,
+        options: {
+            continueOnError?: boolean;
+            timeout?: number;
+        } = {}
+    ): Promise<{ [K in keyof T]: Result<unknown> }> {
+        const results = {} as { [K in keyof T]: Result<unknown> };
+        const { continueOnError = true, timeout } = options;
+        
+        for (const [key, call] of Object.entries(calls) as Array<[keyof T, typeof calls[keyof T]]>) {
+            try {
+                results[key] = await this.callWithRetry(call.method, call.params, timeout ? { timeout } : {});
+                
+                // If we get an error and shouldn't continue, break early
+                if (!continueOnError && !results[key]!.ok) {
+                    break;
+                }
+            } catch (error) {
+                results[key] = createFailure(this.formatError(error), {
+                    batchCall: true,
+                    key: key as string
+                });
+                
+                if (!continueOnError) {
+                    break;
+                }
+            }
+        }
+        
+        return results;
     }
 }
 

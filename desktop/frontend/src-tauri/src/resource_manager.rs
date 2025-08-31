@@ -645,7 +645,7 @@ mod tests {
             "Test resource".to_string(),
             Some(1024),
             false,
-            Some(move || {
+            Some(move || -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>> {
                 let cleanup_called = cleanup_called_clone.clone();
                 Box::pin(async move {
                     cleanup_called.store(true, Ordering::Relaxed);
