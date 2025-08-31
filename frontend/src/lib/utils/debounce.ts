@@ -1,5 +1,14 @@
 /**
  * Simplified, efficient debounce and throttle utilities
+ * 
+ * Note: This is a simplified implementation without advanced options.
+ * If you need features like `leading`, `maxWait`, or `trailing`, consider
+ * using a more comprehensive library like lodash-es/debounce.
+ * 
+ * Current implementation provides:
+ * - Standard debounce (wait after last call)
+ * - Standard throttle (limit frequency)  
+ * - cancel() method for cleanup
  */
 
 export function debounce<T extends (...args: any[]) => any>(

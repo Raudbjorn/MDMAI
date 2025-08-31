@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/// <reference types="node" />
 /**
  * Load testing for real-time features
  * Tests WebSocket and SSE under various load conditions

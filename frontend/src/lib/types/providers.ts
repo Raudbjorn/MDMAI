@@ -149,16 +149,16 @@ export interface APIResponse<T = any> {
 	timestamp?: Date;
 }
 
-export interface ProviderConfigRequest extends APIRequest<{
+export interface ProviderConfigRequest {
 	configs: ProviderConfig[];
 	budgets?: CostBudget[];
-}> {}
+}
 
-export interface ProviderStatsRequest extends APIRequest<{
+export interface ProviderStatsRequest {
 	provider_type?: ProviderType;
 	start_date?: string;
 	end_date?: string;
-}> {}
+}
 
 export interface ProviderStatsResponse extends APIResponse<{
 	stats: AIProviderStats[];
@@ -169,6 +169,11 @@ export interface ProviderStatsResponse extends APIResponse<{
 export interface ProviderHealthResponse extends APIResponse<{
 	health: ProviderHealth[];
 	overall_status: ProviderStatus;
+}> {}
+
+export interface ProviderConfigResponse extends APIResponse<{
+	configs: ProviderConfig[];
+	budgets?: CostBudget[];
 }> {}
 
 // Credential management types

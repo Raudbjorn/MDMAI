@@ -3,6 +3,13 @@
 	import { collaborationStore } from '$lib/stores/collaboration.svelte';
 	import type { DiceRoll } from '$lib/types/collaboration';
 
+	interface DicePreset {
+		name: string;
+		expression: string;
+		icon: string;
+		color: string;
+	}
+
 	interface Props {
 		roomId: string;
 		maxHistory?: number;
@@ -21,6 +28,7 @@
 	let advantage = $state<'normal' | 'advantage' | 'disadvantage'>('normal');
 	let modifier = $state(0);
 	let criticalRange = $state(20);
+	let rerollOnes = $state(false);
 	let animatingDice = $state<{ value: number; final: number; id: string }[]>([]);
 
 	const presets = [
@@ -89,15 +97,9 @@
 				handleCritical(roll);
 			}
 			
-			// Handle reroll ones
+			// Handle reroll ones - this creates a separate reroll entry
 			if (rerollOnes && roll.results.some(r => r === 1)) {
-				const rerolled = await rerollOnesInRoll(roll);
-				if (rerolled) {
-					await collaborationStore.rollDice(
-						modifiedExpression,
-						`${finalPurpose} (rerolled 1s)`
-					);
-				}
+				await rerollOnesInRoll(roll);
 			}
 		} catch (error) {
 			console.error('Failed to roll dice:', error);
@@ -189,11 +191,29 @@
 		const hasOnes = roll.results.some(r => r === 1);
 		if (!hasOnes) return false;
 		
-		// Count how many 1s to reroll
+		// Count how many 1s to reroll and construct reroll expression
 		const onesToReroll = roll.results.filter(r => r === 1).length;
-		console.log(`Rerolling ${onesToReroll} ones`);
 		
-		return true;
+		// Parse the original expression to determine die type
+		const diceMatch = roll.expression.match(/(\d+)d(\d+)/);
+		if (!diceMatch) return false;
+		
+		const [, , dieSize] = diceMatch;
+		const rerollExpression = `${onesToReroll}d${dieSize}`;
+		
+		console.log(`Rerolling ${onesToReroll} ones with expression: ${rerollExpression}`);
+		
+		try {
+			// Perform the actual reroll
+			const rerollResult = await collaborationStore.rollDice(
+				rerollExpression, 
+				`Reroll 1s from ${roll.expression}`
+			);
+			return true;
+		} catch (error) {
+			console.error('Failed to reroll ones:', error);
+			return false;
+		}
 	}
 	
 	function quickRoll(preset: DicePreset) {
@@ -311,12 +331,15 @@
 			</div>
 			
 			<div class="option-group">
-				<label>
+				<label class="checkbox-label">
 					<input 
 						type="checkbox"
 						bind:checked={rerollOnes}
+						id="reroll-ones"
+						class="reroll-checkbox"
 					/>
-					Reroll 1s
+					<span class="checkbox-text">Reroll 1s</span>
+					<span class="checkbox-description">Automatically reroll any dice showing 1</span>
 				</label>
 			</div>
 			
@@ -568,6 +591,35 @@
 		border: 1px solid var(--color-border);
 		border-radius: 0.25rem;
 		font-size: 0.875rem;
+	}
+
+	.checkbox-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		cursor: pointer;
+	}
+
+	.reroll-checkbox {
+		width: 1rem;
+		height: 1rem;
+		margin-right: 0.5rem;
+		cursor: pointer;
+	}
+
+	.checkbox-text {
+		display: flex;
+		align-items: center;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-text);
+	}
+
+	.checkbox-description {
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
+		margin-left: 1.5rem;
+		font-style: italic;
 	}
 	
 	.custom-roll {

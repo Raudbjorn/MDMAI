@@ -31,6 +31,7 @@
 	let isFullscreen = $state(false);
 	let keyboardShortcutsEnabled = $state(true);
 	let screenReaderAnnouncements = $state('');
+	let activeMobileTab = $state<'session' | 'participants' | 'chat'>('session');
 	
 	// TTRPG-specific keyboard shortcuts
 	const keyboardShortcuts = {
@@ -183,6 +184,62 @@
 	
 	function handleTurnChange(index: number) {
 		console.log('Turn changed to:', index);
+	}
+	
+	// Mobile tab navigation handlers
+	function handleMobileTabClick(tab: 'session' | 'participants' | 'chat') {
+		activeMobileTab = tab;
+		announceToScreenReader(`Switched to ${tab} tab`);
+	}
+	
+	function handleMobileTabKeyDown(event: KeyboardEvent, tab: 'session' | 'participants' | 'chat') {
+		const tabs = ['session', 'participants', 'chat'] as const;
+		const currentIndex = tabs.indexOf(tab);
+		
+		switch (event.key) {
+			case 'ArrowLeft':
+			case 'ArrowUp':
+				event.preventDefault();
+				const prevIndex = currentIndex > 0 ? currentIndex - 1 : tabs.length - 1;
+				handleMobileTabClick(tabs[prevIndex]);
+				// Focus the new active tab
+				setTimeout(() => {
+					const currentTarget = event.currentTarget as HTMLElement;
+					const tabElement = currentTarget?.parentElement?.children[prevIndex] as HTMLElement;
+					tabElement?.focus();
+				}, 0);
+				break;
+			case 'ArrowRight':
+			case 'ArrowDown':
+				event.preventDefault();
+				const nextIndex = currentIndex < tabs.length - 1 ? currentIndex + 1 : 0;
+				handleMobileTabClick(tabs[nextIndex]);
+				// Focus the new active tab
+				setTimeout(() => {
+					const currentTarget = event.currentTarget as HTMLElement;
+					const tabElement = currentTarget?.parentElement?.children[nextIndex] as HTMLElement;
+					tabElement?.focus();
+				}, 0);
+				break;
+			case 'Home':
+				event.preventDefault();
+				handleMobileTabClick('session');
+				setTimeout(() => {
+					const currentTarget = event.currentTarget as HTMLElement;
+					const tabElement = currentTarget?.parentElement?.children[0] as HTMLElement;
+					tabElement?.focus();
+				}, 0);
+				break;
+			case 'End':
+				event.preventDefault();
+				handleMobileTabClick('chat');
+				setTimeout(() => {
+					const currentTarget = event.currentTarget as HTMLElement;
+					const tabElement = currentTarget?.parentElement?.children[2] as HTMLElement;
+					tabElement?.focus();
+				}, 0);
+				break;
+		}
 	}
 	
 	// Enhanced conflict resolution with Result pattern
@@ -434,38 +491,44 @@
 		<main class="space-y-6">
 			<!-- Mobile Tab Navigation -->
 			<div class="lg:hidden">
-				<nav class="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1" role="tablist">
+				<div class="flex space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1" role="tablist" aria-label="Mobile navigation tabs">
 					<button 
-						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 {activeMobileTab === 'session' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'}"
 						role="tab"
-						aria-selected="true"
-						tabindex="0"
+						aria-selected={activeMobileTab === 'session'}
+						tabindex={activeMobileTab === 'session' ? 0 : -1}
+						onclick={() => handleMobileTabClick('session')}
+						onkeydown={(event) => handleMobileTabKeyDown(event, 'session')}
 					>
 						Session
 					</button>
 					<button 
-						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 {activeMobileTab === 'participants' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'}"
 						role="tab"
-						aria-selected="false"
-						tabindex="-1"
+						aria-selected={activeMobileTab === 'participants'}
+						tabindex={activeMobileTab === 'participants' ? 0 : -1}
+						onclick={() => handleMobileTabClick('participants')}
+						onkeydown={(event) => handleMobileTabKeyDown(event, 'participants')}
 					>
 						Participants
 					</button>
 					<button 
-						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100"
+						class="flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 {activeMobileTab === 'chat' ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm' : 'text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100'}"
 						role="tab"
-						aria-selected="false"
-						tabindex="-1"
+						aria-selected={activeMobileTab === 'chat'}
+						tabindex={activeMobileTab === 'chat' ? 0 : -1}
+						onclick={() => handleMobileTabClick('chat')}
+						onkeydown={(event) => handleMobileTabKeyDown(event, 'chat')}
 					>
 						Chat
 					</button>
-				</nav>
+				</div>
 			</div>
 
 			<!-- Desktop and Mobile Layout -->
 			<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 				<!-- Left Sidebar - Participants & Invites -->
-				<aside class="lg:col-span-3 space-y-4" aria-label="Participants and room management">
+				<aside class="lg:col-span-3 space-y-4 {activeMobileTab === 'participants' ? 'block' : 'hidden lg:block'}" aria-label="Participants and room management">
 					<section aria-labelledby="participants-heading">
 						<h2 id="participants-heading" class="sr-only">Participants</h2>
 						<ParticipantList 
@@ -484,7 +547,7 @@
 				</aside>
 				
 				<!-- Main Content - Initiative & Notes -->
-				<section class="lg:col-span-6 space-y-6" aria-label="Game session content">
+				<section class="lg:col-span-6 space-y-6 {activeMobileTab === 'session' ? 'block' : 'hidden lg:block'}" aria-label="Game session content">
 					<!-- Initiative Tracker -->
 					<div data-initiative tabindex="-1">
 						<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Initiative Tracker</h2>
@@ -573,7 +636,7 @@
 				</section>
 				
 				<!-- Right Sidebar - Chat -->
-				<aside class="lg:col-span-3" aria-label="Chat panel">
+				<aside class="lg:col-span-3 {activeMobileTab === 'chat' ? 'block' : 'hidden lg:block'}" aria-label="Chat panel">
 					<div class="h-[600px] flex flex-col">
 						<h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Chat</h2>
 						<div class="flex-1">

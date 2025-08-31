@@ -133,9 +133,9 @@
 				<h2 class="section-title">Select Document</h2>
 				<PDFUpload
 					maxFileSize={100}
-					onupload={handleUploadStart}
-					onsuccess={handleUploadSuccess}
-					onerror={handleUploadError}
+					on:upload={handleUploadStart}
+					on:success={handleUploadSuccess}
+					on:error={handleUploadError}
 				/>
 			</div>
 
