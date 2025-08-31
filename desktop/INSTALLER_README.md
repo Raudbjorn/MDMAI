@@ -66,11 +66,10 @@ python3 build_installer.py --platform windows --installer-targets msi
 #### Code Signing Requirements
 ```bash
 # Required environment variables
-export WINDOWS_CERTIFICATE_PATH=\"path/to/certificate.p12\"
-export WINDOWS_CERTIFICATE_PASSWORD=\"certificate-password\"
-export TAURI_SIGNING_PRIVATE_KEY=\"tauri-private-key\"
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=\"key-password\"
-```
+export WINDOWS_CERTIFICATE_PATH="path/to/certificate.p12"
+export WINDOWS_CERTIFICATE_PASSWORD="certificate-password"
+export TAURI_SIGNING_PRIVATE_KEY="tauri-private-key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="key-password"
 
 ### macOS Installer
 
