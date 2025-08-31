@@ -6,7 +6,7 @@
 	import { onMount } from 'svelte';
 	
 	// Get campaign ID from route params
-	const campaignId = $derived($page.params.id!);
+	const campaignId = $derived($page.params.id ?? '');
 	const campaign = $derived(sessionStore.currentCampaign);
 	const user = $derived(sessionStore.user);
 	
