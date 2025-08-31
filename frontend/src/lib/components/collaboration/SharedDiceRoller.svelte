@@ -51,7 +51,13 @@
 		});
 		const room = collaborationStore.currentRoom;
 		if (room) rollHistory = room.state.dice_rolls.slice(-maxHistory);
-		return () => unsubscribe?.();
+		
+		// Proper cleanup function for $effect
+		return () => {
+			if (unsubscribe) {
+				unsubscribe();
+			}
+		};
 	});
 	
 	function handleDiceRoll(roll: DiceRoll) {
@@ -180,37 +186,84 @@
 	}
 	
 	function handleCritical(roll: DiceRoll) {
-			// Visual feedback for critical hits
-		// Could implement confetti or other celebration animation here
-		// Message would be: CRITICAL ${roll.results[0] === 20 ? 'SUCCESS' : 'HIT'}!
+		// Visual feedback for critical hits
+		const isCriticalSuccess = roll.results[0] === 20;
+		const isCriticalFail = roll.results[0] === 1;
+		
+		if (isCriticalSuccess || isCriticalFail) {
+			// Create visual notification
+			const message = isCriticalSuccess ? 'CRITICAL SUCCESS!' : 'CRITICAL FAIL!';
+			
+			// Log critical roll for visual feedback
+			// In a production app, this could trigger a toast notification or animation
+			console.info(`🎲 ${message} - ${roll.player_name} rolled a ${roll.results[0]}`);
+			
+			// Future implementation could include:
+			// - Confetti animation for critical success
+			// - Screen shake for critical fail
+			// - Sound effects
+			// - Special visual indicators in the roll history
+		}
 	}
 	
 	async function rerollOnesInRoll(roll: DiceRoll): Promise<boolean> {
 		const hasOnes = roll.results.some(r => r === 1);
 		if (!hasOnes) return false;
 		
-		// Count how many 1s to reroll and construct reroll expression
-		const onesToReroll = roll.results.filter(r => r === 1).length;
+		// Parse dice expressions more robustly to handle complex expressions like "1d4+1d6" or "2d8+3"
+		const dicePattern = /(\d+)d(\d+)/g;
+		const matches = [...roll.expression.matchAll(dicePattern)];
 		
-		// Parse the original expression to determine die type
-		const diceMatch = roll.expression.match(/(\d+)d(\d+)/);
-		if (!diceMatch) return false;
+		if (matches.length === 0) return false;
 		
-		const [, , dieSize] = diceMatch;
-		const rerollExpression = `${onesToReroll}d${dieSize}`;
+		// For complex expressions with multiple dice types, we need to determine which dice showed 1s
+		// Since we don't have individual dice type tracking in results, we'll handle two cases:
 		
-		try {
-			// Perform the actual reroll
-			const rerollResult = await collaborationStore.rollDice(
-				rerollExpression, 
-				`Reroll 1s from ${roll.expression}`
-			);
-			return true;
-		} catch (error) {
-			// Handle reroll error gracefully
-			// Could show error message to user through a toast notification
-			return false;
+		if (matches.length === 1) {
+			// Simple expression with one die type
+			const onesToReroll = roll.results.filter(r => r === 1).length;
+			const dieSize = matches[0][2];
+			const rerollExpression = `${onesToReroll}d${dieSize}`;
+			
+			try {
+				const rerollResult = await collaborationStore.rollDice(
+					rerollExpression, 
+					`Reroll 1s from ${roll.expression}`
+				);
+				return true;
+			} catch (error) {
+				console.error('Failed to reroll 1s:', error);
+				return false;
+			}
+		} else {
+			// Complex expression with multiple dice types
+			// Since we can't determine which specific dice showed 1s without more context,
+			// we'll reroll all 1s as the smallest die type (conservative approach)
+			// or notify the user that reroll-1s isn't supported for complex expressions
+			
+			const onesToReroll = roll.results.filter(r => r === 1).length;
+			if (onesToReroll > 0) {
+				// Find the smallest die size in the expression (conservative approach)
+				const dieSizes = matches.map(m => parseInt(m[2]));
+				const smallestDie = Math.min(...dieSizes);
+				
+				// Alternatively, we could use the most common die type or prompt the user
+				const rerollExpression = `${onesToReroll}d${smallestDie}`;
+				
+				try {
+					const rerollResult = await collaborationStore.rollDice(
+						rerollExpression, 
+						`Reroll 1s from ${roll.expression} (as d${smallestDie})`
+					);
+					return true;
+				} catch (error) {
+					console.error('Failed to reroll 1s for complex expression:', error);
+					return false;
+				}
+			}
 		}
+		
+		return false;
 	}
 	
 	function quickRoll(preset: DicePreset) {

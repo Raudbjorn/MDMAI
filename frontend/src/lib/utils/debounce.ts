@@ -102,7 +102,7 @@ export function debounce<T extends (...args: any[]) => any>(
 		// Invoke the leading edge.
 		return leading ? invokeFunc(time) : result;
 	}
-	function trailingEdge(time: number) {
+	function trailingEdge(time: number): ReturnType<T> {
 		timeoutId = null;
 		if (maxTimeoutId) {
 			clearTimeout(maxTimeoutId);
