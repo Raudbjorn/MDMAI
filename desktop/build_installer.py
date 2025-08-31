@@ -1057,6 +1057,7 @@ class UpdateManifestGenerator:
                         return config["version"]
                     else:
                         print("⚠️  Version not found in tauri.conf.json, using default")
+                        return "1.0.0"
             except json.JSONDecodeError as e:
                 print(f"⚠️  Failed to parse tauri.conf.json: {e}")
             except FileNotFoundError:
