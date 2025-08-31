@@ -48,6 +48,14 @@ const config = {
         // Service worker disabled for desktop
         serviceWorker: {
             register: false
+        },
+
+        // Path aliases (recommended approach instead of tsconfig paths)
+        alias: {
+            $lib: 'src/lib',
+            $components: 'src/lib/components',
+            $types: 'src/lib/types',
+            $utils: 'src/lib/utils'
         }
     }
 };

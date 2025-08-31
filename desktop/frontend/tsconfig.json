@@ -46,18 +46,7 @@
 		"isolatedModules": true,
 		"verbatimModuleSyntax": false,
 		
-		// Path mapping for cleaner imports
-		"baseUrl": ".",
-		"paths": {
-			"$lib": ["src/lib"],
-			"$lib/*": ["src/lib/*"],
-			"$components": ["src/lib/components"],
-			"$components/*": ["src/lib/components/*"],
-			"$types": ["src/lib/types"],
-			"$types/*": ["src/lib/types/*"],
-			"$utils": ["src/lib/utils"],
-			"$utils/*": ["src/lib/utils/*"]
-		}
+		// Path mapping handled by SvelteKit's alias configuration
 	},
 	"include": [
 		"src/**/*.d.ts",
@@ -71,7 +60,9 @@
 		"node_modules/**",
 		"build/**",
 		"dist/**",
-		".svelte-kit/generated/**"
+		".svelte-kit/generated/**",
+		"**/*.test.ts",
+		"**/*.spec.ts"
 	],
 	"ts-node": {
 		"esm": true,
