@@ -467,7 +467,15 @@ class TauriBuilder:
             target_name = f"mcp-server-{self.config.platform.rust_target}{self.config.platform.executable_extension}"
             target = self.config.tauri_binaries_dir / target_name
             shutil.copy2(backend_exe, target)
+            
+            # Create generic symlink for Tauri configuration
+            symlink = self.config.tauri_binaries_dir / "mcp-server"
+            if symlink.exists():
+                symlink.unlink()
+            symlink.symlink_to(target_name)  # Create relative symlink
+            
             print(f"  ✓ Copied backend to: {target.name}")
+            print(f"  ✓ Created symlink: mcp-server -> {target_name}")
             result.add_artifact(target)
         else:
             # Create wrapper for development
