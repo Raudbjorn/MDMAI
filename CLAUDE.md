@@ -255,40 +255,93 @@ When adding new AI provider support (like Ollama):
    - Test user interactions
    - Test error states and loading states
 
-## Common Commands
+## Unified Build System
+
+The project includes a comprehensive, intelligent build script (`build.sh`) that automatically detects package managers and provides a single interface for all development operations.
+
+### Quick Start
 ```bash
-# Backend Setup
-pip install -r requirements.txt  # Install Python dependencies
-python src/main.py  # Run the MCP server
-python run_api.py  # Run the FastAPI server
+# One-time setup (auto-detects uv, poetry, pnpm, yarn, npm)
+./build.sh setup
 
-# Frontend Setup
-cd frontend
-npm install  # Install Node dependencies
-npm run dev  # Start SvelteKit dev server
-npm run build  # Build for production
-npm run preview  # Preview production build
+# Build everything
+./build.sh build
 
-# Desktop App
-cd desktop/frontend
-npm install
-npm run tauri:dev  # Run desktop app in dev mode
-npm run tauri:build  # Build desktop app
+# Start development
+./build.sh dev-desktop    # Desktop app with hot reload
+./build.sh dev-webapp     # Web app development server
+```
 
-# Testing
-pytest tests/  # Run Python tests
-pytest tests/test_ollama_model_selection.py  # Run specific test
-cd frontend && npm test  # Run frontend tests
+### Language-Specific Operations
 
-# Code Quality
-ruff check .  # Lint Python code (replaces flake8, black, isort)
-ruff format .  # Format Python code
-mypy src/  # Type check Python
-cd frontend && npm run check  # Type check TypeScript
+The build script supports language-specific operations to avoid building everything:
 
-# Development
-pre-commit install  # Set up git hooks
-docker-compose up  # Run with Docker
+```bash
+# Build only specific components
+./build.sh build python     # Python backend only
+./build.sh build js         # JavaScript/SvelteKit only  
+./build.sh build ts         # TypeScript/Desktop only
+./build.sh build rust       # Rust/Tauri only
+
+# Test specific components
+./build.sh test python      # Python tests only
+./build.sh test ts          # TypeScript tests only
+./build.sh test rust        # Rust tests only
+
+# Lint specific languages
+./build.sh lint python      # Python linting (flake8 + mypy)
+./build.sh lint js          # JavaScript/TS linting (eslint)
+./build.sh lint rust        # Rust linting (clippy)
+
+# Format code by language
+./build.sh format python    # black + isort
+./build.sh format js        # prettier
+./build.sh format rust      # cargo fmt
+
+# Clean artifacts by language
+./build.sh clean python     # Python artifacts only
+./build.sh clean js         # Node.js artifacts only
+./build.sh clean rust       # Rust target/ directories
+```
+
+### Git & GitHub Integration
+
+The build script includes intelligent git repository awareness:
+- **Uncommitted changes**: Alerts when >5 files, warns at >20
+- **Branch divergence**: Shows commits behind main/master
+- **Merge conflicts**: Detects potential conflicts before merging
+- **Pull requests**: Shows open PRs and review status (via GitHub CLI)
+- **CI/CD status**: Displays recent workflow failures
+
+### Quality Assurance Pipeline
+```bash
+# Complete QA pipeline
+./build.sh format && ./build.sh lint && ./build.sh test
+
+# Language-specific QA
+./build.sh format python && ./build.sh lint python && ./build.sh test python
+```
+
+### Repository Status
+```bash
+# Detailed git and GitHub status
+./build.sh status
+```
+
+### Tool Detection & Fallbacks
+
+The build script automatically detects and uses the best available tools:
+- **Python**: uv (fastest) → poetry → pip + venv
+- **Node.js**: pnpm → yarn → npm  
+- **GitHub**: gh CLI + jq for enhanced features
+- **Rust**: cargo (required for desktop builds)
+
+### Legacy Commands (Still Supported)
+```bash
+# Direct package manager usage (if preferred)
+cd frontend && npm install && npm run dev
+source .venv/bin/activate && pytest tests/
+make test  # Traditional Makefile targets
 ```
 
 ## Documentation Structure

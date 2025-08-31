@@ -614,6 +614,17 @@ format_all() {
     run_python_cmd "isort src tests"
     print_success "Python code formatted"
     
+    # Root configuration files with Prettier (if available)
+    if command_exists npx || command_exists prettier; then
+        print_info "Formatting configuration files..."
+        if command_exists npx; then
+            npx prettier --write "*.md" "*.json" "*.yml" "*.yaml" 2>/dev/null || true
+        elif command_exists prettier; then
+            prettier --write "*.md" "*.json" "*.yml" "*.yaml" 2>/dev/null || true
+        fi
+        print_success "Configuration files formatted"
+    fi
+    
     # Frontend formatting
     if [ -d "frontend" ]; then
         print_info "Formatting frontend..."
@@ -657,27 +668,180 @@ dev_desktop() {
     run_node_cmd "tauri:dev" "desktop/frontend"
 }
 
-# Cleaning
-clean_all() {
-    print_section "Cleaning Build Artifacts"
-    
+# Language-specific test functions
+run_python_tests() {
+    print_section "Running Python Tests"
+    print_info "Running Python tests..."
+    run_python_cmd "pytest -v"
+    print_success "Python tests completed"
+}
+
+run_frontend_tests() {
+    print_section "Running Frontend Tests"
+    if [ -d "frontend" ]; then
+        print_info "Running frontend tests..."
+        run_node_cmd "test" "frontend" 2>/dev/null || print_warning "Frontend tests not available or failed"
+        print_success "Frontend tests completed"
+    else
+        print_warning "Frontend directory not found"
+    fi
+}
+
+run_desktop_tests() {
+    print_section "Running Desktop Tests"
+    if [ -d "desktop/frontend" ]; then
+        print_info "Checking desktop TypeScript..."
+        run_node_cmd "check" "desktop/frontend"
+        print_success "Desktop tests completed"
+    else
+        print_warning "Desktop frontend directory not found"
+    fi
+}
+
+run_rust_tests() {
+    print_section "Running Rust Tests"
+    if [ -d "desktop/frontend/src-tauri" ] && command_exists cargo; then
+        print_info "Running Rust tests..."
+        cd desktop/frontend/src-tauri
+        cargo test
+        cd "$PROJECT_ROOT"
+        print_success "Rust tests completed"
+    else
+        print_warning "Rust tests not available"
+    fi
+}
+
+# Language-specific linting functions
+lint_python() {
+    print_section "Linting Python Code"
+    print_info "Running flake8..."
+    run_python_cmd "flake8 src tests --max-line-length=100" && print_success "Python linting passed" || print_error "Python linting failed"
+    print_info "Running mypy..."
+    run_python_cmd "mypy src --ignore-missing-imports" && print_success "Python type checking passed" || print_error "Python type checking failed"
+}
+
+lint_frontend() {
+    print_section "Linting Frontend Code"
+    if [ -d "frontend" ]; then
+        print_info "Linting frontend..."
+        run_node_cmd "lint" "frontend" && print_success "Frontend linting passed" || print_error "Frontend linting failed"
+    else
+        print_warning "Frontend directory not found"
+    fi
+}
+
+lint_desktop() {
+    print_section "Linting Desktop Code"
+    if [ -d "desktop/frontend" ]; then
+        print_info "Linting desktop frontend..."
+        run_node_cmd "lint" "desktop/frontend" && print_success "Desktop frontend linting passed" || print_error "Desktop frontend linting failed"
+    else
+        print_warning "Desktop frontend directory not found"
+    fi
+}
+
+lint_rust() {
+    print_section "Linting Rust Code"
+    if [ -d "desktop/frontend/src-tauri" ] && command_exists cargo; then
+        print_info "Running cargo clippy..."
+        cd desktop/frontend/src-tauri
+        cargo clippy -- -D warnings && print_success "Rust linting passed" || print_error "Rust linting failed"
+        cd "$PROJECT_ROOT"
+    else
+        print_warning "Rust linting not available"
+    fi
+}
+
+# Language-specific formatting functions
+format_python() {
+    print_section "Formatting Python Code"
+    print_info "Formatting Python code..."
+    run_python_cmd "black src tests"
+    run_python_cmd "isort src tests"
+    print_success "Python code formatted"
+}
+
+format_frontend() {
+    print_section "Formatting Frontend Code"
+    if [ -d "frontend" ]; then
+        print_info "Formatting frontend..."
+        run_node_cmd "format" "frontend"
+        print_success "Frontend code formatted"
+    else
+        print_warning "Frontend directory not found"
+    fi
+}
+
+format_desktop() {
+    print_section "Formatting Desktop Code"
+    if [ -d "desktop/frontend" ]; then
+        print_info "Formatting desktop frontend..."
+        run_node_cmd "format" "desktop/frontend"
+        print_success "Desktop frontend code formatted"
+    else
+        print_warning "Desktop frontend directory not found"
+    fi
+}
+
+format_rust() {
+    print_section "Formatting Rust Code"
+    if [ -d "desktop/frontend/src-tauri" ] && command_exists cargo; then
+        print_info "Formatting Rust code..."
+        cd desktop/frontend/src-tauri
+        cargo fmt
+        cd "$PROJECT_ROOT"
+        print_success "Rust code formatted"
+    else
+        print_warning "Rust formatting not available"
+    fi
+}
+
+# Language-specific cleaning functions
+clean_python() {
+    print_section "Cleaning Python Artifacts"
     print_info "Cleaning Python artifacts..."
     rm -rf build dist *.egg-info
     rm -rf .pytest_cache .coverage htmlcov
     find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
     find . -type f -name "*.pyc" -delete
-    
-    print_info "Cleaning Node.js artifacts..."
+    print_success "Python artifacts cleaned"
+}
+
+clean_frontend() {
+    print_section "Cleaning Frontend Artifacts"
+    print_info "Cleaning frontend artifacts..."
     [ -d "frontend/node_modules" ] && rm -rf frontend/node_modules
     [ -d "frontend/build" ] && rm -rf frontend/build
     [ -d "frontend/.svelte-kit" ] && rm -rf frontend/.svelte-kit
+    [ -d "frontend/dist" ] && rm -rf frontend/dist
+    print_success "Frontend artifacts cleaned"
+}
+
+clean_desktop() {
+    print_section "Cleaning Desktop Artifacts"
+    print_info "Cleaning desktop artifacts..."
     [ -d "desktop/frontend/node_modules" ] && rm -rf desktop/frontend/node_modules
     [ -d "desktop/frontend/build" ] && rm -rf desktop/frontend/build
     [ -d "desktop/frontend/.svelte-kit" ] && rm -rf desktop/frontend/.svelte-kit
-    
+    [ -d "desktop/frontend/dist" ] && rm -rf desktop/frontend/dist
+    print_success "Desktop artifacts cleaned"
+}
+
+clean_rust() {
+    print_section "Cleaning Rust Artifacts"
     print_info "Cleaning Rust artifacts..."
     [ -d "desktop/frontend/src-tauri/target" ] && rm -rf desktop/frontend/src-tauri/target
-    
+    [ -d "desktop/backend/target" ] && rm -rf desktop/backend/target
+    print_success "Rust artifacts cleaned"
+}
+
+# Cleaning
+clean_all() {
+    print_section "Cleaning All Build Artifacts"
+    clean_python
+    clean_frontend
+    clean_desktop
+    clean_rust
     print_success "All artifacts cleaned"
 }
 
@@ -692,7 +856,7 @@ show_help() {
     echo ""
     
     echo -e "${YELLOW}Build Commands:${NC}"
-    echo -e "  ${GREEN}build${NC}             Build all components (backend + webapp + desktop)"
+    echo -e "  ${GREEN}build [lang]${NC}      Build components (all|python|js|ts|rust)"
     echo -e "  ${GREEN}backend${NC}           Build and validate Python backend only"
     echo -e "  ${GREEN}webapp${NC}            Build SvelteKit web application only"
     echo -e "  ${GREEN}desktop${NC}           Build desktop application (development)"
@@ -706,22 +870,25 @@ show_help() {
     echo ""
     
     echo -e "${YELLOW}Quality Assurance:${NC}"
-    echo -e "  ${GREEN}test${NC}              Run all tests (Python + TypeScript)"
-    echo -e "  ${GREEN}lint${NC}              Run linting on all code"
-    echo -e "  ${GREEN}format${NC}            Format all code (Python + TypeScript)"
+    echo -e "  ${GREEN}test [lang]${NC}       Run tests (all|python|js|ts|rust)"
+    echo -e "  ${GREEN}lint [lang]${NC}       Run linting (all|python|js|ts|rust)"
+    echo -e "  ${GREEN}format [lang]${NC}     Format code (all|python|js|ts|rust)"
     echo ""
     
     echo -e "${YELLOW}Utility Commands:${NC}"
     echo -e "  ${GREEN}status${NC}            Show detailed git and GitHub repository status"
-    echo -e "  ${GREEN}clean${NC}             Remove all build artifacts and caches"
+    echo -e "  ${GREEN}clean [lang]${NC}      Remove build artifacts (all|python|js|ts|rust)"
     echo -e "  ${GREEN}help${NC}              Show this help message"
     echo ""
     
     echo -e "${YELLOW}Examples:${NC}"
-    echo -e "  ${CYAN}$0 deps && $0 build${NC}     # Full setup and build"
-    echo -e "  ${CYAN}$0 dev-desktop${NC}          # Start desktop development"
-    echo -e "  ${CYAN}$0 test && $0 lint${NC}      # Quality assurance pipeline"
-    echo -e "  ${CYAN}$0 clean && $0 setup${NC}    # Clean rebuild"
+    echo -e "  ${CYAN}$0 deps && $0 build${NC}         # Full setup and build"
+    echo -e "  ${CYAN}$0 build python${NC}             # Build only Python backend"
+    echo -e "  ${CYAN}$0 test ts${NC}                  # Test only TypeScript/desktop"
+    echo -e "  ${CYAN}$0 lint rust${NC}                # Lint only Rust code"
+    echo -e "  ${CYAN}$0 clean js${NC}                 # Clean only JavaScript artifacts"
+    echo -e "  ${CYAN}$0 dev-desktop${NC}              # Start desktop development"
+    echo -e "  ${CYAN}$0 format python && $0 test py${NC} # Format and test Python only"
     echo ""
     
     echo -e "${YELLOW}Detected Tools:${NC}"
@@ -743,10 +910,26 @@ case "${1:-help}" in
     
     "build")
         print_header
-        build_backend
-        build_webapp
-        build_desktop
-        print_success "All components built successfully!"
+        case "${2:-all}" in
+            "python"|"backend"|"py")
+                build_backend
+                ;;
+            "javascript"|"js"|"frontend"|"webapp"|"web")
+                build_webapp
+                ;;
+            "typescript"|"ts"|"desktop")
+                build_desktop
+                ;;
+            "rust"|"tauri")
+                build_desktop
+                ;;
+            "all"|*)
+                build_backend
+                build_webapp
+                build_desktop
+                print_success "All components built successfully!"
+                ;;
+        esac
         ;;
     
     "backend")
@@ -771,17 +954,65 @@ case "${1:-help}" in
     
     "test")
         print_header
-        run_tests
+        case "${2:-all}" in
+            "python"|"backend"|"py")
+                run_python_tests
+                ;;
+            "javascript"|"js"|"frontend"|"webapp"|"web")
+                run_frontend_tests
+                ;;
+            "typescript"|"ts"|"desktop")
+                run_desktop_tests
+                ;;
+            "rust"|"tauri")
+                run_rust_tests
+                ;;
+            "all"|*)
+                run_tests
+                ;;
+        esac
         ;;
     
     "lint")
         print_header
-        lint_all
+        case "${2:-all}" in
+            "python"|"backend"|"py")
+                lint_python
+                ;;
+            "javascript"|"js"|"frontend"|"webapp"|"web")
+                lint_frontend
+                ;;
+            "typescript"|"ts"|"desktop")
+                lint_desktop
+                ;;
+            "rust"|"tauri")
+                lint_rust
+                ;;
+            "all"|*)
+                lint_all
+                ;;
+        esac
         ;;
     
     "format")
         print_header
-        format_all
+        case "${2:-all}" in
+            "python"|"backend"|"py")
+                format_python
+                ;;
+            "javascript"|"js"|"frontend"|"webapp"|"web")
+                format_frontend
+                ;;
+            "typescript"|"ts"|"desktop")
+                format_desktop
+                ;;
+            "rust"|"tauri")
+                format_rust
+                ;;
+            "all"|*)
+                format_all
+                ;;
+        esac
         ;;
     
     "dev-backend")
@@ -805,7 +1036,23 @@ case "${1:-help}" in
     
     "clean")
         print_header
-        clean_all
+        case "${2:-all}" in
+            "python"|"backend"|"py")
+                clean_python
+                ;;
+            "javascript"|"js"|"frontend"|"webapp"|"web")
+                clean_frontend
+                ;;
+            "typescript"|"ts"|"desktop")
+                clean_desktop
+                ;;
+            "rust"|"tauri")
+                clean_rust
+                ;;
+            "all"|*)
+                clean_all
+                ;;
+        esac
         ;;
     
     "help"|"-h"|"--help")
