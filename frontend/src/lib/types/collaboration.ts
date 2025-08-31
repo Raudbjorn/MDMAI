@@ -75,7 +75,7 @@ export interface SharedState {
 }
 
 export interface MapState {
-	tokens: Map<string, MapToken>;
+	tokens: Record<string, MapToken>;
 	drawings: any[];
 	fogOfWar?: any;
 	background?: string;
