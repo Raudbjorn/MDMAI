@@ -1,0 +1,244 @@
+# GitHub Copilot PR Review Configuration
+# For TTRPG Assistant MCP Server
+
+# Enable Copilot PR reviews
+enabled: true
+
+# Review settings
+review:
+  # Automatically request reviews on PR creation
+  auto_review: true
+  
+  # Review level (strict, balanced, or lenient)
+  level: strict
+  
+  # Languages to review
+  languages:
+    - python
+    - typescript
+    - javascript
+    - yaml
+    - json
+    - markdown
+
+# Security scanning
+security:
+  enabled: true
+  block_on_high_severity: true
+  
+  # Security patterns to check
+  checks:
+    - sql_injection
+    - command_injection
+    - path_traversal
+    - xss
+    - csrf
+    - sensitive_data_exposure
+    - insecure_deserialization
+    - authentication_bypass
+    - authorization_flaws
+    - hardcoded_secrets
+    
+  # Additional security rules for this project
+  custom_patterns:
+    - name: "API Key Exposure"
+      pattern: "api_key|apikey|api-key"
+      severity: high
+      message: "Potential API key exposure. Use environment variables or secure vaults."
+    
+    - name: "Subprocess Execution"
+      pattern: "subprocess\\.(run|call|Popen|check_output)"
+      severity: high
+      message: "Subprocess execution detected. Ensure inputs are properly sanitized."
+    
+    - name: "PDF Processing Security"
+      pattern: "PyPDF|pdfplumber|pikepdf"
+      severity: medium
+      message: "PDF processing detected. Ensure file size limits and sandboxing are in place."
+
+# Code quality checks
+quality:
+  enabled: true
+  
+  # Complexity thresholds
+  complexity:
+    max_function_length: 50
+    max_file_length: 500
+    max_cyclomatic_complexity: 10
+    max_cognitive_complexity: 15
+  
+  # Style checks
+  style:
+    enforce_type_hints: true  # Python
+    enforce_typescript: true  # TypeScript strict mode
+    enforce_const_correctness: true
+    enforce_async_await: true
+    
+  # Patterns to enforce
+  patterns:
+    - name: "Error Handling"
+      enforce: "specific_exceptions"
+      message: "Avoid catching generic Exception. Use specific exception types."
+    
+    - name: "Async Best Practices"
+      enforce: "no_blocking_in_async"
+      message: "Avoid blocking operations in async functions."
+    
+    - name: "Resource Management"
+      enforce: "context_managers"
+      message: "Use context managers for resource management (files, connections)."
+
+# Performance checks
+performance:
+  enabled: true
+  
+  checks:
+    - database_n_plus_one
+    - unnecessary_loops
+    - memory_leaks
+    - inefficient_algorithms
+    - missing_indexes
+    - large_payload_detection
+    
+  # Project-specific performance rules
+  custom_checks:
+    - name: "Embedding Batch Processing"
+      pattern: "generate_embedding.*for.*in"
+      message: "Consider batch processing for embedding generation."
+    
+    - name: "ChromaDB Optimization"
+      pattern: "collection\\.(get|query)\\("
+      message: "Ensure ChromaDB queries use appropriate limits and filters."
+
+# Testing requirements
+testing:
+  enabled: true
+  
+  # Minimum coverage requirements
+  coverage:
+    minimum_overall: 80
+    minimum_new_code: 90
+    
+  # Test patterns to enforce
+  requirements:
+    - name: "New Features Need Tests"
+      pattern: "def|class|function|const.*export"
+      message: "New code requires corresponding tests."
+    
+    - name: "Security Functions Need Tests"
+      pattern: "@secure_mcp_tool|@requires_auth|validateInput"
+      message: "Security-critical code must have comprehensive tests."
+
+# Documentation requirements
+documentation:
+  enabled: true
+  
+  requirements:
+    - docstrings_required: true  # Python
+    - jsdoc_required: true  # TypeScript/JavaScript
+    - readme_updates: true
+    - changelog_updates: true
+    
+  # Documentation patterns
+  patterns:
+    - name: "MCP Tool Documentation"
+      pattern: "@mcp\\.tool"
+      message: "MCP tools require comprehensive documentation."
+    
+    - name: "API Endpoint Documentation"
+      pattern: "@app\\.(get|post|put|delete|patch)"
+      message: "API endpoints require documentation including parameters and responses."
+
+# TTRPG-specific checks
+ttrpg:
+  enabled: true
+  
+  checks:
+    - name: "Game System Compatibility"
+      pattern: "system.*=.*(D&D|Pathfinder|Call of Cthulhu|Blades in the Dark)"
+      message: "Ensure changes are compatible with all supported game systems."
+    
+    - name: "Dice Notation"
+      pattern: "\\d+d\\d+"
+      message: "Verify dice notation parsing handles all edge cases."
+    
+    - name: "Character Encoding"
+      pattern: "stat_block|character_sheet|npc"
+      message: "Ensure character data follows the established schema."
+
+# File-specific rules
+files:
+  # Python files
+  "**/*.py":
+    - enforce_type_hints: true
+    - max_line_length: 100
+    - require_docstrings: true
+    
+  # TypeScript files
+  "**/*.ts":
+    - enforce_strict_mode: true
+    - no_any_type: true
+    - require_return_types: true
+    
+  # Frontend components
+  "**/components/**/*.svelte":
+    - require_accessibility: true
+    - require_prop_types: true
+    
+  # Configuration files
+  "**/*.env*":
+    - block_review: true
+    - message: "Environment files should not be committed."
+    
+  # PDF processing
+  "**/pdf_processing/**":
+    - extra_security_checks: true
+    - require_sandboxing: true
+
+# Ignore patterns
+ignore:
+  - "**/*.test.py"
+  - "**/*.spec.ts"
+  - "**/node_modules/**"
+  - "**/venv/**"
+  - "**/__pycache__/**"
+  - "**/build/**"
+  - "**/dist/**"
+  - "**/.git/**"
+
+# Custom messages
+messages:
+  pr_approved: "✅ This PR meets all quality standards!"
+  pr_changes_requested: "🔍 Some improvements needed. Please review the comments."
+  security_issue_found: "🔴 Security issue detected. This must be fixed before merging."
+  
+# Integration with other tools
+integrations:
+  # Run these checks alongside Copilot
+  additional_checks:
+    - pytest: true
+    - mypy: true
+    - ruff: true
+    - prettier: true
+    - eslint: true
+    
+  # Status checks required
+  required_checks:
+    - "security/scan"
+    - "tests/python"
+    - "tests/frontend"
+    - "lint/python"
+    - "lint/typescript"
+
+# Notification settings
+notifications:
+  # Notify on high severity issues
+  high_severity_mentions:
+    - "@security-team"
+    
+  # Auto-assign reviewers based on files
+  auto_assign:
+    "**/security/**": ["@security-team"]
+    "**/frontend/**": ["@frontend-team"]
+    "**/pdf_processing/**": ["@backend-team"]
+    "**/docs/**": ["@documentation-team"]

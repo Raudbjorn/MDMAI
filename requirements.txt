@@ -38,13 +38,14 @@ torch==2.8.0
 spacy==3.7.0
 tiktoken==0.5.0  # Token counting for OpenAI models
 instructor==0.5.0  # Structured LLM outputs
+ollama==0.4.4  # Ollama Python client for local embeddings
 
 # ============================================
 # AI Provider SDKs
 # ============================================
-anthropic==0.15.0
-openai==1.10.0
-google-generativeai==0.3.0
+anthropic==0.25.0  # Updated to latest stable
+openai==1.35.0  # Updated to latest stable
+google-generativeai==0.5.0  # Updated to latest stable
 
 # ============================================
 # Search & Information Retrieval
@@ -55,7 +56,7 @@ rank-bm25==0.2.2  # BM25 ranking for keyword search
 # HTTP & Async (Modernized)
 # ============================================
 httpx==0.26.0  # Modern async HTTP client (replaces requests)
-aiohttp==3.12.14  # Alternative async HTTP
+aiohttp==3.12.16  # Alternative async HTTP (updated for security)
 tenacity==8.2.0  # Retry logic with exponential backoff
 aiofiles==23.2.0  # Async file operations
 websockets==12.0  # WebSocket support
@@ -73,7 +74,7 @@ python-jose[cryptography]==3.3.0  # JWT tokens
 passlib[bcrypt]==1.7.4  # Password hashing
 python-multipart==0.0.6  # Form data parsing
 authlib==1.3.0  # OAuth2 support
-cryptography==41.0.0  # Encryption utilities
+cryptography==42.0.0  # Encryption utilities (updated for security)
 
 # ============================================
 # Utilities

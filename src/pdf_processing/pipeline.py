@@ -23,17 +23,26 @@ logger = get_logger(__name__)
 class PDFProcessingPipeline:
     """Orchestrates the complete PDF processing workflow."""
 
-    def __init__(self, enable_parallel: bool = True, max_workers: Optional[int] = None):
+    def __init__(self, enable_parallel: bool = True, max_workers: Optional[int] = None, 
+                 prompt_for_ollama: bool = True):
         """Initialize the PDF processing pipeline.
 
         Args:
             enable_parallel: Whether to enable parallel processing
             max_workers: Maximum number of parallel workers
+            prompt_for_ollama: Whether to prompt user for Ollama model selection
         """
         self.parser = PDFParser()
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
-        self.embedding_generator = EmbeddingGenerator()
+        
+        # Prompt for embedding model choice if not already configured
+        if prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
+            self.embedding_generator = EmbeddingGenerator.prompt_and_create()
+            PDFProcessingPipeline._embedding_generator_prompted = True
+        else:
+            self.embedding_generator = EmbeddingGenerator()
+            
         self.db = get_db_manager()
         self.enable_parallel = enable_parallel
         self.parallel_processor = None

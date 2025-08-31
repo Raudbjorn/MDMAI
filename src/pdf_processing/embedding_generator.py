@@ -1,6 +1,7 @@
 """Embedding generation module for content chunks."""
 
 from typing import Any, Dict, List, Optional, Tuple
+import os
 
 import numpy as np
 import torch
@@ -10,47 +11,88 @@ from tqdm import tqdm
 from config.logging_config import get_logger
 from config.settings import settings
 from src.pdf_processing.content_chunker import ContentChunk
+from src.pdf_processing.ollama_provider import OllamaEmbeddingProvider
 
 logger = get_logger(__name__)
+
+# Constants
+OLLAMA_DEFAULT_MAX_LENGTH = 8192  # Default max sequence length for Ollama models
 
 
 class EmbeddingGenerator:
     """Generates vector embeddings for content chunks."""
 
-    def __init__(self, model_name: Optional[str] = None):
+    def __init__(self, model_name: Optional[str] = None, use_ollama: Optional[bool] = None):
         """
         Initialize embedding generator.
 
         Args:
-            model_name: Name of the sentence transformer model
+            model_name: Name of the sentence transformer or Ollama model
+            use_ollama: Whether to use Ollama for embeddings (if None, checks env var)
         """
         self.model_name = model_name or settings.embedding_model
         self.model = None
         self.device = None
+        self.ollama_provider = None
+        
+        # Check if Ollama should be used
+        if use_ollama is None:
+            use_ollama = os.getenv("USE_OLLAMA_EMBEDDINGS", "false").lower() == "true"
+        
+        self.use_ollama = use_ollama
         self._initialize_model()
 
     def _initialize_model(self):
-        """Initialize the sentence transformer model."""
+        """Initialize the embedding model (Sentence Transformer or Ollama)."""
         try:
-            # Check for GPU availability
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
-            # Load model
-            self.model = SentenceTransformer(self.model_name, device=self.device)
-
-            # Set model to eval mode
-            self.model.eval()
-
-            logger.info(
-                f"Embedding model initialized",
-                model=self.model_name,
-                device=self.device,
-                embedding_dim=self.model.get_sentence_embedding_dimension(),
-            )
+            if self.use_ollama:
+                # Initialize Ollama provider
+                self.ollama_provider = OllamaEmbeddingProvider(self.model_name)
+                
+                # Check if Ollama is available
+                if not self.ollama_provider.check_ollama_installed():
+                    logger.error("Ollama service is not available. Please start the Ollama service manually before proceeding.")
+                    logger.warning("Falling back to Sentence Transformers")
+                    self.use_ollama = False
+                    self._initialize_sentence_transformer()
+                    return
+                
+                # Check if model needs to be downloaded
+                if not self.ollama_provider.is_model_available(self.model_name):
+                    logger.info(f"Ollama model {self.model_name} not found locally, downloading...")
+                    if not self.ollama_provider.pull_model(self.model_name):
+                        logger.error(f"Failed to pull Ollama model {self.model_name}")
+                        raise RuntimeError(f"Could not download Ollama model: {self.model_name}")
+                
+                logger.info(
+                    f"Ollama embedding model initialized",
+                    model=self.model_name,
+                    provider="ollama"
+                )
+            else:
+                self._initialize_sentence_transformer()
 
         except Exception as e:
             logger.error(f"Failed to initialize embedding model", error=str(e))
             raise
+    
+    def _initialize_sentence_transformer(self):
+        """Initialize the sentence transformer model."""
+        # Check for GPU availability
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Load model
+        self.model = SentenceTransformer(self.model_name, device=self.device)
+
+        # Set model to eval mode
+        self.model.eval()
+
+        logger.info(
+            f"Sentence Transformer model initialized",
+            model=self.model_name,
+            device=self.device,
+            embedding_dim=self.model.get_sentence_embedding_dimension(),
+        )
 
     def generate_embeddings(
         self,
@@ -90,17 +132,25 @@ class EmbeddingGenerator:
             batch_texts = texts[i : i + batch_size]
 
             try:
-                # Generate embeddings for batch
-                batch_embeddings = self.model.encode(
-                    batch_texts,
-                    convert_to_numpy=True,
-                    normalize_embeddings=True,  # Normalize for cosine similarity
-                    show_progress_bar=False,
-                )
+                if self.use_ollama:
+                    # Generate embeddings using Ollama (no batch_size param)
+                    batch_embeddings = self.ollama_provider.generate_embeddings_batch(
+                        batch_texts,
+                        normalize=True
+                    )
+                    embeddings.extend(batch_embeddings)
+                else:
+                    # Generate embeddings using Sentence Transformers
+                    batch_embeddings = self.model.encode(
+                        batch_texts,
+                        convert_to_numpy=True,
+                        normalize_embeddings=True,  # Normalize for cosine similarity
+                        show_progress_bar=False,
+                    )
 
-                # Convert to list and add to results
-                for embedding in batch_embeddings:
-                    embeddings.append(embedding.tolist())
+                    # Convert to list and add to results
+                    for embedding in batch_embeddings:
+                        embeddings.append(embedding.tolist())
 
             except Exception as e:
                 logger.error(f"Failed to generate embeddings for batch", error=str(e))
@@ -122,13 +172,22 @@ class EmbeddingGenerator:
             Embedding vector
         """
         try:
-            embedding = self.model.encode(
-                text,
-                convert_to_numpy=True,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-            )
-            return embedding.tolist()
+            if self.use_ollama:
+                embedding = self.ollama_provider.generate_embedding(text)
+                # Normalize if needed
+                embedding_np = np.array(embedding)
+                norm = np.linalg.norm(embedding_np)
+                if norm > 0:
+                    embedding = (embedding_np / norm).tolist()
+                return embedding
+            else:
+                embedding = self.model.encode(
+                    text,
+                    convert_to_numpy=True,
+                    normalize_embeddings=True,
+                    show_progress_bar=False,
+                )
+                return embedding.tolist()
 
         except Exception as e:
             logger.error(f"Failed to generate embedding", error=str(e))
@@ -165,18 +224,24 @@ class EmbeddingGenerator:
         prepared_text = "\n".join(text_parts)
 
         # Truncate if too long using model's actual max sequence length
-        max_length = getattr(self.model, "max_seq_length", 512)
-
-        if hasattr(self.model, "tokenizer"):
-            # Tokenize, truncate, and decode back to text
-            tokens = self.model.tokenizer.encode(
-                prepared_text, max_length=max_length, truncation=True, add_special_tokens=True
-            )
-            prepared_text = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
-        else:
-            # Fallback: truncate by character count if tokenizer is unavailable
+        if self.use_ollama:
+            # Ollama models typically handle longer contexts
+            max_length = OLLAMA_DEFAULT_MAX_LENGTH
             if len(prepared_text) > max_length:
                 prepared_text = prepared_text[:max_length]
+        else:
+            max_length = getattr(self.model, "max_seq_length", 512)
+
+            if hasattr(self.model, "tokenizer"):
+                # Tokenize, truncate, and decode back to text
+                tokens = self.model.tokenizer.encode(
+                    prepared_text, max_length=max_length, truncation=True, add_special_tokens=True
+                )
+                prepared_text = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
+            else:
+                # Fallback: truncate by character count if tokenizer is unavailable
+                if len(prepared_text) > max_length:
+                    prepared_text = prepared_text[:max_length]
 
         return prepared_text
 
@@ -284,7 +349,13 @@ class EmbeddingGenerator:
         if not embeddings:
             return False
 
-        expected_dim = self.model.get_sentence_embedding_dimension()
+        if self.use_ollama:
+            expected_dim = self.ollama_provider.get_embedding_dimension()
+            if expected_dim is None:
+                # Dimension will be set after first embedding
+                expected_dim = len(embeddings[0]) if embeddings else 0
+        else:
+            expected_dim = self.model.get_sentence_embedding_dimension()
 
         for i, embedding in enumerate(embeddings):
             # Check dimension
@@ -315,9 +386,37 @@ class EmbeddingGenerator:
         Returns:
             Model information dictionary
         """
-        return {
-            "model_name": self.model_name,
-            "device": self.device,
-            "embedding_dimension": self.model.get_sentence_embedding_dimension(),
-            "max_sequence_length": self.model.max_seq_length,
-        }
+        if self.use_ollama:
+            return self.ollama_provider.get_model_info()
+        else:
+            return {
+                "provider": "sentence_transformers",
+                "model_name": self.model_name,
+                "device": self.device,
+                "embedding_dimension": self.model.get_sentence_embedding_dimension(),
+                "max_sequence_length": self.model.max_seq_length,
+            }
+    
+    @classmethod
+    def prompt_and_create(cls) -> 'EmbeddingGenerator':
+        """
+        Prompt user for embedding model choice and create generator.
+        
+        Returns:
+            Configured EmbeddingGenerator instance
+        """
+        # Check if already configured via environment
+        if os.getenv("USE_OLLAMA_EMBEDDINGS"):
+            use_ollama = os.getenv("USE_OLLAMA_EMBEDDINGS", "false").lower() == "true"
+            model_name = os.getenv("OLLAMA_EMBEDDING_MODEL") if use_ollama else None
+            return cls(model_name=model_name, use_ollama=use_ollama)
+        
+        # Prompt for Ollama model selection
+        selected_model = OllamaEmbeddingProvider.prompt_for_model_selection()
+        
+        if selected_model:
+            # User selected an Ollama model
+            return cls(model_name=selected_model, use_ollama=True)
+        else:
+            # User chose default Sentence Transformers
+            return cls(use_ollama=False)
