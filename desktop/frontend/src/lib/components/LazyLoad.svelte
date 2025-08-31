@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import type { ComponentType } from 'svelte';
+    import type { Component } from 'svelte';
     
     interface Props {
-        component: () => Promise<{ default: ComponentType }>;
+        component: () => Promise<{ default: Component }>;
         delay?: number;
         fallback?: string;
         props?: Record<string, any>;
@@ -11,7 +11,7 @@
     
     let { component, delay = 0, fallback = 'Loading...', props = {} }: Props = $props();
     
-    let Component = $state<ComponentType | null>(null);
+    let ComponentToRender = $state<Component | null>(null);
     let loading = $state(true);
     let error = $state<string | null>(null);
     
@@ -23,7 +23,7 @@
             }
             
             const module = await component();
-            Component = module.default;
+            ComponentToRender = module.default;
             loading = false;
         } catch (e) {
             error = e instanceof Error ? e.message : 'Failed to load component';
@@ -41,6 +41,6 @@
     <div class="flex items-center justify-center p-4">
         <span class="text-red-500">Error: {error}</span>
     </div>
-{:else if Component}
-    <Component {...props} />
+{:else if ComponentToRender}
+    <ComponentToRender {...props} />
 {/if}

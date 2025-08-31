@@ -1,0 +1,74 @@
+{
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		// Core TypeScript options
+		"allowJs": true,
+		"checkJs": true,
+		"strict": true,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitReturns": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+		
+		// Module resolution
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"moduleResolution": "bundler",
+		"module": "ESNext",
+		"target": "ES2022",
+		
+		// Advanced type checking
+		"noPropertyAccessFromIndexSignature": true,
+		"noImplicitAny": true,
+		"noImplicitThis": true,
+		"alwaysStrict": true,
+		
+		// Output and source maps
+		"sourceMap": true,
+		"declaration": true,
+		"declarationMap": true,
+		"removeComments": false,
+		"importHelpers": true,
+		
+		// Library and environment
+		"lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": [
+			"@tauri-apps/api",
+			"vite/client",
+			"node"
+		],
+		
+		// Performance and compatibility
+		"skipLibCheck": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": false,
+		
+		// Path mapping handled by SvelteKit's alias configuration
+	},
+	"include": [
+		"src/**/*.d.ts",
+		"src/**/*.ts", 
+		"src/**/*.js",
+		"src/**/*.svelte",
+		".svelte-kit/ambient.d.ts",
+		"vite.config.ts"
+	],
+	"exclude": [
+		"node_modules/**",
+		"build/**",
+		"dist/**",
+		".svelte-kit/generated/**",
+		"**/*.test.ts",
+		"**/*.spec.ts"
+	],
+	"ts-node": {
+		"esm": true,
+		"compilerOptions": {
+			"module": "ESNext",
+			"target": "ES2022"
+		}
+	}
+}
