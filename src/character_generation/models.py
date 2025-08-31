@@ -360,7 +360,7 @@ class Character:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     name: str = ""
     system: str = "D&D 5e"  # Game system
-    genre: Optional[TTRPGGenre] = TTRPGGenre.FANTASY  # Genre category
+    genre: Optional[TTRPGGenre] = None  # Genre category
 
     # Core attributes
     character_class: Optional[CharacterClass] = None
