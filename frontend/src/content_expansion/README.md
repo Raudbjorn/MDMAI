@@ -59,7 +59,7 @@ Required packages:
 
 #### Process all PDFs in a directory:
 ```bash
-python extract_pdfs.py /home/svnbjrn/code/phase12/sample_pdfs --output-dir ./extracted_content
+python extract_pdfs.py /path/to/your/pdfs --output-dir ./extracted_content
 ```
 
 #### Process with specific options:
