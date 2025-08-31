@@ -57,7 +57,8 @@ impl MCPBridge {
         info!("Starting MCP server sidecar process");
 
         // Start Python MCP server using Tauri sidecar
-        let (mut rx, child) = Command::new_sidecar("mcp-server")
+        // The sidecar name should match the binary name without path
+        let (mut rx, mut child) = Command::new_sidecar("mcp-server")
             .map_err(|e| format!("Failed to create mcp-server sidecar command: {}", e))?
             .env("MCP_STDIO_MODE", "true")
             .spawn()
@@ -151,11 +152,12 @@ impl MCPBridge {
             let request_str = serde_json::to_string(&request)
                 .map_err(|e| format!("Failed to serialize request: {}", e))?;
             
+            // Write to stdin using the child process handle
             child.write(format!("{}\n", request_str).as_bytes())
                 .map_err(|e| {
                     self.pending.write().await.remove(&request_id);
                     format!("Failed to write to stdin: {}", e)
-                })?;
+                })?
 
             // Wait for response with timeout
             match tokio::time::timeout(tokio::time::Duration::from_secs(30), rx).await {

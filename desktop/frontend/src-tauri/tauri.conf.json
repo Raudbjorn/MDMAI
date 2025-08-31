@@ -54,7 +54,7 @@
           {
             "name": "binaries/mcp-server",
             "sidecar": true,
-            "args": true
+            "args": []
           }
         ]
       },

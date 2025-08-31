@@ -1339,8 +1339,8 @@ npm run tauri build -- --target x86_64-unknown-linux-gnu
 ```
 
 #### Configuration
-```toml
-# tauri.conf.json
+```json
+// tauri.conf.json
 {
   "build": {
     "beforeBuildCommand": "npm run build",

@@ -15,10 +15,17 @@
         const result = await client.search(searchQuery);
         
         if (result.ok) {
-            searchResults = result.data.results || [];
+            // Handle different possible result structures
+            if (Array.isArray(result.data)) {
+                searchResults = result.data;
+            } else if (result.data?.results) {
+                searchResults = result.data.results;
+            } else {
+                searchResults = [];
+            }
             searchError = null;
         } else {
-            searchError = result.error;
+            searchError = result.error || 'Unknown error occurred';
             searchResults = [];
         }
     }

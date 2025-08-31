@@ -154,15 +154,16 @@ Creates: `.AppImage`, `.deb`, and `.rpm` packages
 
 ```
 desktop/
-├── backend/                 # Python MCP server with WebSocket adapter
-│   ├── websocket_adapter.py # WebSocket server wrapping MCP
+├── backend/                 # Python MCP server (stdio mode)
+│   ├── main.py             # MCP server entry point
 │   ├── requirements.txt     # Python dependencies
-│   └── pyinstaller.spec     # PyInstaller configuration
+│   └── dist/               # Built executables (after build)
 │
 ├── frontend/                # SvelteKit application
 │   ├── src/
 │   │   ├── lib/
-│   │   │   └── mcp-client.ts  # WebSocket client for MCP
+│   │   │   ├── mcp-robust-client.ts  # Robust MCP client with retry
+│   │   │   └── mcp-stdio-bridge.ts   # Stdio bridge client
 │   │   └── routes/            # SvelteKit pages
 │   │
 │   ├── src-tauri/           # Tauri backend
@@ -206,16 +207,10 @@ The main configuration is in `frontend/src-tauri/tauri.conf.json`:
 
 ### Python Backend Configuration
 
-Configure the WebSocket server in `backend/config.json`:
-
-```json
-{
-  "host": "127.0.0.1",
-  "port": 8765,
-  "cors_origins": ["tauri://localhost"],
-  "max_connections": 10
-}
-```
+The Python MCP server runs in stdio mode when launched by Tauri:
+- Communication via stdin/stdout using JSON-RPC 2.0
+- No network ports or WebSocket configuration needed
+- Process lifecycle managed by Tauri automatically
 
 ## Visual Assets
 
@@ -254,10 +249,10 @@ frontend/src-tauri/icons/
 
 ### Common Issues
 
-1. **WebSocket connection fails**:
-   - Ensure Python backend is running on port 8765
-   - Check firewall settings
-   - Verify CORS configuration
+1. **MCP server fails to start**:
+   - Ensure Python executable is built and in `backend/dist/`
+   - Check that the sidecar binary has execute permissions
+   - Verify Python dependencies are bundled correctly
 
 2. **High memory usage**:
    - Check for memory leaks in Python backend
