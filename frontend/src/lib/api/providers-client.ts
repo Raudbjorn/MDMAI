@@ -10,6 +10,7 @@ import type {
 	AIProviderStats,
 	ProviderConfigRequest,
 	ProviderConfigResponse,
+	APIResponse,
 	ProviderStatsRequest,
 	ProviderStatsResponse,
 	ProviderHealthResponse,
@@ -188,9 +189,9 @@ export class ProviderApiClient {
 	 */
 	async getProviderStats(request?: ProviderStatsRequest): Promise<Result<ProviderStatsResponse>> {
 		const params = new URLSearchParams();
-		if (request?.data?.provider_type) params.append('provider_type', request.data.provider_type);
-		if (request?.data?.start_date) params.append('start_date', request.data.start_date);
-		if (request?.data?.end_date) params.append('end_date', request.data.end_date);
+		if (request?.provider_type) params.append('provider_type', request.provider_type);
+		if (request?.start_date) params.append('start_date', request.start_date);
+		if (request?.end_date) params.append('end_date', request.end_date);
 
 		const response = await fetch(`${this.baseUrl}/providers/stats?${params}`, {
 			headers: this.headers

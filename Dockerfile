@@ -1,10 +1,10 @@
 # Multi-stage build for TTRPG Assistant MCP Server
 # Stage 1: Builder
-FROM python:3.9-slim as builder
+FROM python:3.10-slim as builder
 
 # Build arguments
 ARG GPU_SUPPORT=none
-ARG PYTHON_VERSION=3.9
+ARG PYTHON_VERSION=3.10
 
 # Set working directory
 WORKDIR /build
@@ -54,7 +54,7 @@ RUN pip install -e . --no-deps
 RUN python -m spacy download en_core_web_sm
 
 # Stage 2: Runtime
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

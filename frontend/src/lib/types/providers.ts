@@ -161,11 +161,11 @@ export interface ProviderConfigRequest extends APIRequest<{
 	budgets?: readonly CostBudget[];
 }> {}
 
-export interface ProviderStatsRequest extends APIRequest<{
+export interface ProviderStatsRequest {
 	provider_type?: ProviderType;
 	start_date?: string;
 	end_date?: string;
-}> {}
+}
 
 // Response types using the Result pattern
 export type ProviderStatsResponse = APIResponse<{
@@ -184,6 +184,7 @@ export type ProviderConfigResponse = APIResponse<{
 	success_count: number;
 	failed_count: number;
 }>;
+
 
 // Credential management types
 export interface ProviderCredentials {

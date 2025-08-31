@@ -1,8 +1,21 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs';
+	import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui';
 	import { BookOpen, Users, Brain, Shield, Dice1 } from 'lucide-svelte';
+
+	const features = [
+		{ icon: BookOpen, title: 'Rule & Content Search', desc: 'Quickly find rules, spells, and monsters from your TTRPG rulebooks', items: ['Semantic search across all sources', 'Page references and citations', 'Multi-rulebook support'] },
+		{ icon: Users, title: 'Campaign Management', desc: 'Store and retrieve campaign-specific data with ease', items: ['NPCs and characters', 'Locations and plot points', 'Version history'] },
+		{ icon: Brain, title: 'AI-Powered Generation', desc: 'Generate characters, NPCs, and backstories that fit your world', items: ['System-appropriate personalities', 'Contextual backstories', 'Balanced stat generation'] },
+		{ icon: Shield, title: 'Session Tracking', desc: 'Manage your game sessions with powerful tools', items: ['Initiative tracking', 'Monster health management', 'Session notes and history'] },
+		{ icon: Dice1, title: 'Real-time Collaboration', desc: 'Play together with your party, no matter where you are', items: ['Shared game state', 'Live dice rolling', 'Player presence indicators'] },
+		{ icon: Brain, title: 'Multiple AI Providers', desc: 'Use your preferred AI service with automatic fallback', items: ['Anthropic Claude', 'OpenAI GPT', 'Google Gemini'] }
+	];
+
+	const steps = {
+		setup: [{ title: '1. Upload Your Rulebooks', desc: 'Import your TTRPG rulebooks and source materials in PDF format' }, { title: '2. Configure AI Provider', desc: 'Connect your preferred AI service with your API credentials' }, { title: '3. Create Campaign', desc: 'Set up your campaign with characters, NPCs, and world details' }],
+		play: [{ title: '1. Start Session', desc: 'Create a new session or continue an existing one' }, { title: '2. Quick Search', desc: 'Find rules, spells, and monsters instantly during gameplay' }, { title: '3. Track Everything', desc: 'Manage initiative, health, and notes automatically' }],
+		manage: [{ title: '1. Review History', desc: 'Access complete session history and campaign timeline' }, { title: '2. Update Content', desc: 'Add new NPCs, locations, and plot developments' }, { title: '3. Share & Collaborate', desc: 'Invite players to join and contribute to the campaign' }]
+	};
 </script>
 
 <svelte:head>
@@ -39,109 +52,23 @@
 	<section class="py-20 px-4">
 		<div class="container mx-auto max-w-6xl">
 			<h2 class="text-3xl md:text-4xl font-bold text-center mb-12">Core Features</h2>
-			
 			<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-				<Card>
-					<CardHeader>
-						<BookOpen class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>Rule & Content Search</CardTitle>
-						<CardDescription>
-							Quickly find rules, spells, and monsters from your TTRPG rulebooks
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• Semantic search across all sources</li>
-							<li>• Page references and citations</li>
-							<li>• Multi-rulebook support</li>
-						</ul>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<Users class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>Campaign Management</CardTitle>
-						<CardDescription>
-							Store and retrieve campaign-specific data with ease
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• NPCs and characters</li>
-							<li>• Locations and plot points</li>
-							<li>• Version history</li>
-						</ul>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<Brain class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>AI-Powered Generation</CardTitle>
-						<CardDescription>
-							Generate characters, NPCs, and backstories that fit your world
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• System-appropriate personalities</li>
-							<li>• Contextual backstories</li>
-							<li>• Balanced stat generation</li>
-						</ul>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<Shield class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>Session Tracking</CardTitle>
-						<CardDescription>
-							Manage your game sessions with powerful tools
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• Initiative tracking</li>
-							<li>• Monster health management</li>
-							<li>• Session notes and history</li>
-						</ul>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<Dice1 class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>Real-time Collaboration</CardTitle>
-						<CardDescription>
-							Play together with your party, no matter where you are
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• Shared game state</li>
-							<li>• Live dice rolling</li>
-							<li>• Player presence indicators</li>
-						</ul>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<Brain class="h-10 w-10 text-primary mb-2" />
-						<CardTitle>Multiple AI Providers</CardTitle>
-						<CardDescription>
-							Use your preferred AI service with automatic fallback
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<ul class="space-y-2 text-sm text-muted-foreground">
-							<li>• Anthropic Claude</li>
-							<li>• OpenAI GPT</li>
-							<li>• Google Gemini</li>
-						</ul>
-					</CardContent>
-				</Card>
+				{#each features as { icon: Icon, title, desc, items }}
+					<Card>
+						<CardHeader>
+							<Icon class="h-10 w-10 text-primary mb-2" />
+							<CardTitle>{title}</CardTitle>
+							<CardDescription>{desc}</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<ul class="space-y-2 text-sm text-muted-foreground">
+								{#each items as item}
+									<li>• {item}</li>
+								{/each}
+							</ul>
+						</CardContent>
+					</Card>
+				{/each}
 			</div>
 		</div>
 	</section>
@@ -158,86 +85,18 @@
 					<TabsTrigger value="manage">Manage</TabsTrigger>
 				</TabsList>
 				
-				<TabsContent value="setup" class="space-y-4 mt-6">
-					<Card>
-						<CardHeader>
-							<CardTitle>1. Upload Your Rulebooks</CardTitle>
-							<CardDescription>
-								Import your TTRPG rulebooks and source materials in PDF format
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>2. Configure AI Provider</CardTitle>
-							<CardDescription>
-								Connect your preferred AI service with your API credentials
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>3. Create Campaign</CardTitle>
-							<CardDescription>
-								Set up your campaign with characters, NPCs, and world details
-							</CardDescription>
-						</CardHeader>
-					</Card>
-				</TabsContent>
-				
-				<TabsContent value="play" class="space-y-4 mt-6">
-					<Card>
-						<CardHeader>
-							<CardTitle>1. Start Session</CardTitle>
-							<CardDescription>
-								Create a new session or continue an existing one
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>2. Quick Search</CardTitle>
-							<CardDescription>
-								Find rules, spells, and monsters instantly during gameplay
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>3. Track Everything</CardTitle>
-							<CardDescription>
-								Manage initiative, health, and notes automatically
-							</CardDescription>
-						</CardHeader>
-					</Card>
-				</TabsContent>
-				
-				<TabsContent value="manage" class="space-y-4 mt-6">
-					<Card>
-						<CardHeader>
-							<CardTitle>1. Review History</CardTitle>
-							<CardDescription>
-								Access complete session history and campaign timeline
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>2. Update Content</CardTitle>
-							<CardDescription>
-								Add new NPCs, locations, and plot developments
-							</CardDescription>
-						</CardHeader>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle>3. Share & Collaborate</CardTitle>
-							<CardDescription>
-								Invite players to join and contribute to the campaign
-							</CardDescription>
-						</CardHeader>
-					</Card>
-				</TabsContent>
+				{#each Object.entries(steps) as [tab, tabSteps]}
+					<TabsContent value={tab} class="space-y-4 mt-6">
+						{#each tabSteps as { title, desc }}
+							<Card>
+								<CardHeader>
+									<CardTitle>{title}</CardTitle>
+									<CardDescription>{desc}</CardDescription>
+								</CardHeader>
+							</Card>
+						{/each}
+					</TabsContent>
+				{/each}
 			</Tabs>
 		</div>
 	</section>

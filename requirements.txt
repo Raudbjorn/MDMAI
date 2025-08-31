@@ -1,5 +1,5 @@
 # TTRPG Assistant MCP Server - Python Requirements
-# Python 3.11+ required
+# Python 3.10+ required
 # Last updated: 2024
 
 # ============================================

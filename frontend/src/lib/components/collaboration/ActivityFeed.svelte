@@ -62,8 +62,7 @@
 		}
 	});
 
-	let sseClient: EnhancedSSEClient | null = null;
-	let feedContainer: HTMLElement;
+	let feedContainer: HTMLElement | undefined;
 	
 	// Activity type configurations
 	const activityConfig: Record<ActivityItem['type'], { icon: string; color: string; label: string }> = {
@@ -194,7 +193,9 @@
 		// Auto-scroll to latest
 		if (autoScroll && feedContainer) {
 			setTimeout(() => {
-				feedContainer.scrollTop = 0;
+				if (feedContainer) {
+					feedContainer.scrollTop = 0;
+				}
 			}, 0);
 		}
 	}

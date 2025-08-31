@@ -89,12 +89,13 @@
 	}
 	
 	// Mouse tracking for cursor display
-	let cursorsContainer: HTMLElement;
+	let cursorsContainer: HTMLElement | undefined;
 	
 	onMount(() => {
 		if (showCursors && cursorsContainer) {
 			// Track local cursor and broadcast position
 			const handleMouseMove = (e: MouseEvent) => {
+				if (!cursorsContainer) return;
 				const rect = cursorsContainer.getBoundingClientRect();
 				const x = e.clientX - rect.left;
 				const y = e.clientY - rect.top;
@@ -133,7 +134,7 @@
 								class="status-indicator"
 								style="background-color: {getStatusColor(participant.status)}"
 								title={participant.status}
-							/>
+							></div>
 						{/if}
 					</div>
 					
@@ -202,7 +203,7 @@
 					<div 
 						class="compact-status"
 						style="background-color: {getStatusColor(participant.status)}"
-					/>
+					></div>
 				</div>
 			{/each}
 			{#if participants.filter(p => p.status === 'online').length > 5}

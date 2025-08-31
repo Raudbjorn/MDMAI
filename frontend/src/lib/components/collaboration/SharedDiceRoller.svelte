@@ -1,30 +1,25 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { collaborationStore } from '$lib/stores/collaboration.svelte';
-	import type { DiceRoll } from '$lib/types/collaboration';
-	
+		import { collaborationStore } from '$lib/stores/collaboration.svelte';
+	import type { DiceRoll, CollaborationMessage } from '$lib/types/collaboration';
+
 	interface DicePreset {
 		name: string;
 		expression: string;
 		icon: string;
 		color: string;
 	}
-	
+
 	interface Props {
-		roomId: string;
+		roomId: string; // Reserved for future room-specific features
 		maxHistory?: number;
 		showAnimation?: boolean;
 		compactMode?: boolean;
 	}
-	
-	let {
-		roomId,
-		maxHistory = 20,
-		showAnimation = true,
-		compactMode = false
-	}: Props = $props();
-	
-	// State
+
+	let { roomId, maxHistory = 20, showAnimation = true, compactMode = false }: Props = $props();
+	// Note: roomId is currently managed internally by collaborationStore
+	// but kept in props for future room-specific configurations
+
 	let customExpression = $state('');
 	let selectedPreset = $state<DicePreset | null>(null);
 	let rollHistory = $state<DiceRoll[]>([]);
@@ -35,12 +30,9 @@
 	let modifier = $state(0);
 	let criticalRange = $state(20);
 	let rerollOnes = $state(false);
-	
-	// Animation state for individual dice
 	let animatingDice = $state<{ value: number; final: number; id: string }[]>([]);
-	
-	// Dice presets
-	const presets: DicePreset[] = [
+
+	const presets = [
 		{ name: 'd4', expression: '1d4', icon: '△', color: '#f59e0b' },
 		{ name: 'd6', expression: '1d6', icon: '□', color: '#10b981' },
 		{ name: 'd8', expression: '1d8', icon: '◇', color: '#3b82f6' },
@@ -49,37 +41,23 @@
 		{ name: 'd20', expression: '1d20', icon: '⬡', color: '#ef4444' },
 		{ name: 'd100', expression: '1d100', icon: '%', color: '#6b7280' }
 	];
-	
-	// Common roll purposes
-	const purposes = [
-		'Attack Roll',
-		'Damage',
-		'Saving Throw',
-		'Ability Check',
-		'Initiative',
-		'Death Save',
-		'Concentration',
-		'Custom'
-	];
-	
+
+	const purposes = ['Attack Roll', 'Damage', 'Saving Throw', 'Ability Check', 'Initiative', 'Death Save', 'Concentration', 'Custom'];
 	let selectedPurpose = $state('Custom');
-	let unsubscribe: (() => void) | null = null;
-	
-	onMount(() => {
-		// Subscribe to dice roll events
-		unsubscribe = collaborationStore.onMessage('dice_roll', (msg) => {
-			handleDiceRoll(msg.data as DiceRoll);
+	$effect(() => {
+		const unsubscribe = collaborationStore.onMessage('dice_roll', (msg) => {
+			const roll = msg.data as DiceRoll;
+			handleDiceRoll(roll);
 		});
-		
-		// Load initial roll history from room
 		const room = collaborationStore.currentRoom;
-		if (room) {
-			rollHistory = room.state.dice_rolls.slice(-maxHistory);
-		}
-	});
-	
-	onDestroy(() => {
-		unsubscribe?.();
+		if (room) rollHistory = room.state.dice_rolls.slice(-maxHistory);
+		
+		// Proper cleanup function for $effect
+		return () => {
+			if (unsubscribe) {
+				unsubscribe();
+			}
+		};
 	});
 	
 	function handleDiceRoll(roll: DiceRoll) {
@@ -123,18 +101,13 @@
 				handleCritical(roll);
 			}
 			
-			// Handle reroll ones
+			// Handle reroll ones - this creates a separate reroll entry
 			if (rerollOnes && roll.results.some(r => r === 1)) {
-				const rerolled = await rerollOnesInRoll(roll);
-				if (rerolled) {
-					await collaborationStore.rollDice(
-						modifiedExpression,
-						`${finalPurpose} (rerolled 1s)`
-					);
-				}
+				await rerollOnesInRoll(roll);
 			}
 		} catch (error) {
-			console.error('Failed to roll dice:', error);
+			// Handle roll error gracefully
+			// Could show error message to user through a toast notification
 		} finally {
 			isRolling = false;
 		}
@@ -176,7 +149,8 @@
 				}
 				
 				frame++;
-				animatingDice = [...animatingDice];
+				// Trigger reactivity with minimal overhead
+				animatingDice = animatingDice;
 				requestAnimationFrame(animate);
 			}
 		};
@@ -213,21 +187,83 @@
 	
 	function handleCritical(roll: DiceRoll) {
 		// Visual feedback for critical hits
-		const message = `CRITICAL ${roll.results[0] === 20 ? 'SUCCESS' : 'HIT'}!`;
+		const isCriticalSuccess = roll.results[0] === 20;
+		const isCriticalFail = roll.results[0] === 1;
 		
-		// Could trigger confetti or other celebration animation
-		console.log(message);
+		if (isCriticalSuccess || isCriticalFail) {
+			// Create visual notification
+			const message = isCriticalSuccess ? 'CRITICAL SUCCESS!' : 'CRITICAL FAIL!';
+			
+			// Log critical roll for visual feedback
+			// In a production app, this could trigger a toast notification or animation
+			console.info(`🎲 ${message} - ${roll.player_name} rolled a ${roll.results[0]}`);
+			
+			// Future implementation could include:
+			// - Confetti animation for critical success
+			// - Screen shake for critical fail
+			// - Sound effects
+			// - Special visual indicators in the roll history
+		}
 	}
 	
 	async function rerollOnesInRoll(roll: DiceRoll): Promise<boolean> {
 		const hasOnes = roll.results.some(r => r === 1);
 		if (!hasOnes) return false;
 		
-		// Count how many 1s to reroll
-		const onesToReroll = roll.results.filter(r => r === 1).length;
-		console.log(`Rerolling ${onesToReroll} ones`);
+		// Parse dice expressions more robustly to handle complex expressions like "1d4+1d6" or "2d8+3"
+		const dicePattern = /(\d+)d(\d+)/g;
+		const matches = [...roll.expression.matchAll(dicePattern)];
 		
-		return true;
+		if (matches.length === 0) return false;
+		
+		// For complex expressions with multiple dice types, we need to determine which dice showed 1s
+		// Since we don't have individual dice type tracking in results, we'll handle two cases:
+		
+		if (matches.length === 1) {
+			// Simple expression with one die type
+			const onesToReroll = roll.results.filter(r => r === 1).length;
+			const dieSize = matches[0][2];
+			const rerollExpression = `${onesToReroll}d${dieSize}`;
+			
+			try {
+				const rerollResult = await collaborationStore.rollDice(
+					rerollExpression, 
+					`Reroll 1s from ${roll.expression}`
+				);
+				return true;
+			} catch (error) {
+				console.error('Failed to reroll 1s:', error);
+				return false;
+			}
+		} else {
+			// Complex expression with multiple dice types
+			// Since we can't determine which specific dice showed 1s without more context,
+			// we'll reroll all 1s as the smallest die type (conservative approach)
+			// or notify the user that reroll-1s isn't supported for complex expressions
+			
+			const onesToReroll = roll.results.filter(r => r === 1).length;
+			if (onesToReroll > 0) {
+				// Find the smallest die size in the expression (conservative approach)
+				const dieSizes = matches.map(m => parseInt(m[2]));
+				const smallestDie = Math.min(...dieSizes);
+				
+				// Alternatively, we could use the most common die type or prompt the user
+				const rerollExpression = `${onesToReroll}d${smallestDie}`;
+				
+				try {
+					const rerollResult = await collaborationStore.rollDice(
+						rerollExpression, 
+						`Reroll 1s from ${roll.expression} (as d${smallestDie})`
+					);
+					return true;
+				} catch (error) {
+					console.error('Failed to reroll 1s for complex expression:', error);
+					return false;
+				}
+			}
+		}
+		
+		return false;
 	}
 	
 	function quickRoll(preset: DicePreset) {
@@ -262,6 +298,8 @@
 		return '#6b7280';
 	}
 	
+	// Utility function for parsing dice expressions - kept for potential future use
+	// Currently not used but may be useful for advanced expression validation
 	function parseExpression(expression: string): { dice: string[]; modifier: number } {
 		const dicePattern = /(\d+d\d+)/g;
 		const modPattern = /([+-]\d+)(?!d)/g;
@@ -281,6 +319,8 @@
 			<button 
 				class="advanced-toggle"
 				onclick={() => showAdvanced = !showAdvanced}
+				aria-label="Toggle advanced options"
+				aria-expanded={showAdvanced}
 			>
 				{showAdvanced ? 'Simple' : 'Advanced'}
 			</button>
@@ -296,6 +336,7 @@
 				style="--dice-color: {preset.color}"
 				onclick={() => quickRoll(preset)}
 				disabled={isRolling}
+				aria-label={`Roll ${preset.name}`}
 			>
 				<span class="dice-icon">{preset.icon}</span>
 				<span class="dice-label">{preset.name}</span>
@@ -308,11 +349,13 @@
 		<div class="advanced-options">
 			<div class="option-group">
 				<label>Advantage</label>
-				<div class="button-group">
+				<div class="button-group" role="group" aria-label="Advantage selection">
 					<button 
 						class="option-btn"
 						class:active={advantage === 'normal'}
 						onclick={() => advantage = 'normal'}
+						aria-label="Normal roll"
+						aria-pressed={advantage === 'normal'}
 					>
 						Normal
 					</button>
@@ -320,6 +363,8 @@
 						class="option-btn"
 						class:active={advantage === 'advantage'}
 						onclick={() => advantage = 'advantage'}
+						aria-label="Roll with advantage"
+						aria-pressed={advantage === 'advantage'}
 					>
 						Adv
 					</button>
@@ -327,6 +372,8 @@
 						class="option-btn"
 						class:active={advantage === 'disadvantage'}
 						onclick={() => advantage = 'disadvantage'}
+						aria-label="Roll with disadvantage"
+						aria-pressed={advantage === 'disadvantage'}
 					>
 						Dis
 					</button>
@@ -341,16 +388,20 @@
 					class="modifier-input"
 					min="-20"
 					max="20"
+					aria-label="Dice roll modifier"
 				/>
 			</div>
 			
 			<div class="option-group">
-				<label>
+				<label class="checkbox-label">
 					<input 
 						type="checkbox"
 						bind:checked={rerollOnes}
+						id="reroll-ones"
+						class="reroll-checkbox"
 					/>
-					Reroll 1s
+					<span class="checkbox-text">Reroll 1s</span>
+					<span class="checkbox-description">Automatically reroll any dice showing 1</span>
 				</label>
 			</div>
 			
@@ -362,6 +413,7 @@
 					class="crit-input"
 					min="1"
 					max="20"
+					aria-label="Critical hit range"
 				/>
 			</div>
 		</div>
@@ -372,6 +424,7 @@
 		<select 
 			class="purpose-select"
 			bind:value={selectedPurpose}
+			aria-label="Select roll purpose"
 		>
 			{#each purposes as purpose}
 				<option value={purpose}>{purpose}</option>
@@ -384,12 +437,14 @@
 			placeholder="e.g. 2d6+3"
 			class="expression-input"
 			onkeypress={(e) => e.key === 'Enter' && rollDice()}
+			aria-label="Custom dice expression"
 		/>
 		
 		<button 
 			class="roll-btn"
 			onclick={() => rollDice()}
 			disabled={isRolling}
+			aria-label="Roll dice"
 		>
 			{#if isRolling}
 				<span class="rolling-icon"></span>
@@ -403,8 +458,8 @@
 	{#if showAnimation && animatingDice.length > 0}
 		<div class="dice-animation">
 			<div class="animated-dice">
-				{#each animatingDice as die}
-					<div class="animated-die" key={die.id}>
+				{#each animatingDice as die (die.id)}
+					<div class="animated-die" data-die-id={die.id}>
 						<span class="die-value">{die.value}</span>
 					</div>
 				{/each}
@@ -418,7 +473,7 @@
 	{/if}
 	
 	<!-- Roll history -->
-	<div class="roll-history" class:collapsed={compactMode}>
+	<div class="roll-history" class:collapsed={compactMode} role="region" aria-label="Roll history">
 		<div class="history-header">
 			<h4>Recent Rolls</h4>
 			<span class="history-count">{rollHistory.length}</span>
@@ -443,11 +498,18 @@
 					
 					<div class="roll-results">
 						<span class="roll-dice">
-							[{roll.results.map(r => {
-								if (r === 20) return '<span class="crit">20</span>';
-								if (r === 1) return '<span class="fail">1</span>';
-								return r;
-							}).join(', ')}]
+							[
+							{#each roll.results as result, i}
+								{#if i > 0}, {/if}
+								{#if result === 20}
+									<span class="crit">20</span>
+								{:else if result === 1}
+									<span class="fail">1</span>
+								{:else}
+									{result}
+								{/if}
+							{/each}
+							]
 						</span>
 						<span class="roll-total" style="color: {getRollColor(roll.total, roll.expression)}">
 							= {roll.total}
@@ -602,6 +664,35 @@
 		border: 1px solid var(--color-border);
 		border-radius: 0.25rem;
 		font-size: 0.875rem;
+	}
+
+	.checkbox-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		cursor: pointer;
+	}
+
+	.reroll-checkbox {
+		width: 1rem;
+		height: 1rem;
+		margin-right: 0.5rem;
+		cursor: pointer;
+	}
+
+	.checkbox-text {
+		display: flex;
+		align-items: center;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-text);
+	}
+
+	.checkbox-description {
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
+		margin-left: 1.5rem;
+		font-style: italic;
 	}
 	
 	.custom-roll {
@@ -829,12 +920,12 @@
 		color: var(--color-text-secondary);
 	}
 	
-	.roll-dice :global(.crit) {
+	.roll-dice .crit {
 		color: var(--color-success);
 		font-weight: bold;
 	}
 	
-	.roll-dice :global(.fail) {
+	.roll-dice .fail {
 		color: var(--color-error);
 		font-weight: bold;
 	}

@@ -24,6 +24,7 @@ export interface DebouncedFunction<T extends (...args: any[]) => any> {
  * @param options - Optional configuration
  * @returns A debounced function with flush and cancel methods
  */
+
 export function debounce<T extends (...args: any[]) => any>(
 	func: T,
 	wait: number,
@@ -36,20 +37,20 @@ export function debounce<T extends (...args: any[]) => any>(
 		maxWait?: number;
 	}
 ): DebouncedFunction<T> {
-	let timeoutId: ReturnType<typeof setTimeout> | null = null;
-	let lastCallTime: number | null = null;
-	let lastThis: any;
-	let lastArgs: Parameters<T> | null = null;
-	let result: ReturnType<T>;
-	let lastInvokeTime = 0;
-	let maxTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-	const leading = options?.leading || false;
+	const leading = options?.leading !== false;
 	const trailing = options?.trailing !== false;
-	const maxWait = options?.maxWait;
-	const hasMaxWait = typeof maxWait === 'number';
+	const hasMaxWait = typeof options?.maxWait === 'number';
+	const maxWait = hasMaxWait ? Math.max(options?.maxWait ?? wait, wait) : 0;
 
-	function invokeFunc(time: number) {
+	let timeoutId: ReturnType<typeof setTimeout> | null = null;
+	let maxTimeoutId: ReturnType<typeof setTimeout> | null = null;
+	let result: ReturnType<T>;
+	let lastCallTime: number | null = null;
+	let lastInvokeTime = 0;
+	let lastArgs: Parameters<T> | null = null;
+	let lastThis: any;
+
+	function invokeFunc(time: number): ReturnType<T> {
 		const args = lastArgs;
 		const thisArg = lastThis;
 
@@ -60,37 +61,15 @@ export function debounce<T extends (...args: any[]) => any>(
 		return result;
 	}
 
-	function leadingEdge(time: number) {
-		lastInvokeTime = time;
-		timeoutId = setTimeout(timerExpired, wait);
-		
-		if (hasMaxWait) {
-			maxTimeoutId = setTimeout(maxTimerExpired, maxWait);
-		}
-		
-		return leading ? invokeFunc(time) : result;
-	}
-
-	function remainingWait(time: number) {
-		const timeSinceLastCall = time - (lastCallTime || 0);
-		const timeSinceLastInvoke = time - lastInvokeTime;
-		const result = wait - timeSinceLastCall;
-
-		return hasMaxWait
-			? Math.min(result, maxWait - timeSinceLastInvoke)
-			: result;
-	}
-
-	function shouldInvoke(time: number) {
+	function shouldInvoke(time: number): boolean {
 		const timeSinceLastCall = time - (lastCallTime || 0);
 		const timeSinceLastInvoke = time - lastInvokeTime;
 
-		return (
-			lastCallTime === null ||
-			timeSinceLastCall >= wait ||
-			timeSinceLastCall < 0 ||
-			(hasMaxWait && timeSinceLastInvoke >= maxWait)
-		);
+		// Either this is the first call, activity has stopped and we're at the trailing
+		// edge, the system time has gone backwards and we're treating it as the
+		// trailing edge, or we've hit the `maxWait` limit.
+		return (lastCallTime === null || (timeSinceLastCall >= wait) ||
+			(timeSinceLastCall < 0) || (hasMaxWait && timeSinceLastInvoke >= maxWait));
 	}
 
 	function timerExpired() {
@@ -98,22 +77,32 @@ export function debounce<T extends (...args: any[]) => any>(
 		if (shouldInvoke(time)) {
 			return trailingEdge(time);
 		}
-		timeoutId = setTimeout(timerExpired, remainingWait(time));
+		// Restart the timer.
+		const timeSinceLastCall = time - (lastCallTime || 0);
+		const timeSinceLastInvoke = time - lastInvokeTime;
+		const timeWaiting = wait - timeSinceLastCall;
+
+		const remainingWait = hasMaxWait
+			? Math.min(timeWaiting, maxWait - timeSinceLastInvoke)
+			: timeWaiting;
+
+		timeoutId = setTimeout(timerExpired, remainingWait);
 	}
 
 	function maxTimerExpired() {
-		if (timeoutId) {
-			clearTimeout(timeoutId);
-		}
-		lastCallTime = null;
-		if (trailing && lastArgs) {
-			invokeFunc(Date.now());
-		}
-		timeoutId = null;
-		maxTimeoutId = null;
+		const time = Date.now();
+		trailingEdge(time);
 	}
 
-	function trailingEdge(time: number) {
+	function leadingEdge(time: number): ReturnType<T> {
+		// Reset any `maxWait` timer.
+		lastInvokeTime = time;
+		// Start the timer for the trailing edge.
+		timeoutId = setTimeout(timerExpired, wait);
+		// Invoke the leading edge.
+		return leading ? invokeFunc(time) : result;
+	}
+	function trailingEdge(time: number): ReturnType<T> {
 		timeoutId = null;
 		if (maxTimeoutId) {
 			clearTimeout(maxTimeoutId);
@@ -203,9 +192,9 @@ export function throttle<T extends (...args: any[]) => any>(
 	const leading = options?.leading !== false;
 	const trailing = options?.trailing !== false;
 
-	return debounce(func, wait, {
-		leading,
-		trailing,
-		maxWait: wait
+	return debounce(func, wait, { 
+		leading, 
+		trailing, 
+		maxWait: wait 
 	});
 }

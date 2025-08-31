@@ -353,6 +353,15 @@ class CollaborationStore {
 		});
 	}
 
+	// Conflict management
+	removeConflict(conflictIndex: number): void {
+		if (conflictIndex >= 0 && conflictIndex < this.state.conflicts.length) {
+			this.state.conflicts.splice(conflictIndex, 1);
+			// Trigger reactivity by reassigning the array
+			this.state.conflicts = [...this.state.conflicts];
+		}
+	}
+
 	// Initiative and turn management
 	async updateInitiative(initiative: SharedState['initiative_order']): Promise<void> {
 		await this.updateState({
@@ -749,8 +758,8 @@ class CollaborationStore {
 		}
 	}
 
-	// Utility methods
-	private sendMessage(message: CollaborationMessage) {
+	// Utility methods - made public for components to use
+	sendMessage(message: CollaborationMessage) {
 		if (this.ws?.readyState === WebSocket.OPEN) {
 			this.ws.send(JSON.stringify(message));
 		} else {
