@@ -696,11 +696,11 @@ class UpdateManifestGenerator:
         if tauri_config.exists():
             try:
                 import json
-                with open(tauri_config) as f:
-                    config = json.load(f)
-                    return config.get("version", "1.0.0")
-            except Exception:
-                pass
+                with open(tauri_config, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+                    return config_data.get("version", "1.0.0")
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                print(f"⚠️  Warning: Could not read version from {tauri_config}. Error: {e}")
                 
         return "1.0.0"
 
