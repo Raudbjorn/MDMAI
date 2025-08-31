@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri_plugin_shell::{ShellExt, process::{CommandEvent}};
+use tauri_plugin_shell::{ShellExt, process::{CommandEvent, CommandChild}};
 use log::{info, error, debug, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +37,7 @@ pub struct MCPBridge {
     request_id: Arc<RwLock<u64>>,
     pending: Arc<RwLock<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>>,
     is_running: Arc<RwLock<bool>>,
+    child_process: Arc<Mutex<Option<CommandChild>>>,
 }
 
 impl MCPBridge {
@@ -46,6 +47,7 @@ impl MCPBridge {
             request_id: Arc::new(RwLock::new(0)),
             pending: Arc::new(RwLock::new(HashMap::new())),
             is_running: Arc::new(RwLock::new(false)),
+            child_process: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -62,21 +64,31 @@ impl MCPBridge {
         *self.stdin_tx.lock().await = Some(stdin_tx);
 
         // Start Python MCP server using Tauri sidecar
-        let (mut rx, mut child) = app_handle.shell()
+        let (mut rx, child) = app_handle.shell()
             .sidecar("mcp-server")
             .map_err(|e| format!("Failed to create mcp-server sidecar command: {}", e))?
             .env("MCP_STDIO_MODE", "true")
             .spawn()
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
+        let child_id = child.pid();
+        
+        // Store the child process handle
+        *self.child_process.lock().await = Some(child);
         *self.is_running.write().await = true;
 
         // Handle stdin writing in separate task
-        let child_id = child.pid();
+        let child_process_clone = self.child_process.clone();
         tokio::spawn(async move {
             while let Some(request) = stdin_rx.recv().await {
-                if let Err(e) = child.write(request.as_bytes()) {
-                    error!("Failed to write to stdin: {}", e);
+                let mut child_guard = child_process_clone.lock().await;
+                if let Some(child) = child_guard.as_mut() {
+                    if let Err(e) = child.write(request.as_bytes()) {
+                        error!("Failed to write to stdin: {}", e);
+                        break;
+                    }
+                } else {
+                    error!("Child process not available for writing");
                     break;
                 }
             }
@@ -86,6 +98,7 @@ impl MCPBridge {
         // Start reading responses in background
         let pending = self.pending.clone();
         let is_running = self.is_running.clone();
+        let child_process_cleanup = self.child_process.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 match event {
@@ -113,6 +126,8 @@ impl MCPBridge {
                     CommandEvent::Terminated(payload) => {
                         error!("MCP process terminated with code: {:?}", payload.code);
                         *is_running.write().await = false;
+                        // Clean up the child process handle
+                        *child_process_cleanup.lock().await = None;
                         break;
                     }
                     _ => {}
@@ -130,11 +145,28 @@ impl MCPBridge {
         if *self.is_running.read().await {
             info!("Stopping MCP server process");
             
-            // Send shutdown command if possible
-            let _ = self.call("shutdown", Value::Null).await;
+            // Try to send shutdown command gracefully
+            let shutdown_result = self.call("shutdown", Value::Null).await;
             
             // Give process time to shutdown gracefully
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            
+            // Force kill the process if it's still running
+            let mut child_guard = self.child_process.lock().await;
+            if let Some(mut child) = child_guard.take() {
+                // Check if graceful shutdown failed
+                if shutdown_result.is_err() {
+                    warn!("Graceful shutdown failed, forcefully terminating process");
+                }
+                
+                // Kill the process
+                if let Err(e) = child.kill() {
+                    error!("Failed to kill MCP server process: {}", e);
+                    // Process might have already exited, which is fine
+                } else {
+                    info!("MCP server process terminated successfully");
+                }
+            }
             
             // Clear state
             *self.is_running.write().await = false;

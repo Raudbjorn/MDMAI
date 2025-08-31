@@ -268,6 +268,8 @@ export class RobustMCPClient {
         
         if (age <= this.cacheTTL || includeStale) {
             entry.hits++;
+            // Update timestamp for LRU tracking
+            entry.timestamp = Date.now();
             return entry.data;
         }
         
@@ -307,19 +309,19 @@ export class RobustMCPClient {
      * Evict least recently used cache entry
      */
     private evictLeastUsed(): void {
-        let leastUsed: [string, CacheEntry<any>] | null = null;
-        let minScore = Infinity;
-        
-        for (const entry of this.cache.entries()) {
-            const score = entry[1].hits + (Date.now() - entry[1].timestamp) / 1000;
-            if (score < minScore) {
-                minScore = score;
-                leastUsed = entry;
+        let oldestKey: string | null = null;
+        let oldestTimestamp = Infinity;
+
+        // Find the entry with the oldest timestamp (Least Recently Used)
+        for (const [key, entry] of this.cache.entries()) {
+            if (entry.timestamp < oldestTimestamp) {
+                oldestTimestamp = entry.timestamp;
+                oldestKey = key;
             }
         }
-        
-        if (leastUsed) {
-            this.cache.delete(leastUsed[0]);
+
+        if (oldestKey) {
+            this.cache.delete(oldestKey);
         }
     }
     
