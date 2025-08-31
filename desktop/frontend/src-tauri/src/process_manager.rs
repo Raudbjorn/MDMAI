@@ -1,10 +1,10 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use log::{info, error, debug, warn};
-use tauri::Manager;
-use sysinfo::{System, Process, Pid};
+use tauri::Emitter;
+use sysinfo::{System, Pid};
 
 /// Process state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -337,8 +337,8 @@ impl ProcessManager {
         drop(config);
         
         let stats = self.stats.clone();
-        let config = self.config.clone();
-        let app_handle = self.app_handle.clone();
+        let _config = self.config.clone();
+        let _app_handle = self.app_handle.clone();
         
         let handle = tokio::spawn(async move {
             let mut interval_timer = tokio::time::interval(Duration::from_millis(interval));
@@ -421,7 +421,7 @@ impl ProcessManager {
                         };
                         
                         if let Some(handle) = app_handle.lock().await.as_ref() {
-                            let _ = handle.emit_all("process-event", &event);
+                            let _ = handle.emit("process-event", &event);
                         }
                     }
                     
@@ -434,7 +434,7 @@ impl ProcessManager {
                         };
                         
                         if let Some(handle) = app_handle.lock().await.as_ref() {
-                            let _ = handle.emit_all("process-event", &event);
+                            let _ = handle.emit("process-event", &event);
                         }
                     }
                     
@@ -539,7 +539,7 @@ impl ProcessManager {
     /// Emit event through Tauri
     async fn emit_event(&self, event: ProcessEvent) {
         if let Some(handle) = self.app_handle.lock().await.as_ref() {
-            if let Err(e) = handle.emit_all("process-event", &event) {
+            if let Err(e) = handle.emit("process-event", &event) {
                 error!("Failed to emit process event: {}", e);
             }
         }

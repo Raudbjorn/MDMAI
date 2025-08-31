@@ -4,7 +4,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex, RwLock, oneshot, mpsc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use log::{info, error, debug, warn, trace};
+use log::{error, debug, warn, trace};
 
 // JSON-RPC 2.0 protocol structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,7 +139,7 @@ impl Default for PerformanceMetrics {
 }
 
 // Queue configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct QueueConfig {
     pub max_concurrent_requests: usize,
     pub max_queue_size: usize,
@@ -206,7 +206,7 @@ impl IpcManager {
     }
     
     pub fn with_config(config: QueueConfig) -> Self {
-        let mut manager = Self::new();
+        let manager = Self::new();
         *manager.config.blocking_write() = config;
         manager
     }
@@ -295,16 +295,6 @@ impl IpcManager {
             priority: priority.unwrap_or(5),
         };
         
-        // Add to pending requests
-        self.pending_requests.write().await.insert(
-            id_num,
-            PendingRequest {
-                metadata,
-                sender: tx,
-                stream_sender: stream_channel.clone(),
-            },
-        );
-        
         // Update metrics
         {
             let mut metrics = self.metrics.write().await;
@@ -315,9 +305,19 @@ impl IpcManager {
         
         // Queue or send request
         if self.should_queue_request().await {
+            // Add to queue (sender will be consumed here)
             self.request_queue.lock().await.push_back((request, tx, stream_channel));
             debug!("Request queued: {} (queue size: {})", method, queue_size + 1);
         } else {
+            // Add to pending requests and send immediately
+            self.pending_requests.write().await.insert(
+                id_num,
+                PendingRequest {
+                    metadata,
+                    sender: tx,
+                    stream_sender: stream_channel.clone(),
+                },
+            );
             self.send_request_internal(request).await?;
         }
         
@@ -394,9 +394,38 @@ impl IpcManager {
     pub async fn process_queue(&self) {
         while !self.should_queue_request().await {
             let next = self.request_queue.lock().await.pop_front();
-            if let Some((request, _, _)) = next {
+            if let Some((request, sender, stream_sender)) = next {
+                // Get request ID to create proper pending request
+                let id_num = match &request.id {
+                    Some(RequestId::Number(n)) => *n,
+                    Some(RequestId::String(s)) => s.parse().unwrap_or(0),
+                    None => continue, // Skip requests without ID
+                };
+                
+                // Create metadata for pending request
+                let metadata = RequestMetadata {
+                    id: request.id.clone().unwrap_or(RequestId::Number(id_num)),
+                    method: request.method.clone(),
+                    timestamp: Instant::now(),
+                    timeout: Duration::from_millis(30000), // Default timeout
+                    retries: 0,
+                    priority: 5,
+                };
+                
+                // Add to pending requests
+                self.pending_requests.write().await.insert(
+                    id_num,
+                    PendingRequest {
+                        metadata,
+                        sender,
+                        stream_sender,
+                    },
+                );
+                
                 if let Err(e) = self.send_request_internal(request).await {
                     error!("Failed to send queued request: {:?}", e);
+                    // Remove from pending requests if send failed
+                    self.pending_requests.write().await.remove(&id_num);
                 }
             } else {
                 break;
@@ -459,7 +488,7 @@ impl IpcManager {
         if chunk.is_final {
             if let Some(chunks) = buffers.remove(&id_num) {
                 // Send to stream receiver if exists
-                if let Some(mut receiver) = self.active_streams.write().await.remove(&id_num) {
+                if let Some(_receiver) = self.active_streams.write().await.remove(&id_num) {
                     for chunk in chunks {
                         // Note: In real implementation, send chunks through the receiver
                         debug!("Stream chunk {} of request {}", chunk.sequence, id_num);
@@ -499,7 +528,7 @@ impl IpcManager {
     }
     
     // Update success metrics
-    async fn update_success_metrics(&self, request_id: u64) {
+    async fn update_success_metrics(&self, _request_id: u64) {
         let mut metrics = self.metrics.write().await;
         metrics.successful_responses += 1;
         metrics.active_requests = metrics.active_requests.saturating_sub(1);
@@ -510,7 +539,7 @@ impl IpcManager {
     }
     
     // Update failure metrics
-    async fn update_failure_metrics(&self, request_id: u64, is_timeout: bool) {
+    async fn update_failure_metrics(&self, _request_id: u64, is_timeout: bool) {
         let mut metrics = self.metrics.write().await;
         metrics.failed_responses += 1;
         if is_timeout {

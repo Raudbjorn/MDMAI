@@ -6,12 +6,14 @@
 use super::*;
 use sqlx::{Pool, Sqlite, SqlitePool, Row};
 use std::path::Path;
+use std::collections::HashMap;
 
 /// SQLite storage manager with encryption support
 pub struct DataStorage {
-    pool: SqlitePool,
+    pub pool: SqlitePool,
     encryption: Arc<EncryptionManager>,
     config: DataManagerConfig,
+    prepared_statements: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl DataStorage {
@@ -28,9 +30,15 @@ impl DataStorage {
                 })?;
         }
 
-        // Create connection pool
+        // Create optimized connection pool with better settings
         let database_url = format!("sqlite:{}", config.database_path.to_string_lossy());
-        let pool = SqlitePool::connect(&database_url)
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(10) // Increase for better concurrency
+            .min_connections(2)  // Keep minimum connections ready
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .idle_timeout(Some(std::time::Duration::from_secs(600)))
+            .max_lifetime(Some(std::time::Duration::from_secs(1800)))
+            .connect(&database_url)
             .await
             .map_err(|e| DataError::Database {
                 message: format!("Failed to connect to database: {}", e),
@@ -44,18 +52,48 @@ impl DataStorage {
                 message: format!("Failed to enable foreign keys: {}", e),
             })?;
 
-        // Enable WAL mode for better concurrent access
+        // Enable WAL mode and optimize SQLite settings for performance
         sqlx::query("PRAGMA journal_mode = WAL")
             .execute(&pool)
             .await
             .map_err(|e| DataError::Database {
                 message: format!("Failed to enable WAL mode: {}", e),
             })?;
+        
+        // Optimize SQLite performance settings
+        sqlx::query("PRAGMA synchronous = NORMAL") // Faster than FULL, still safe
+            .execute(&pool)
+            .await
+            .map_err(|e| DataError::Database {
+                message: format!("Failed to set synchronous mode: {}", e),
+            })?;
+        
+        sqlx::query("PRAGMA cache_size = -64000") // 64MB cache
+            .execute(&pool)
+            .await
+            .map_err(|e| DataError::Database {
+                message: format!("Failed to set cache size: {}", e),
+            })?;
+        
+        sqlx::query("PRAGMA temp_store = MEMORY") // Use memory for temp tables
+            .execute(&pool)
+            .await
+            .map_err(|e| DataError::Database {
+                message: format!("Failed to set temp store: {}", e),
+            })?;
+        
+        sqlx::query("PRAGMA mmap_size = 268435456") // 256MB memory-mapped I/O
+            .execute(&pool)
+            .await
+            .map_err(|e| DataError::Database {
+                message: format!("Failed to set mmap size: {}", e),
+            })?;
 
         let storage = Self {
             pool,
             encryption: encryption.clone(),
             config: config.clone(),
+            prepared_statements: Arc::new(RwLock::new(HashMap::new())),
         };
 
         // Initialize database schema
@@ -94,8 +132,19 @@ impl DataStorage {
 
     // Campaign operations
     pub async fn create_campaign(&self, campaign: &Campaign) -> DataResult<Campaign> {
+        // Use async encryption for better performance
         let settings_encrypted = if self.config.encryption_enabled {
-            self.encryption.encrypt_json(&campaign.settings)?
+            tokio::task::spawn_blocking({
+                let encryption = self.encryption.clone();
+                let settings = campaign.settings.clone();
+                move || encryption.encrypt_json(&settings)
+            }).await
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Encryption task failed: {}", e),
+                })?
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Failed to encrypt settings: {:?}", e),
+                })?
         } else {
             campaign.settings.to_string()
         };
@@ -110,26 +159,26 @@ impl DataStorage {
             None
         };
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO campaigns (
                 id, name, description, system, created_at, updated_at,
                 is_active, settings, dm_id, image_path, notes, status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-            campaign.id,
-            campaign.name,
-            campaign.description,
-            campaign.system,
-            campaign.created_at,
-            campaign.updated_at,
-            campaign.is_active,
-            settings_encrypted,
-            campaign.dm_id,
-            campaign.image_path,
-            notes_encrypted,
-            campaign.status
+            "#
         )
+        .bind(&campaign.id)
+        .bind(&campaign.name)
+        .bind(&campaign.description)
+        .bind(&campaign.system)
+        .bind(&campaign.created_at)
+        .bind(&campaign.updated_at)
+        .bind(&campaign.is_active)
+        .bind(&settings_encrypted)
+        .bind(&campaign.dm_id)
+        .bind(&campaign.image_path)
+        .bind(&notes_encrypted)
+        .bind(&campaign.status)
         .execute(&self.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -150,10 +199,10 @@ impl DataStorage {
     }
 
     pub async fn get_campaign(&self, id: Uuid) -> DataResult<Option<Campaign>> {
-        let row = sqlx::query!(
-            "SELECT * FROM campaigns WHERE id = ?",
-            id
+        let row = sqlx::query(
+            "SELECT * FROM campaigns WHERE id = ?"
         )
+        .bind(&id)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -161,13 +210,14 @@ impl DataStorage {
         })?;
 
         if let Some(row) = row {
+            let settings_str: String = row.get("settings");
             let settings = if self.config.encryption_enabled {
-                self.encryption.decrypt_json(&row.settings)?
+                self.encryption.decrypt_json(&settings_str)?
             } else {
-                serde_json::from_str(&row.settings).unwrap_or(serde_json::json!({}))
+                serde_json::from_str(&settings_str).unwrap_or(serde_json::json!({}))
             };
 
-            let notes = if let Some(encrypted_notes) = row.notes {
+            let notes = if let Some(encrypted_notes) = row.get::<Option<String>, _>("notes") {
                 if self.config.encryption_enabled {
                     Some(self.encryption.decrypt_string(&encrypted_notes)?)
                 } else {
@@ -177,22 +227,23 @@ impl DataStorage {
                 None
             };
 
-            let status: CampaignStatus = serde_json::from_str(&format!("\"{}\"", row.status))
+            let status_str: String = row.get("status");
+            let status: CampaignStatus = serde_json::from_str(&format!("\"{}\"", status_str))
                 .map_err(|e| DataError::Database {
                     message: format!("Invalid campaign status: {}", e),
                 })?;
 
             Ok(Some(Campaign {
-                id: row.id,
-                name: row.name,
-                description: row.description,
-                system: row.system,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-                is_active: row.is_active,
+                id: row.get("id"),
+                name: row.get("name"),
+                description: row.get("description"),
+                system: row.get("system"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+                is_active: row.get("is_active"),
                 settings,
-                dm_id: row.dm_id,
-                image_path: row.image_path,
+                dm_id: row.get("dm_id"),
+                image_path: row.get("image_path"),
                 notes,
                 status,
             }))
@@ -332,26 +383,26 @@ impl DataStorage {
             None
         };
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             UPDATE campaigns SET
                 name = ?, description = ?, system = ?, updated_at = ?,
                 is_active = ?, settings = ?, dm_id = ?, image_path = ?,
                 notes = ?, status = ?
             WHERE id = ?
-            "#,
-            campaign.name,
-            campaign.description,
-            campaign.system,
-            Utc::now(),
-            campaign.is_active,
-            settings_encrypted,
-            campaign.dm_id,
-            campaign.image_path,
-            notes_encrypted,
-            campaign.status,
-            id
+            "#
         )
+        .bind(&campaign.name)
+        .bind(&campaign.description)
+        .bind(&campaign.system)
+        .bind(&Utc::now())
+        .bind(&campaign.is_active)
+        .bind(&settings_encrypted)
+        .bind(&campaign.dm_id)
+        .bind(&campaign.image_path)
+        .bind(&notes_encrypted)
+        .bind(&campaign.status)
+        .bind(&id)
         .execute(&self.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -378,10 +429,10 @@ impl DataStorage {
     }
 
     pub async fn delete_campaign(&self, id: Uuid) -> DataResult<()> {
-        let result = sqlx::query!(
-            "DELETE FROM campaigns WHERE id = ?",
-            id
+        let result = sqlx::query(
+            "DELETE FROM campaigns WHERE id = ?"
         )
+        .bind(&id)
         .execute(&self.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -449,34 +500,34 @@ impl DataStorage {
             None
         };
 
-        let result = sqlx::query!(
+        let result = sqlx::query(
             r#"
             INSERT INTO characters (
                 id, campaign_id, name, class, race, level, created_at, updated_at,
                 is_player_character, owner_id, stats, inventory, spells, features,
                 background, personality, image_path, notes, status
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-            character.id,
-            character.campaign_id,
-            character.name,
-            character.class,
-            character.race,
-            character.level,
-            character.created_at,
-            character.updated_at,
-            character.is_player_character,
-            character.owner_id,
-            stats_encrypted,
-            inventory_encrypted,
-            spells_encrypted,
-            features_encrypted,
-            character.background,
-            personality_encrypted,
-            character.image_path,
-            notes_encrypted,
-            character.status
+            "#
         )
+        .bind(&character.id)
+        .bind(&character.campaign_id)
+        .bind(&character.name)
+        .bind(&character.class)
+        .bind(&character.race)
+        .bind(&character.level)
+        .bind(&character.created_at)
+        .bind(&character.updated_at)
+        .bind(&character.is_player_character)
+        .bind(&character.owner_id)
+        .bind(&stats_encrypted)
+        .bind(&inventory_encrypted)
+        .bind(&spells_encrypted)
+        .bind(&features_encrypted)
+        .bind(&character.background)
+        .bind(&personality_encrypted)
+        .bind(&character.image_path)
+        .bind(&notes_encrypted)
+        .bind(&character.status)
         .execute(&self.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -516,23 +567,23 @@ impl DataStorage {
             "encrypted": self.config.encryption_enabled
         });
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO audit_logs (
                 id, table_name, record_id, operation, user_id, timestamp,
                 old_values, new_values, metadata
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-            audit_id,
-            table_name,
-            record_id,
-            operation,
-            user_id,
-            timestamp,
-            old_values,
-            new_values,
-            metadata
+            "#
         )
+        .bind(&audit_id)
+        .bind(&table_name)
+        .bind(&record_id)
+        .bind(&operation)
+        .bind(&user_id)
+        .bind(&timestamp)
+        .bind(&old_values)
+        .bind(&new_values)
+        .bind(&metadata)
         .execute(&self.pool)
         .await
         .map_err(|e| DataError::Database {

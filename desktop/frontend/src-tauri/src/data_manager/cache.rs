@@ -62,22 +62,28 @@ impl CacheManager {
                     self.remove_from_memory(key);
                     self.cache_stats.expiration_count += 1;
                 } else {
+                    // Clone the data to avoid borrow issues
+                    let data_clone = entry.data.clone();
+                    
                     // Update access time
                     self.update_access_time(key);
                     self.cache_stats.memory_hits += 1;
                     
-                    let data = serde_json::from_slice(&entry.data)
+                    let data = serde_json::from_slice(&data_clone)
                         .map_err(|e| DataError::Cache {
                             message: format!("Failed to deserialize cached data: {}", e),
                         })?;
                     return Ok(Some(data));
                 }
             } else {
+                // Clone the data to avoid borrow issues
+                let data_clone = entry.data.clone();
+                
                 // No expiration, update access time
                 self.update_access_time(key);
                 self.cache_stats.memory_hits += 1;
                 
-                let data = serde_json::from_slice(&entry.data)
+                let data = serde_json::from_slice(&data_clone)
                     .map_err(|e| DataError::Cache {
                         message: format!("Failed to deserialize cached data: {}", e),
                     })?;

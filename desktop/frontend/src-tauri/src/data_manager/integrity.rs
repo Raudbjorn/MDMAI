@@ -11,6 +11,7 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use sqlx::Row;
 
 /// Data integrity checker for comprehensive validation
 pub struct IntegrityChecker {
@@ -85,7 +86,7 @@ impl IntegrityChecker {
             hash_mismatches,
             orphaned_records,
             issues,
-            overall_status,
+            overall_status: overall_status.clone(),
             recommendations,
         };
         
@@ -129,7 +130,7 @@ impl IntegrityChecker {
                 message: format!("Failed to count records in table {}: {}", table_name, e),
             })?;
         
-        result.record_count = count_result.get::<i64, _>("count") as u64;
+        result.record_count = count_result.try_get::<i64, _>("count").unwrap_or(0) as u64;
         
         // Table-specific checks
         match table_name {
@@ -176,7 +177,7 @@ impl IntegrityChecker {
         let mut issues = Vec::new();
         
         // Check for campaigns with invalid status
-        let invalid_status_campaigns = sqlx::query!(
+        let invalid_status_campaigns = sqlx::query(
             "SELECT id, name, status FROM campaigns WHERE status NOT IN ('planning', 'active', 'paused', 'completed', 'archived')"
         )
         .fetch_all(pool)
@@ -186,19 +187,22 @@ impl IntegrityChecker {
         })?;
         
         for campaign in invalid_status_campaigns {
+            let id: Uuid = campaign.try_get("id").unwrap_or_default();
+            let name: String = campaign.try_get("name").unwrap_or_default();
+            let status: String = campaign.try_get("status").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
                 table_name: "campaigns".to_string(),
-                record_id: Some(campaign.id),
+                record_id: Some(id),
                 field_name: Some("status".to_string()),
-                description: format!("Campaign '{}' has invalid status: '{}'", campaign.name, campaign.status),
+                description: format!("Campaign '{}' has invalid status: '{}'", name, status),
                 severity: IntegritySeverity::Medium,
                 auto_fixable: true,
             });
         }
         
         // Check for campaigns with invalid JSON in settings
-        let campaigns_with_settings = sqlx::query!(
+        let campaigns_with_settings = sqlx::query(
             "SELECT id, name, settings FROM campaigns WHERE settings IS NOT NULL"
         )
         .fetch_all(pool)
@@ -208,17 +212,22 @@ impl IntegrityChecker {
         })?;
         
         for campaign in campaigns_with_settings {
+            let id: Uuid = campaign.try_get("id").unwrap_or_default();
+            let name: String = campaign.try_get("name").unwrap_or_default();
+            let settings: Option<String> = campaign.try_get("settings").ok();
             // Try to parse JSON
-            if let Err(_) = serde_json::from_str::<serde_json::Value>(&campaign.settings) {
-                issues.push(IntegrityIssue {
-                    issue_type: IntegrityIssueType::DataCorruption,
-                    table_name: "campaigns".to_string(),
-                    record_id: Some(campaign.id),
-                    field_name: Some("settings".to_string()),
-                    description: format!("Campaign '{}' has corrupted settings JSON", campaign.name),
+            if let Some(settings_str) = settings {
+                if let Err(_) = serde_json::from_str::<serde_json::Value>(&settings_str) {
+                    issues.push(IntegrityIssue {
+                        issue_type: IntegrityIssueType::DataCorruption,
+                        table_name: "campaigns".to_string(),
+                        record_id: Some(id),
+                        field_name: Some("settings".to_string()),
+                        description: format!("Campaign '{}' has corrupted settings JSON", name),
                     severity: IntegritySeverity::High,
-                    auto_fixable: false,
-                });
+                        auto_fixable: false,
+                    });
+                }
             }
         }
         
@@ -230,7 +239,7 @@ impl IntegrityChecker {
         let mut issues = Vec::new();
         
         // Check for characters with invalid level
-        let invalid_level_characters = sqlx::query!(
+        let invalid_level_characters = sqlx::query(
             "SELECT id, name, level FROM characters WHERE level < 1 OR level > 20"
         )
         .fetch_all(pool)
@@ -240,19 +249,22 @@ impl IntegrityChecker {
         })?;
         
         for character in invalid_level_characters {
+            let id: Uuid = character.try_get("id").unwrap_or_default();
+            let name: String = character.try_get("name").unwrap_or_default();
+            let level: i32 = character.try_get("level").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
                 table_name: "characters".to_string(),
-                record_id: Some(character.id),
+                record_id: Some(id),
                 field_name: Some("level".to_string()),
-                description: format!("Character '{}' has invalid level: {}", character.name, character.level),
+                description: format!("Character '{}' has invalid level: {}", name, level),
                 severity: IntegritySeverity::Medium,
                 auto_fixable: true,
             });
         }
         
         // Check for characters with invalid status
-        let invalid_status_characters = sqlx::query!(
+        let invalid_status_characters = sqlx::query(
             "SELECT id, name, status FROM characters WHERE status NOT IN ('active', 'retired', 'dead', 'missing', 'archived')"
         )
         .fetch_all(pool)
@@ -262,12 +274,15 @@ impl IntegrityChecker {
         })?;
         
         for character in invalid_status_characters {
+            let id: Uuid = character.try_get("id").unwrap_or_default();
+            let name: String = character.try_get("name").unwrap_or_default();
+            let status: String = character.try_get("status").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
                 table_name: "characters".to_string(),
-                record_id: Some(character.id),
+                record_id: Some(id),
                 field_name: Some("status".to_string()),
-                description: format!("Character '{}' has invalid status: '{}'", character.name, character.status),
+                description: format!("Character '{}' has invalid status: '{}'", name, status),
                 severity: IntegritySeverity::Medium,
                 auto_fixable: true,
             });
@@ -293,9 +308,9 @@ impl IntegrityChecker {
             })?;
         
         for npc in invalid_role_npcs {
-            let id: Uuid = npc.get("id");
-            let name: String = npc.get("name");
-            let role: String = npc.get("role");
+            let id: Uuid = npc.try_get("id").unwrap_or_default();
+            let name: String = npc.try_get("name").unwrap_or_default();
+            let role: String = npc.try_get("role").unwrap_or_default();
             
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
@@ -316,7 +331,7 @@ impl IntegrityChecker {
         let mut issues = Vec::new();
         
         // Check for duplicate session numbers within campaigns
-        let duplicate_sessions = sqlx::query!(
+        let duplicate_sessions = sqlx::query(
             "SELECT campaign_id, session_number, COUNT(*) as count 
              FROM sessions 
              GROUP BY campaign_id, session_number 
@@ -329,6 +344,9 @@ impl IntegrityChecker {
         })?;
         
         for duplicate in duplicate_sessions {
+            let campaign_id: Uuid = duplicate.try_get("campaign_id").unwrap_or_default();
+            let session_number: i32 = duplicate.try_get("session_number").unwrap_or_default();
+            let count: i64 = duplicate.try_get("count").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
                 table_name: "sessions".to_string(),
@@ -336,7 +354,7 @@ impl IntegrityChecker {
                 field_name: Some("session_number".to_string()),
                 description: format!(
                     "Campaign {} has {} sessions with session number {}",
-                    duplicate.campaign_id, duplicate.count, duplicate.session_number
+                    campaign_id, count, session_number
                 ),
                 severity: IntegritySeverity::High,
                 auto_fixable: false,
@@ -344,7 +362,7 @@ impl IntegrityChecker {
         }
         
         // Check for sessions with negative duration
-        let invalid_duration_sessions = sqlx::query!(
+        let invalid_duration_sessions = sqlx::query(
             "SELECT id, title, duration_minutes FROM sessions WHERE duration_minutes < 0"
         )
         .fetch_all(pool)
@@ -354,12 +372,15 @@ impl IntegrityChecker {
         })?;
         
         for session in invalid_duration_sessions {
+            let id: Uuid = session.try_get("id").unwrap_or_default();
+            let title: String = session.try_get("title").unwrap_or_default();
+            let duration_minutes: Option<i32> = session.try_get("duration_minutes").ok();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::SchemaViolation,
                 table_name: "sessions".to_string(),
-                record_id: Some(session.id),
+                record_id: Some(id),
                 field_name: Some("duration_minutes".to_string()),
-                description: format!("Session '{}' has negative duration: {}", session.title, session.duration_minutes.unwrap_or(0)),
+                description: format!("Session '{}' has negative duration: {}", title, duration_minutes.unwrap_or(0)),
                 severity: IntegritySeverity::Medium,
                 auto_fixable: true,
             });
@@ -372,7 +393,7 @@ impl IntegrityChecker {
     async fn check_rulebooks_table(&self, pool: &sqlx::SqlitePool) -> DataResult<Vec<IntegrityIssue>> {
         let mut issues = Vec::new();
         
-        let rulebooks = sqlx::query!(
+        let rulebooks = sqlx::query(
             "SELECT id, title, file_path, file_hash FROM rulebooks WHERE file_path IS NOT NULL"
         )
         .fetch_all(pool)
@@ -382,21 +403,26 @@ impl IntegrityChecker {
         })?;
         
         for rulebook in rulebooks {
-            if let Some(file_path) = &rulebook.file_path {
-                let path = Path::new(file_path);
+            let id: Uuid = rulebook.try_get("id").unwrap_or_default();
+            let title: String = rulebook.try_get("title").unwrap_or_default();
+            let file_path: Option<String> = rulebook.try_get("file_path").ok();
+            let file_hash: Option<String> = rulebook.try_get("file_hash").ok();
+            
+            if let Some(file_path_str) = &file_path {
+                let path = Path::new(file_path_str);
                 
                 // Check if file exists
                 if !path.exists() {
                     issues.push(IntegrityIssue {
                         issue_type: IntegrityIssueType::MissingFile,
                         table_name: "rulebooks".to_string(),
-                        record_id: Some(rulebook.id),
+                        record_id: Some(id),
                         field_name: Some("file_path".to_string()),
-                        description: format!("Rulebook '{}' references missing file: {}", rulebook.title, file_path),
+                        description: format!("Rulebook '{}' references missing file: {}", title, file_path_str),
                         severity: IntegritySeverity::High,
                         auto_fixable: false,
                     });
-                } else if let Some(expected_hash) = &rulebook.file_hash {
+                } else if let Some(expected_hash) = &file_hash {
                     // Verify file hash
                     match std::fs::read(path) {
                         Ok(file_content) => {
@@ -408,9 +434,9 @@ impl IntegrityChecker {
                                 issues.push(IntegrityIssue {
                                     issue_type: IntegrityIssueType::HashMismatch,
                                     table_name: "rulebooks".to_string(),
-                                    record_id: Some(rulebook.id),
+                                    record_id: Some(id),
                                     field_name: Some("file_hash".to_string()),
-                                    description: format!("Rulebook '{}' file hash mismatch - file may be corrupted", rulebook.title),
+                                    description: format!("Rulebook '{}' file hash mismatch - file may be corrupted", title),
                                     severity: IntegritySeverity::High,
                                     auto_fixable: true,
                                 });
@@ -420,9 +446,9 @@ impl IntegrityChecker {
                             issues.push(IntegrityIssue {
                                 issue_type: IntegrityIssueType::MissingFile,
                                 table_name: "rulebooks".to_string(),
-                                record_id: Some(rulebook.id),
+                                record_id: Some(id),
                                 field_name: Some("file_path".to_string()),
-                                description: format!("Rulebook '{}' file cannot be read: {}", rulebook.title, e),
+                                description: format!("Rulebook '{}' file cannot be read: {}", title, e),
                                 severity: IntegritySeverity::High,
                                 auto_fixable: false,
                             });
@@ -439,7 +465,7 @@ impl IntegrityChecker {
     async fn check_assets_table(&self, pool: &sqlx::SqlitePool) -> DataResult<Vec<IntegrityIssue>> {
         let mut issues = Vec::new();
         
-        let assets = sqlx::query!(
+        let assets = sqlx::query(
             "SELECT id, name, file_path, file_hash FROM assets"
         )
         .fetch_all(pool)
@@ -449,16 +475,21 @@ impl IntegrityChecker {
         })?;
         
         for asset in assets {
-            let path = Path::new(&asset.file_path);
+            let id: Uuid = asset.try_get("id").unwrap_or_default();
+            let name: String = asset.try_get("name").unwrap_or_default();
+            let file_path: String = asset.try_get("file_path").unwrap_or_default();
+            let file_hash: String = asset.try_get("file_hash").unwrap_or_default();
+            
+            let path = Path::new(&file_path);
             
             // Check if file exists
             if !path.exists() {
                 issues.push(IntegrityIssue {
                     issue_type: IntegrityIssueType::MissingFile,
                     table_name: "assets".to_string(),
-                    record_id: Some(asset.id),
+                    record_id: Some(id),
                     field_name: Some("file_path".to_string()),
-                    description: format!("Asset '{}' references missing file: {}", asset.name, asset.file_path),
+                    description: format!("Asset '{}' references missing file: {}", name, file_path),
                     severity: IntegritySeverity::High,
                     auto_fixable: false,
                 });
@@ -470,13 +501,13 @@ impl IntegrityChecker {
                         hasher.update(&file_content);
                         let actual_hash = hex::encode(hasher.finalize().as_bytes());
                         
-                        if actual_hash != asset.file_hash {
+                        if actual_hash != file_hash {
                             issues.push(IntegrityIssue {
                                 issue_type: IntegrityIssueType::HashMismatch,
                                 table_name: "assets".to_string(),
-                                record_id: Some(asset.id),
+                                record_id: Some(id),
                                 field_name: Some("file_hash".to_string()),
-                                description: format!("Asset '{}' file hash mismatch - file may be corrupted", asset.name),
+                                description: format!("Asset '{}' file hash mismatch - file may be corrupted", name),
                                 severity: IntegritySeverity::High,
                                 auto_fixable: true,
                             });
@@ -486,9 +517,9 @@ impl IntegrityChecker {
                         issues.push(IntegrityIssue {
                             issue_type: IntegrityIssueType::MissingFile,
                             table_name: "assets".to_string(),
-                            record_id: Some(asset.id),
+                            record_id: Some(id),
                             field_name: Some("file_path".to_string()),
-                            description: format!("Asset '{}' file cannot be read: {}", asset.name, e),
+                            description: format!("Asset '{}' file cannot be read: {}", name, e),
                             severity: IntegritySeverity::High,
                             auto_fixable: false,
                         });
@@ -539,7 +570,7 @@ impl IntegrityChecker {
         let mut issues = Vec::new();
         
         // Check character -> campaign references
-        let orphaned_characters = sqlx::query!(
+        let orphaned_characters = sqlx::query(
             "SELECT id, name, campaign_id FROM characters 
              WHERE campaign_id NOT IN (SELECT id FROM campaigns)"
         )
@@ -550,19 +581,22 @@ impl IntegrityChecker {
         })?;
         
         for character in orphaned_characters {
+            let id: Uuid = character.try_get("id").unwrap_or_default();
+            let name: String = character.try_get("name").unwrap_or_default();
+            let campaign_id: Uuid = character.try_get("campaign_id").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::OrphanedRecord,
                 table_name: "characters".to_string(),
-                record_id: Some(character.id),
+                record_id: Some(id),
                 field_name: Some("campaign_id".to_string()),
-                description: format!("Character '{}' references non-existent campaign: {}", character.name, character.campaign_id),
+                description: format!("Character '{}' references non-existent campaign: {}", name, campaign_id),
                 severity: IntegritySeverity::High,
                 auto_fixable: false,
             });
         }
         
         // Check NPC -> campaign references
-        let orphaned_npcs = sqlx::query!(
+        let orphaned_npcs = sqlx::query(
             "SELECT id, name, campaign_id FROM npcs 
              WHERE campaign_id NOT IN (SELECT id FROM campaigns)"
         )
@@ -573,19 +607,22 @@ impl IntegrityChecker {
         })?;
         
         for npc in orphaned_npcs {
+            let id: Uuid = npc.try_get("id").unwrap_or_default();
+            let name: String = npc.try_get("name").unwrap_or_default();
+            let campaign_id: Uuid = npc.try_get("campaign_id").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::OrphanedRecord,
                 table_name: "npcs".to_string(),
-                record_id: Some(npc.id),
+                record_id: Some(id),
                 field_name: Some("campaign_id".to_string()),
-                description: format!("NPC '{}' references non-existent campaign: {}", npc.name, npc.campaign_id),
+                description: format!("NPC '{}' references non-existent campaign: {}", name, campaign_id),
                 severity: IntegritySeverity::High,
                 auto_fixable: false,
             });
         }
         
         // Check session -> campaign references
-        let orphaned_sessions = sqlx::query!(
+        let orphaned_sessions = sqlx::query(
             "SELECT id, title, campaign_id FROM sessions 
              WHERE campaign_id NOT IN (SELECT id FROM campaigns)"
         )
@@ -596,12 +633,15 @@ impl IntegrityChecker {
         })?;
         
         for session in orphaned_sessions {
+            let id: Uuid = session.try_get("id").unwrap_or_default();
+            let title: String = session.try_get("title").unwrap_or_default();
+            let campaign_id: Uuid = session.try_get("campaign_id").unwrap_or_default();
             issues.push(IntegrityIssue {
                 issue_type: IntegrityIssueType::OrphanedRecord,
                 table_name: "sessions".to_string(),
-                record_id: Some(session.id),
+                record_id: Some(id),
                 field_name: Some("campaign_id".to_string()),
-                description: format!("Session '{}' references non-existent campaign: {}", session.title, session.campaign_id),
+                description: format!("Session '{}' references non-existent campaign: {}", title, campaign_id),
                 severity: IntegritySeverity::High,
                 auto_fixable: false,
             });
@@ -744,7 +784,8 @@ impl IntegrityChecker {
             (IntegrityIssueType::SchemaViolation, "campaigns", Some("status")) => {
                 // Fix invalid campaign status
                 if let Some(record_id) = issue.record_id {
-                    sqlx::query!("UPDATE campaigns SET status = 'active' WHERE id = ?", record_id)
+                    sqlx::query("UPDATE campaigns SET status = 'active' WHERE id = ?")
+                        .bind(&record_id)
                         .execute(pool)
                         .await
                         .map_err(|e| DataError::Database {
@@ -755,7 +796,8 @@ impl IntegrityChecker {
             (IntegrityIssueType::SchemaViolation, "characters", Some("level")) => {
                 // Fix invalid character level
                 if let Some(record_id) = issue.record_id {
-                    sqlx::query!("UPDATE characters SET level = 1 WHERE id = ? AND (level < 1 OR level > 20)", record_id)
+                    sqlx::query("UPDATE characters SET level = 1 WHERE id = ? AND (level < 1 OR level > 20)")
+                        .bind(&record_id)
                         .execute(pool)
                         .await
                         .map_err(|e| DataError::Database {
@@ -766,7 +808,8 @@ impl IntegrityChecker {
             (IntegrityIssueType::SchemaViolation, "characters", Some("status")) => {
                 // Fix invalid character status
                 if let Some(record_id) = issue.record_id {
-                    sqlx::query!("UPDATE characters SET status = 'active' WHERE id = ?", record_id)
+                    sqlx::query("UPDATE characters SET status = 'active' WHERE id = ?")
+                        .bind(&record_id)
                         .execute(pool)
                         .await
                         .map_err(|e| DataError::Database {
@@ -806,22 +849,24 @@ impl IntegrityChecker {
     async fn recalculate_file_hash(&self, pool: &sqlx::SqlitePool, table_name: &str, record_id: Uuid) -> DataResult<()> {
         let file_path = match table_name {
             "rulebooks" => {
-                let row = sqlx::query!("SELECT file_path FROM rulebooks WHERE id = ?", record_id)
+                let row = sqlx::query("SELECT file_path FROM rulebooks WHERE id = ?")
+                    .bind(&record_id)
                     .fetch_optional(pool)
                     .await
                     .map_err(|e| DataError::Database {
                         message: format!("Failed to get rulebook file path: {}", e),
                     })?;
-                row.and_then(|r| r.file_path)
+                row.and_then(|r| r.try_get::<String, _>("file_path").ok())
             },
             "assets" => {
-                let row = sqlx::query!("SELECT file_path FROM assets WHERE id = ?", record_id)
+                let row = sqlx::query("SELECT file_path FROM assets WHERE id = ?")
+                    .bind(&record_id)
                     .fetch_one(pool)
                     .await
                     .map_err(|e| DataError::Database {
                         message: format!("Failed to get asset file path: {}", e),
                     })?;
-                Some(row.file_path)
+                Some(row.try_get("file_path").unwrap_or_default())
             },
             _ => None,
         };
@@ -838,7 +883,9 @@ impl IntegrityChecker {
             
             match table_name {
                 "rulebooks" => {
-                    sqlx::query!("UPDATE rulebooks SET file_hash = ? WHERE id = ?", new_hash, record_id)
+                    sqlx::query("UPDATE rulebooks SET file_hash = ? WHERE id = ?")
+                        .bind(&new_hash)
+                        .bind(&record_id)
                         .execute(pool)
                         .await
                         .map_err(|e| DataError::Database {
@@ -846,7 +893,9 @@ impl IntegrityChecker {
                         })?;
                 },
                 "assets" => {
-                    sqlx::query!("UPDATE assets SET file_hash = ? WHERE id = ?", new_hash, record_id)
+                    sqlx::query("UPDATE assets SET file_hash = ? WHERE id = ?")
+                        .bind(&new_hash)
+                        .bind(&record_id)
                         .execute(pool)
                         .await
                         .map_err(|e| DataError::Database {
@@ -861,7 +910,7 @@ impl IntegrityChecker {
     }
     
     /// Extract path from issue description
-    fn extract_path_from_description(&self, description: &str) -> Option<&Path> {
+    fn extract_path_from_description<'a>(&self, description: &'a str) -> Option<&'a Path> {
         // Simple extraction - in real implementation, this would be more robust
         if let Some(start) = description.find(": ") {
             let path_str = &description[start + 2..];

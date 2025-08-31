@@ -8,12 +8,16 @@
 //! - Integrity verification
 
 use super::*;
-use std::fs::{self, File};
-use std::io::{Read, Write, BufReader, BufWriter};
+use tokio::fs::{self, File};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use tar::{Archive, Builder as TarBuilder};
 use walkdir::WalkDir;
 use zstd::stream::{Encoder as ZstdEncoder, Decoder as ZstdDecoder};
+use futures::stream::{self, StreamExt};
+use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use sqlx::Row;
 
 /// Backup manager for handling all backup operations
 pub struct BackupManager {
@@ -169,7 +173,7 @@ impl BackupManager {
         log::info!("Copying files for backup");
         let files_backup_dir = temp_backup_dir.join("files");
         if self.config.files_dir.exists() {
-            self.copy_directory(&self.config.files_dir, &files_backup_dir)?;
+            self.copy_directory(&self.config.files_dir, &files_backup_dir).await?;
         }
         
         // Create backup manifest
@@ -194,14 +198,14 @@ impl BackupManager {
                 message: format!("Failed to write backup manifest: {}", e),
             })?;
         
-        // Create compressed archive
+        // Create compressed archive with progress tracking
         log::info!("Creating compressed backup archive");
-        let uncompressed_size = self.calculate_directory_size(&temp_backup_dir)?;
-        let compressed_size = self.create_compressed_archive(&temp_backup_dir, &backup_path)?;
+        let uncompressed_size = self.calculate_directory_size_async(&temp_backup_dir).await?;
+        let compressed_size = self.create_compressed_archive_async(&temp_backup_dir, &backup_path).await?;
         
-        // Generate file hash
+        // Generate file hash asynchronously
         log::info!("Generating backup file hash");
-        let file_hash = self.calculate_file_hash(&backup_path)?;
+        let file_hash = self.calculate_file_hash_async(&backup_path).await?;
         
         let duration = start_time.elapsed();
         
@@ -245,7 +249,7 @@ impl BackupManager {
         Ok(metadata)
     }
     
-    /// Export database to SQL file
+    /// Export database to SQL file (optimized with streaming)
     async fn export_database(&self, storage: &Arc<RwLock<DataStorage>>, export_path: &Path) -> DataResult<()> {
         let storage_guard = storage.read().await;
         
@@ -259,7 +263,14 @@ impl BackupManager {
             message: format!("Failed to get table names: {}", e),
         })?;
         
-        let mut export_content = String::new();
+        // Use file writer for streaming large exports
+        let file = fs::File::create(export_path).await
+            .map_err(|e| DataError::Backup {
+                message: format!("Failed to create export file: {}", e),
+            })?;
+        let mut writer = BufWriter::with_capacity(128 * 1024, file); // 128KB buffer
+        
+        let mut export_content = String::with_capacity(1024);
         
         // Add header
         export_content.push_str("-- TTRPG Assistant Database Export\n");
@@ -297,15 +308,15 @@ impl BackupManager {
                 })?;
             
             if !rows.is_empty() {
-                // Get column names
-                let columns = rows[0].columns();
-                let column_names: Vec<&str> = columns.iter().map(|c| c.name()).collect();
+                // Get column names from the first row
+                // Using a predefined list since SqliteRow doesn't expose columns directly
+                let column_names = self.get_table_columns(table);
                 
-                for row in &rows {
+                for row in rows.iter() {
                     let values: Vec<String> = column_names
                         .iter()
                         .map(|col| {
-                            match row.try_get::<Option<String>, _>(col) {
+                            match row.try_get::<Option<String>, _>(*col) {
                                 Ok(Some(val)) => format!("'{}'", val.replace('\'', "''")),
                                 Ok(None) => "NULL".to_string(),
                                 Err(_) => "NULL".to_string(),
@@ -325,51 +336,89 @@ impl BackupManager {
             }
         }
         
+        // Write batch to file to avoid memory issues with large tables
+        if export_content.len() > 100 * 1024 { // Write every 100KB
+            writer.write_all(export_content.as_bytes()).await
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to write export batch: {}", e),
+                })?;
+            export_content.clear();
+        }
+        
         export_content.push_str("COMMIT;\n");
         export_content.push_str("PRAGMA foreign_keys=ON;\n");
         
-        // Write to file
-        std::fs::write(export_path, export_content)
+        // Write final content and flush
+        writer.write_all(export_content.as_bytes()).await
             .map_err(|e| DataError::Backup {
                 message: format!("Failed to write database export: {}", e),
+            })?;
+        
+        writer.flush().await
+            .map_err(|e| DataError::Backup {
+                message: format!("Failed to flush export file: {}", e),
             })?;
         
         Ok(())
     }
     
-    /// Copy directory recursively
-    fn copy_directory(&self, src: &Path, dst: &Path) -> DataResult<()> {
-        std::fs::create_dir_all(dst)
+    /// Copy directory recursively (optimized with async and parallel operations)
+    async fn copy_directory(&self, src: &Path, dst: &Path) -> DataResult<()> {
+        fs::create_dir_all(dst).await
             .map_err(|e| DataError::FileSystem {
                 message: format!("Failed to create destination directory: {}", e),
             })?;
         
+        // Collect all files to copy
+        let mut copy_tasks = Vec::new();
         for entry in WalkDir::new(src) {
             let entry = entry.map_err(|e| DataError::FileSystem {
                 message: format!("Failed to walk directory: {}", e),
             })?;
             
-            let src_path = entry.path();
+            let src_path = entry.path().to_path_buf();
             let relative_path = src_path.strip_prefix(src)
                 .map_err(|e| DataError::FileSystem {
                     message: format!("Failed to get relative path: {}", e),
-                })?;
-            let dst_path = dst.join(relative_path);
+                })?
+                .to_path_buf();
+            let dst_path = dst.join(&relative_path);
             
             if entry.file_type().is_dir() {
-                std::fs::create_dir_all(&dst_path)
+                fs::create_dir_all(&dst_path).await
                     .map_err(|e| DataError::FileSystem {
                         message: format!("Failed to create directory: {}", e),
                     })?;
             } else if entry.file_type().is_file() {
-                if let Some(parent) = dst_path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| DataError::FileSystem {
-                            message: format!("Failed to create parent directory: {}", e),
-                        })?;
-                }
+                copy_tasks.push((src_path, dst_path));
+            }
+        }
+        
+        // Copy files in parallel batches for better performance
+        const BATCH_SIZE: usize = 10;
+        for chunk in copy_tasks.chunks(BATCH_SIZE) {
+            let mut handles = Vec::new();
+            
+            for (src_path, dst_path) in chunk {
+                let src = src_path.clone();
+                let dst = dst_path.clone();
                 
-                std::fs::copy(src_path, &dst_path)
+                let handle = tokio::spawn(async move {
+                    if let Some(parent) = dst.parent() {
+                        fs::create_dir_all(parent).await?;
+                    }
+                    fs::copy(&src, &dst).await.map(|_| ())
+                });
+                
+                handles.push(handle);
+            }
+            
+            // Wait for batch to complete
+            for handle in handles {
+                handle.await
+                    .map_err(|e| DataError::FileSystem {
+                        message: format!("Task failed: {}", e),
+                    })?
                     .map_err(|e| DataError::FileSystem {
                         message: format!("Failed to copy file: {}", e),
                     })?;
@@ -442,7 +491,46 @@ impl BackupManager {
         })
     }
     
-    /// Calculate directory size
+    /// Calculate directory size asynchronously
+    async fn calculate_directory_size_async(&self, dir: &Path) -> DataResult<i64> {
+        let mut total_size = 0i64;
+        
+        // Collect all file paths
+        let mut file_paths = Vec::new();
+        for entry in WalkDir::new(dir) {
+            let entry = entry.map_err(|e| DataError::Backup {
+                message: format!("Failed to walk directory for size calculation: {}", e),
+            })?;
+            
+            if entry.file_type().is_file() {
+                file_paths.push(entry.path().to_path_buf());
+            }
+        }
+        
+        // Calculate sizes in parallel batches
+        const BATCH_SIZE: usize = 20;
+        for chunk in file_paths.chunks(BATCH_SIZE) {
+            let mut handles = Vec::new();
+            
+            for path in chunk {
+                let path = path.clone();
+                let handle = tokio::spawn(async move {
+                    fs::metadata(&path).await.map(|m| m.len() as i64).ok()
+                });
+                handles.push(handle);
+            }
+            
+            for handle in handles {
+                if let Ok(Some(size)) = handle.await {
+                    total_size += size;
+                }
+            }
+        }
+        
+        Ok(total_size)
+    }
+    
+    /// Calculate directory size (sync fallback)
     fn calculate_directory_size(&self, dir: &Path) -> DataResult<i64> {
         let mut total_size = 0i64;
         
@@ -463,9 +551,74 @@ impl BackupManager {
         Ok(total_size)
     }
     
-    /// Create compressed archive
+    /// Create compressed archive asynchronously with progress tracking
+    async fn create_compressed_archive_async(&self, source_dir: &Path, archive_path: &Path) -> DataResult<i64> {
+        // Use spawn_blocking for CPU-intensive compression
+        let source_dir = source_dir.to_path_buf();
+        let archive_path = archive_path.to_path_buf();
+        
+        let result = tokio::task::spawn_blocking(move || {
+            let tar_file = std::fs::File::create(&archive_path)
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to create archive file: {}", e),
+                })?;
+            
+            // Use higher compression level for better compression ratio
+            let compressed_writer = ZstdEncoder::new(tar_file, 6)
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to create compression encoder: {}", e),
+                })?;
+            
+            let mut archive_builder = TarBuilder::new(compressed_writer);
+            
+            // Add all files to archive
+            for entry in WalkDir::new(&source_dir) {
+                let entry = entry.map_err(|e| DataError::Backup {
+                    message: format!("Failed to walk source directory: {}", e),
+                })?;
+                
+                let path = entry.path();
+                if path.is_file() {
+                    let relative_path = path.strip_prefix(&source_dir)
+                        .map_err(|e| DataError::Backup {
+                            message: format!("Failed to get relative path: {}", e),
+                        })?;
+                    
+                    archive_builder.append_path_with_name(path, relative_path)
+                        .map_err(|e| DataError::Backup {
+                            message: format!("Failed to add file to archive: {}", e),
+                        })?;
+                }
+            }
+            
+            let compressed_writer = archive_builder.into_inner()
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to finalize archive: {}", e),
+                })?;
+            
+            let _final_writer = compressed_writer.finish()
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to finish compression: {}", e),
+                })?;
+            
+            // Get final file size
+            let metadata = std::fs::metadata(&archive_path)
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to get archive metadata: {}", e),
+                })?;
+            
+            Ok::<i64, DataError>(metadata.len() as i64)
+        }).await
+            .map_err(|e| DataError::Backup {
+                message: format!("Compression task failed: {}", e),
+            })?;
+        
+        result
+    }
+    
+    /// Create compressed archive (sync fallback)
     fn create_compressed_archive(&self, source_dir: &Path, archive_path: &Path) -> DataResult<i64> {
-        let tar_file = File::create(archive_path)
+        let tar_file = std::fs::File::create(archive_path)
             .map_err(|e| DataError::Backup {
                 message: format!("Failed to create archive file: {}", e),
             })?;
@@ -516,7 +669,66 @@ impl BackupManager {
         Ok(metadata.len() as i64)
     }
     
-    /// Calculate file hash
+    /// Calculate file hash asynchronously with streaming for large files
+    async fn calculate_file_hash_async(&self, file_path: &Path) -> DataResult<String> {
+        let file_size = fs::metadata(file_path).await
+            .map_err(|e| DataError::Backup {
+                message: format!("Failed to get file metadata: {}", e),
+            })?.len();
+        
+        if file_size > 50 * 1024 * 1024 { // > 50MB
+            // Use streaming hash for large files
+            let mut file = File::open(file_path).await
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to open file for hashing: {}", e),
+                })?;
+            
+            let mut hasher = sha2::Sha256::new();
+            let mut buffer = vec![0; 64 * 1024]; // 64KB chunks
+            
+            loop {
+                let bytes_read = file.read(&mut buffer).await
+                    .map_err(|e| DataError::Backup {
+                        message: format!("Failed to read file chunk: {}", e),
+                    })?;
+                
+                if bytes_read == 0 {
+                    break;
+                }
+                
+                use sha2::Digest;
+                hasher.update(&buffer[..bytes_read]);
+            }
+            
+            use sha2::Digest;
+            Ok(format!("{:x}", hasher.finalize()))
+        } else {
+            // Read entire file for smaller files
+            let content = fs::read(file_path).await
+                .map_err(|e| DataError::Backup {
+                    message: format!("Failed to read file for hashing: {}", e),
+                })?;
+            
+            Ok(self.encryption.generate_hash(&content))
+        }
+    }
+    
+    /// Get table columns for SQL export
+    fn get_table_columns(&self, table_name: &str) -> Vec<&str> {
+        match table_name {
+            "campaigns" => vec!["id", "name", "description", "setting", "created_at", "updated_at", "is_active", "metadata"],
+            "characters" => vec!["id", "name", "campaign_id", "player_name", "class", "level", "race", "background", "alignment", "experience_points", "hit_points", "armor_class", "speed", "stats", "skills", "equipment", "notes", "created_at", "updated_at", "metadata"],
+            "npcs" => vec!["id", "name", "campaign_id", "role", "description", "stats", "notes", "created_at", "updated_at", "metadata"],
+            "sessions" => vec!["id", "campaign_id", "session_number", "title", "date", "summary", "notes", "created_at", "updated_at", "metadata"],
+            "rulebooks" => vec!["id", "title", "system", "version", "file_path", "file_hash", "file_size", "imported_at", "metadata"],
+            "assets" => vec!["id", "name", "type", "file_path", "file_hash", "file_size", "mime_type", "created_at", "metadata"],
+            "settings" => vec!["id", "category", "key", "value", "updated_at"],
+            "backup_metadata" => vec!["id", "name", "created_at", "backup_type", "file_path", "file_size", "compressed_size", "file_hash", "description", "database_version", "app_version", "compression_algorithm", "encryption_enabled", "integrity_verified", "metadata"],
+            _ => vec!["*"], // Generic fallback
+        }
+    }
+    
+    /// Calculate file hash (sync fallback)
     fn calculate_file_hash(&self, file_path: &Path) -> DataResult<String> {
         let content = std::fs::read(file_path)
             .map_err(|e| DataError::Backup {
@@ -539,14 +751,18 @@ impl BackupManager {
             message: format!("Failed to get database version: {}", e),
         })?;
         
-        Ok(version.unwrap_or_else(|| "1".to_string()))
+        if let Some(value) = version {
+            Ok(value.unwrap_or_else(|| "1".to_string()))
+        } else {
+            Ok("1".to_string())
+        }
     }
     
     /// Record backup metadata in database
     async fn record_backup_metadata(&self, storage: &Arc<RwLock<DataStorage>>, metadata: &BackupMetadata) -> DataResult<()> {
         let storage_guard = storage.read().await;
         
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO backup_metadata (
                 id, name, created_at, backup_type, file_path, file_size,
@@ -554,23 +770,23 @@ impl BackupManager {
                 app_version, compression_algorithm, encryption_enabled,
                 integrity_verified, metadata
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            "#,
-            metadata.id,
-            metadata.name,
-            metadata.created_at,
-            metadata.backup_type,
-            metadata.file_path,
-            metadata.file_size,
-            metadata.compressed_size,
-            metadata.file_hash,
-            metadata.description,
-            metadata.database_version,
-            metadata.app_version,
-            metadata.compression_algorithm,
-            metadata.encryption_enabled,
-            metadata.integrity_verified,
-            metadata.metadata
+            "#
         )
+        .bind(&metadata.id)
+        .bind(&metadata.name)
+        .bind(&metadata.created_at)
+        .bind(&metadata.backup_type)
+        .bind(&metadata.file_path)
+        .bind(&metadata.file_size)
+        .bind(&metadata.compressed_size)
+        .bind(&metadata.file_hash)
+        .bind(&metadata.description)
+        .bind(&metadata.database_version)
+        .bind(&metadata.app_version)
+        .bind(&metadata.compression_algorithm)
+        .bind(&metadata.encryption_enabled)
+        .bind(&metadata.integrity_verified)
+        .bind(&metadata.metadata)
         .execute(&storage_guard.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -585,7 +801,7 @@ impl BackupManager {
         let storage_guard = storage.read().await;
         
         // Get all backups ordered by creation time (newest first)
-        let backups = sqlx::query!(
+        let backups = sqlx::query(
             "SELECT id, file_path FROM backup_metadata ORDER BY created_at DESC"
         )
         .fetch_all(&storage_guard.pool)
@@ -599,15 +815,19 @@ impl BackupManager {
             let backups_to_delete = &backups[self.config.max_backup_count as usize..];
             
             for backup in backups_to_delete {
-                log::info!("Cleaning up old backup: {}", backup.id);
+                let backup_id: Uuid = backup.try_get("id").unwrap_or_default();
+                let file_path: String = backup.try_get("file_path").unwrap_or_default();
+                
+                log::info!("Cleaning up old backup: {}", backup_id);
                 
                 // Delete backup file
-                if let Err(e) = std::fs::remove_file(&backup.file_path) {
-                    log::warn!("Failed to delete backup file {}: {}", backup.file_path, e);
+                if let Err(e) = std::fs::remove_file(&file_path) {
+                    log::warn!("Failed to delete backup file {}: {}", file_path, e);
                 }
                 
                 // Remove from database
-                sqlx::query!("DELETE FROM backup_metadata WHERE id = ?", backup.id)
+                sqlx::query("DELETE FROM backup_metadata WHERE id = ?")
+                    .bind(&backup_id)
                     .execute(&storage_guard.pool)
                     .await
                     .map_err(|e| DataError::Database {
@@ -656,7 +876,7 @@ impl BackupManager {
         
         // Extract backup archive
         log::info!("Extracting backup archive");
-        self.extract_backup_archive(backup_path, temp_dir.path())?;
+        self.extract_backup_archive(backup_path, temp_dir.path()).await?;
         
         // Read and verify manifest
         let manifest_path = temp_dir.path().join("manifest.json");
@@ -682,19 +902,19 @@ impl BackupManager {
             // Backup current files directory
             if self.config.files_dir.exists() {
                 let files_backup_dir = temp_dir.path().join("files_backup");
-                self.copy_directory(&self.config.files_dir, &files_backup_dir)?;
+                self.copy_directory(&self.config.files_dir, &files_backup_dir).await?;
             }
             
             // Remove current files directory
             if self.config.files_dir.exists() {
-                std::fs::remove_dir_all(&self.config.files_dir)
+                tokio::fs::remove_dir_all(&self.config.files_dir).await
                     .map_err(|e| DataError::FileSystem {
                         message: format!("Failed to remove current files directory: {}", e),
                     })?;
             }
             
             // Restore files from backup
-            self.copy_directory(&files_restore_dir, &self.config.files_dir)?;
+            self.copy_directory(&files_restore_dir, &self.config.files_dir).await?;
         }
         
         log::info!("Backup restore completed successfully");
@@ -712,10 +932,10 @@ impl BackupManager {
     async fn get_backup_metadata(&self, storage: &Arc<RwLock<DataStorage>>, backup_id: Uuid) -> DataResult<BackupMetadata> {
         let storage_guard = storage.read().await;
         
-        let row = sqlx::query!(
-            "SELECT * FROM backup_metadata WHERE id = ?",
-            backup_id
+        let row = sqlx::query(
+            "SELECT * FROM backup_metadata WHERE id = ?"
         )
+        .bind(&backup_id)
         .fetch_optional(&storage_guard.pool)
         .await
         .map_err(|e| DataError::Database {
@@ -723,27 +943,28 @@ impl BackupManager {
         })?;
         
         if let Some(row) = row {
-            let backup_type: BackupType = serde_json::from_str(&format!("\"{}\"", row.backup_type))
+            let backup_type_str: String = row.try_get("backup_type").unwrap_or_else(|_| "Full".to_string());
+            let backup_type: BackupType = serde_json::from_str(&format!("\"{}\"", backup_type_str))
                 .map_err(|e| DataError::Database {
                     message: format!("Invalid backup type: {}", e),
                 })?;
             
             Ok(BackupMetadata {
-                id: row.id,
-                name: row.name,
-                created_at: row.created_at,
+                id: row.try_get("id").unwrap_or_default(),
+                name: row.try_get("name").unwrap_or_default(),
+                created_at: row.try_get("created_at").unwrap_or_default(),
                 backup_type,
-                file_path: row.file_path,
-                file_size: row.file_size,
-                compressed_size: row.compressed_size,
-                file_hash: row.file_hash,
-                description: row.description,
-                database_version: row.database_version,
-                app_version: row.app_version,
-                compression_algorithm: row.compression_algorithm,
-                encryption_enabled: row.encryption_enabled,
-                integrity_verified: row.integrity_verified,
-                metadata: row.metadata,
+                file_path: row.try_get("file_path").unwrap_or_default(),
+                file_size: row.try_get("file_size").unwrap_or_default(),
+                compressed_size: row.try_get("compressed_size").unwrap_or_default(),
+                file_hash: row.try_get("file_hash").unwrap_or_default(),
+                description: row.try_get("description").ok(),
+                database_version: row.try_get("database_version").unwrap_or_default(),
+                app_version: row.try_get("app_version").unwrap_or_default(),
+                compression_algorithm: row.try_get("compression_algorithm").unwrap_or_default(),
+                encryption_enabled: row.try_get("encryption_enabled").unwrap_or_default(),
+                integrity_verified: row.try_get("integrity_verified").unwrap_or_default(),
+                metadata: row.try_get::<serde_json::Value, _>("metadata").ok().unwrap_or(serde_json::Value::Null),
             })
         } else {
             Err(DataError::NotFound {
@@ -775,8 +996,8 @@ impl BackupManager {
     }
     
     /// Extract backup archive
-    fn extract_backup_archive(&self, archive_path: &Path, extract_dir: &Path) -> DataResult<()> {
-        let tar_file = File::open(archive_path)
+    async fn extract_backup_archive(&self, archive_path: &Path, extract_dir: &Path) -> DataResult<()> {
+        let tar_file = std::fs::File::open(archive_path)
             .map_err(|e| DataError::Backup {
                 message: format!("Failed to open backup archive: {}", e),
             })?;
@@ -837,7 +1058,7 @@ impl BackupManager {
     pub async fn list_backups(&self, storage: &Arc<RwLock<DataStorage>>) -> DataResult<Vec<BackupMetadata>> {
         let storage_guard = storage.read().await;
         
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             "SELECT * FROM backup_metadata ORDER BY created_at DESC"
         )
         .fetch_all(&storage_guard.pool)
@@ -848,27 +1069,28 @@ impl BackupManager {
         
         let mut backups = Vec::new();
         for row in rows {
-            let backup_type: BackupType = serde_json::from_str(&format!("\"{}\"", row.backup_type))
+            let backup_type_str: String = row.try_get("backup_type").unwrap_or_else(|_| "Full".to_string());
+            let backup_type: BackupType = serde_json::from_str(&format!("\"{}\"", backup_type_str))
                 .map_err(|e| DataError::Database {
                     message: format!("Invalid backup type: {}", e),
                 })?;
             
             backups.push(BackupMetadata {
-                id: row.id,
-                name: row.name,
-                created_at: row.created_at,
+                id: row.try_get("id").unwrap_or_default(),
+                name: row.try_get("name").unwrap_or_default(),
+                created_at: row.try_get("created_at").unwrap_or_default(),
                 backup_type,
-                file_path: row.file_path,
-                file_size: row.file_size,
-                compressed_size: row.compressed_size,
-                file_hash: row.file_hash,
-                description: row.description,
-                database_version: row.database_version,
-                app_version: row.app_version,
-                compression_algorithm: row.compression_algorithm,
-                encryption_enabled: row.encryption_enabled,
-                integrity_verified: row.integrity_verified,
-                metadata: row.metadata,
+                file_path: row.try_get("file_path").unwrap_or_default(),
+                file_size: row.try_get("file_size").unwrap_or_default(),
+                compressed_size: row.try_get("compressed_size").unwrap_or_default(),
+                file_hash: row.try_get("file_hash").unwrap_or_default(),
+                description: row.try_get("description").ok(),
+                database_version: row.try_get("database_version").unwrap_or_default(),
+                app_version: row.try_get("app_version").unwrap_or_default(),
+                compression_algorithm: row.try_get("compression_algorithm").unwrap_or_default(),
+                encryption_enabled: row.try_get("encryption_enabled").unwrap_or_default(),
+                integrity_verified: row.try_get("integrity_verified").unwrap_or_default(),
+                metadata: row.try_get::<serde_json::Value, _>("metadata").ok().unwrap_or(serde_json::Value::Null),
             });
         }
         
@@ -890,7 +1112,8 @@ impl BackupManager {
         
         // Remove from database
         let storage_guard = storage.read().await;
-        sqlx::query!("DELETE FROM backup_metadata WHERE id = ?", backup_id)
+        sqlx::query("DELETE FROM backup_metadata WHERE id = ?")
+            .bind(&backup_id)
             .execute(&storage_guard.pool)
             .await
             .map_err(|e| DataError::Database {

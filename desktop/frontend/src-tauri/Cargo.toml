@@ -39,6 +39,11 @@ zstd = "0.13"
 tar = "0.4"
 walkdir = "2.0"
 blake3 = "1.0"
+futures = "0.3"
+tokio-stream = "0.1"
+bytes = "1.5"
+thiserror = "1.0"
+tempfile = "3.8"
 
 [features]
 default = ["custom-protocol"]

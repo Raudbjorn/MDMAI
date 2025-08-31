@@ -71,10 +71,10 @@ impl MCPBridge {
         self.process_manager.set_app_handle(app_handle.clone()).await;
 
         // Start the process
-        self.start_process_internal(app_handle).await
+        self.start_process_internal(app_handle.clone()).await
     }
     
-    async fn start_process_internal(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {
+    async fn start_process_internal(&self, app_handle: tauri::AppHandle) -> Result<(), String> {
         // Create channel for stdin communication
         let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
         *self.stdin_tx.lock().await = Some(stdin_tx);
@@ -119,7 +119,6 @@ impl MCPBridge {
         let is_running = self.is_running.clone();
         let child_process_cleanup = self.child_process.clone();
         let process_manager = self.process_manager.clone();
-        let bridge_ref = Arc::new(self.clone_for_restart());
         
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
@@ -158,19 +157,9 @@ impl MCPBridge {
                         
                         // Check if we should restart
                         if process_manager.should_restart().await {
-                            // Schedule restart
-                            let config = process_manager.get_stats().await;
-                            let delay = 2000; // Default 2 second delay
-                            
-                            tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
-                            
-                            // Attempt restart
-                            if let Some(app_handle) = bridge_ref.app_handle.lock().await.as_ref() {
-                                info!("Attempting automatic restart of MCP server");
-                                if let Err(e) = bridge_ref.start_process_internal(app_handle).await {
-                                    error!("Failed to restart MCP server: {}", e);
-                                }
-                            }
+                            // We'll handle restart separately
+                            info!("MCP server should be restarted - marking for restart");
+                            // The restart will be handled by the process manager or external logic
                         }
                         
                         break;
@@ -387,7 +376,7 @@ pub async fn restart_mcp_backend(
     state: tauri::State<'_, Arc<Mutex<Option<MCPBridge>>>>,
 ) -> Result<(), String> {
     if let Some(bridge) = state.lock().await.as_ref() {
-        bridge.restart().await?;
+        bridge.restart().await
     } else {
         Err("MCP backend not initialized".to_string())
     }

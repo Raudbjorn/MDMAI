@@ -9,10 +9,13 @@
 
 use super::*;
 use std::path::{Path, PathBuf};
-use std::fs::{self, File};
-use std::io::{Read, Write};
+use tokio::fs::{self, File};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio_stream::{wrappers::ReadDirStream, StreamExt};
 use walkdir::WalkDir;
 use std::collections::HashMap;
+use futures::stream::{self, StreamExt as FuturesStreamExt};
+use bytes::{Bytes, BytesMut};
 
 /// File manager for handling all file operations
 pub struct FileManager {
@@ -35,7 +38,7 @@ impl FileManager {
         })
     }
     
-    /// Store a file with optional encryption
+    /// Store a file with optional encryption (optimized with streaming)
     pub async fn store_file(
         &self,
         source_path: &Path,
@@ -44,11 +47,22 @@ impl FileManager {
     ) -> DataResult<StoredFile> {
         let file_id = Uuid::new_v4();
         
-        // Read source file
-        let file_content = fs::read(source_path)
+        // Get file size first for progress tracking
+        let file_metadata = fs::metadata(source_path).await
             .map_err(|e| DataError::FileSystem {
-                message: format!("Failed to read source file: {}", e),
+                message: format!("Failed to get file metadata: {}", e),
             })?;
+        let file_size = file_metadata.len();
+        
+        // Stream file content with buffering for large files
+        let file_content = if file_size > 10 * 1024 * 1024 { // > 10MB
+            self.read_file_streamed(source_path).await?
+        } else {
+            fs::read(source_path).await
+                .map_err(|e| DataError::FileSystem {
+                    message: format!("Failed to read source file: {}", e),
+                })?  
+        };
         
         // Generate file hash
         let file_hash = self.encryption.generate_hash(&file_content);
@@ -62,25 +76,34 @@ impl FileManager {
         let relative_path = self.get_storage_path(file_id, category, extension);
         let full_path = self.config.files_dir.join(&relative_path);
         
-        // Ensure parent directory exists
+        // Ensure parent directory exists (async)
         if let Some(parent) = full_path.parent() {
-            fs::create_dir_all(parent)
+            fs::create_dir_all(parent).await
                 .map_err(|e| DataError::FileSystem {
                     message: format!("Failed to create storage directory: {}", e),
                 })?;
         }
         
-        // Store file (encrypted if enabled)
+        // Store file (encrypted if enabled) with streaming
         let stored_content = if self.config.encryption_enabled {
-            self.encryption.encrypt_file(source_path)?
+            // Use async encryption for large files
+            tokio::task::spawn_blocking({
+                let encryption = self.encryption.clone();
+                let content = file_content.clone();
+                move || encryption.encrypt_bytes(&content)
+            }).await
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Failed to encrypt file: {}", e),
+                })?
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Encryption failed: {:?}", e),
+                })?
         } else {
             file_content.clone()
         };
         
-        fs::write(&full_path, &stored_content)
-            .map_err(|e| DataError::FileSystem {
-                message: format!("Failed to write stored file: {}", e),
-            })?;
+        // Write with buffering for better performance
+        self.write_file_buffered(&full_path, &stored_content).await?;
         
         // Extract metadata
         let extracted_metadata = self.extract_file_metadata(source_path, &file_content)?;
@@ -115,68 +138,106 @@ impl FileManager {
         })
     }
     
-    /// Retrieve a stored file
+    /// Retrieve a stored file (optimized with streaming)
     pub async fn retrieve_file(&self, file_id: Uuid, stored_path: &str) -> DataResult<Vec<u8>> {
         let full_path = self.config.files_dir.join(stored_path);
         
-        if !full_path.exists() {
-            return Err(DataError::NotFound {
+        // Check existence asynchronously
+        match fs::metadata(&full_path).await {
+            Ok(_) => {},
+            Err(_) => return Err(DataError::NotFound {
                 resource: format!("File with id {}", file_id),
-            });
+            }),
         }
         
-        let stored_content = fs::read(&full_path)
+        // Read with streaming for large files
+        let file_size = fs::metadata(&full_path).await
             .map_err(|e| DataError::FileSystem {
-                message: format!("Failed to read stored file: {}", e),
-            })?;
+                message: format!("Failed to get file metadata: {}", e),
+            })?.len();
+            
+        let stored_content = if file_size > 10 * 1024 * 1024 { // > 10MB
+            self.read_file_streamed(&full_path).await?
+        } else {
+            fs::read(&full_path).await
+                .map_err(|e| DataError::FileSystem {
+                    message: format!("Failed to read stored file: {}", e),
+                })?
+        };
         
-        // Decrypt if encrypted
+        // Decrypt if encrypted (async for large files)
         if self.config.encryption_enabled {
-            self.encryption.decrypt_file_contents(&stored_content)
+            let decrypted = tokio::task::spawn_blocking({
+                let encryption = self.encryption.clone();
+                let content = stored_content;
+                move || encryption.decrypt_file_contents(&content)
+            }).await
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Failed to decrypt file: {}", e),
+                })?
+                .map_err(|e| DataError::Encryption {
+                    message: format!("Decryption failed: {:?}", e),
+                })?;
+            Ok(decrypted)
         } else {
             Ok(stored_content)
         }
     }
     
-    /// Copy file to external location
+    /// Copy file to external location (optimized with streaming)
     pub async fn export_file(
         &self,
         file_id: Uuid,
         stored_path: &str,
         destination: &Path
     ) -> DataResult<()> {
-        let file_content = self.retrieve_file(file_id, stored_path).await?;
+        // For large files, use streaming copy instead of loading into memory
+        let full_path = self.config.files_dir.join(stored_path);
+        
+        // Check file size
+        let file_size = fs::metadata(&full_path).await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to get file metadata: {}", e),
+            })?.len();
         
         // Ensure destination directory exists
         if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
+            fs::create_dir_all(parent).await
                 .map_err(|e| DataError::FileSystem {
                     message: format!("Failed to create destination directory: {}", e),
                 })?;
         }
         
-        fs::write(destination, file_content)
-            .map_err(|e| DataError::FileSystem {
-                message: format!("Failed to export file: {}", e),
-            })?;
+        if file_size > 10 * 1024 * 1024 && !self.config.encryption_enabled {
+            // Direct streaming copy for large unencrypted files
+            fs::copy(&full_path, destination).await
+                .map_err(|e| DataError::FileSystem {
+                    message: format!("Failed to export file: {}", e),
+                })?;
+        } else {
+            // Use retrieve for decryption if needed
+            let file_content = self.retrieve_file(file_id, stored_path).await?;
+            self.write_file_buffered(destination, &file_content).await?;
+        }
         
         Ok(())
     }
     
-    /// Delete a stored file
+    /// Delete a stored file (async)
     pub async fn delete_file(&self, stored_path: &str) -> DataResult<()> {
         let full_path = self.config.files_dir.join(stored_path);
         
-        if full_path.exists() {
-            fs::remove_file(&full_path)
+        // Check and remove asynchronously
+        if fs::metadata(&full_path).await.is_ok() {
+            fs::remove_file(&full_path).await
                 .map_err(|e| DataError::FileSystem {
                     message: format!("Failed to delete file: {}", e),
                 })?;
         }
         
-        // Clean up empty directories
+        // Clean up empty directories asynchronously
         if let Some(parent) = full_path.parent() {
-            let _ = self.cleanup_empty_directories(parent);
+            let _ = self.cleanup_empty_directories_async(parent).await;
         }
         
         Ok(())
@@ -302,18 +363,21 @@ impl FileManager {
     }
     
     /// Clean up empty directories
-    fn cleanup_empty_directories(&self, dir: &Path) -> DataResult<()> {
+    fn cleanup_empty_directories<'a>(&'a self, dir: &'a Path) -> futures::future::BoxFuture<'a, DataResult<()>> {
+        Box::pin(async move {
         if dir.is_dir() {
             // Check if directory is empty
-            match fs::read_dir(dir) {
-                Ok(entries) => {
-                    if entries.count() == 0 {
-                        let _ = fs::remove_dir(dir);
+            match fs::read_dir(dir).await {
+                Ok(mut entries) => {
+                    if entries.next_entry().await.map_err(|e| DataError::FileSystem {
+                        message: format!("Failed to read directory entries: {}", e)
+                    })?.is_none() {
+                        let _ = fs::remove_dir(dir).await;
                         
                         // Recursively check parent directory
                         if let Some(parent) = dir.parent() {
                             if parent != self.config.files_dir {
-                                let _ = self.cleanup_empty_directories(parent);
+                                let _ = self.cleanup_empty_directories(parent).await;
                             }
                         }
                     }
@@ -322,10 +386,11 @@ impl FileManager {
             }
         }
         Ok(())
+        })
     }
     
-    /// Get file statistics
-    pub fn get_storage_stats(&self) -> DataResult<StorageStats> {
+    /// Get file statistics (optimized with async operations)
+    pub async fn get_storage_stats(&self) -> DataResult<StorageStats> {
         let mut stats = StorageStats {
             total_files: 0,
             total_size: 0,
@@ -339,27 +404,44 @@ impl FileManager {
         
         let mut file_sizes = Vec::new();
         
+        // Use async directory walking for better performance
+        let mut entries = Vec::new();
         for entry in WalkDir::new(&self.config.files_dir) {
             let entry = entry.map_err(|e| DataError::FileSystem {
                 message: format!("Failed to walk files directory: {}", e),
             })?;
-            
             if entry.file_type().is_file() {
-                let path = entry.path();
-                let metadata = entry.metadata().map_err(|e| DataError::FileSystem {
-                    message: format!("Failed to get file metadata: {}", e),
-                })?;
-                
-                let size = metadata.len();
-                stats.total_files += 1;
-                stats.total_size += size;
-                
-                // Determine category from path
-                let category = self.determine_category_from_path(path);
-                *stats.categories.entry(category).or_insert(0) += 1;
-                
-                // Track for largest files
-                file_sizes.push((path.to_path_buf(), size));
+                entries.push(entry.path().to_path_buf());
+            }
+        }
+        
+        // Process files in parallel
+        const BATCH_SIZE: usize = 20;
+        for chunk in entries.chunks(BATCH_SIZE) {
+            let mut handles = Vec::new();
+            
+            for path in chunk {
+                let path = path.clone();
+                let handle = tokio::spawn(async move {
+                    let metadata = fs::metadata(&path).await.ok()?;
+                    Some((path, metadata.len()))
+                });
+                handles.push(handle);
+            }
+            
+            // Collect results
+            for handle in handles {
+                if let Ok(Some((path, size))) = handle.await {
+                    stats.total_files += 1;
+                    stats.total_size += size;
+                    
+                    // Determine category from path
+                    let category = self.determine_category_from_path(&path);
+                    *stats.categories.entry(category).or_insert(0) += 1;
+                    
+                    // Track for largest files
+                    file_sizes.push((path, size));
+                }
             }
         }
         
@@ -384,62 +466,96 @@ impl FileManager {
         "unknown".to_string()
     }
     
-    /// Find duplicate files by hash
-    pub fn find_duplicate_files(&self) -> DataResult<Vec<DuplicateGroup>> {
+    /// Find duplicate files by hash (optimized with async and chunked reading)
+    pub async fn find_duplicate_files(&self) -> DataResult<Vec<DuplicateGroup>> {
         let mut file_hashes: HashMap<String, Vec<PathBuf>> = HashMap::new();
         
         if !self.config.files_dir.exists() {
             return Ok(Vec::new());
         }
         
+        // Collect all file paths first
+        let mut file_paths = Vec::new();
         for entry in WalkDir::new(&self.config.files_dir) {
             let entry = entry.map_err(|e| DataError::FileSystem {
                 message: format!("Failed to walk files directory: {}", e),
             })?;
             
             if entry.file_type().is_file() {
-                let path = entry.path();
+                file_paths.push(entry.path().to_path_buf());
+            }
+        }
+        
+        // Process files in parallel batches for better performance
+        const BATCH_SIZE: usize = 10;
+        for chunk in file_paths.chunks(BATCH_SIZE) {
+            let mut handles = Vec::new();
+            
+            for path in chunk {
+                let path = path.clone();
+                let encryption = self.encryption.clone();
                 
-                // Calculate file hash
-                let content = fs::read(path).map_err(|e| DataError::FileSystem {
-                    message: format!("Failed to read file for duplicate detection: {}", e),
-                })?;
+                let handle = tokio::spawn(async move {
+                    // Only read first 1MB for hash to avoid loading entire file
+                    let mut file = File::open(&path).await.ok()?;
+                    let mut buffer = vec![0; 1024 * 1024]; // 1MB
+                    let bytes_read = file.read(&mut buffer).await.ok()?;
+                    buffer.truncate(bytes_read);
+                    
+                    // Get file size for additional uniqueness
+                    let metadata = file.metadata().await.ok()?;
+                    let size = metadata.len();
+                    
+                    // Hash with size prefix for better accuracy
+                    let mut hash_input = Vec::with_capacity(8 + buffer.len());
+                    hash_input.extend_from_slice(&size.to_le_bytes());
+                    hash_input.extend_from_slice(&buffer);
+                    
+                    let hash = encryption.generate_hash(&hash_input);
+                    Some((hash, path))
+                });
                 
-                let hash = self.encryption.generate_hash(&content);
-                file_hashes.entry(hash).or_default().push(path.to_path_buf());
+                handles.push(handle);
+            }
+            
+            // Collect results from batch
+            for handle in handles {
+                if let Ok(Some((hash, path))) = handle.await {
+                    file_hashes.entry(hash).or_default().push(path);
+                }
             }
         }
         
         // Find groups with more than one file
-        let duplicates: Vec<DuplicateGroup> = file_hashes
-            .into_iter()
-            .filter(|(_, files)| files.len() > 1)
-            .map(|(hash, files)| {
-                let total_size = files.iter()
-                    .filter_map(|path| fs::metadata(path).ok())
-                    .map(|metadata| metadata.len())
-                    .sum();
-                
-                DuplicateGroup {
-                    hash,
-                    files: files.into_iter().map(|p| p.to_string_lossy().to_string()).collect(),
-                    total_size,
+        let mut duplicates: Vec<DuplicateGroup> = Vec::new();
+        
+        for (hash, files) in file_hashes.into_iter().filter(|(_, files)| files.len() > 1) {
+            let mut total_size = 0u64;
+            for path in &files {
+                if let Ok(metadata) = fs::metadata(path).await {
+                    total_size += metadata.len();
                 }
-            })
-            .collect();
+            }
+            
+            duplicates.push(DuplicateGroup {
+                hash,
+                files: files.into_iter().map(|p| p.to_string_lossy().to_string()).collect(),
+                total_size,
+            });
+        }
         
         Ok(duplicates)
     }
     
-    /// Optimize storage by removing duplicates
+    /// Optimize storage by removing duplicates (async)
     pub async fn optimize_storage(&self, keep_strategy: DuplicateStrategy) -> DataResult<OptimizationResult> {
-        let duplicates = self.find_duplicate_files()?;
+        let duplicates = self.find_duplicate_files().await?;
         let mut removed_count = 0;
         let mut space_saved = 0u64;
         let mut errors = Vec::new();
         
         for group in duplicates {
-            match self.resolve_duplicates(&group, &keep_strategy) {
+            match self.resolve_duplicates(&group, &keep_strategy).await {
                 Ok((removed, saved)) => {
                     removed_count += removed;
                     space_saved += saved;
@@ -459,7 +575,7 @@ impl FileManager {
     }
     
     /// Resolve duplicate files based on strategy
-    fn resolve_duplicates(&self, group: &DuplicateGroup, strategy: &DuplicateStrategy) -> DataResult<(usize, u64)> {
+    async fn resolve_duplicates(&self, group: &DuplicateGroup, strategy: &DuplicateStrategy) -> DataResult<(usize, u64)> {
         if group.files.len() <= 1 {
             return Ok((0, 0));
         }
@@ -473,7 +589,7 @@ impl FileManager {
                 let mut oldest_time = std::time::SystemTime::now();
                 
                 for (i, file_path) in group.files.iter().enumerate() {
-                    if let Ok(metadata) = fs::metadata(file_path) {
+                    if let Ok(metadata) = fs::metadata(file_path).await {
                         if let Ok(created) = metadata.created().or_else(|_| metadata.modified()) {
                             if created < oldest_time {
                                 oldest_time = created;
@@ -490,7 +606,7 @@ impl FileManager {
                 let mut newest_time = std::time::UNIX_EPOCH;
                 
                 for (i, file_path) in group.files.iter().enumerate() {
-                    if let Ok(metadata) = fs::metadata(file_path) {
+                    if let Ok(metadata) = fs::metadata(file_path).await {
                         if let Ok(created) = metadata.created().or_else(|_| metadata.modified()) {
                             if created > newest_time {
                                 newest_time = created;
@@ -508,11 +624,11 @@ impl FileManager {
         
         for (i, file_path) in group.files.iter().enumerate() {
             if i != keep_index {
-                if let Ok(metadata) = fs::metadata(file_path) {
+                if let Ok(metadata) = fs::metadata(file_path).await {
                     space_saved += metadata.len();
                 }
                 
-                if let Err(e) = fs::remove_file(file_path) {
+                if let Err(e) = fs::remove_file(file_path).await {
                     log::warn!("Failed to remove duplicate file {}: {}", file_path, e);
                 } else {
                     removed_count += 1;
@@ -521,6 +637,85 @@ impl FileManager {
         }
         
         Ok((removed_count, space_saved))
+    }
+    
+    /// Stream read large files with buffering
+    async fn read_file_streamed(&self, path: &Path) -> DataResult<Vec<u8>> {
+        let file = File::open(path).await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to open file for streaming: {}", e),
+            })?;
+        
+        let metadata = file.metadata().await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to get file metadata: {}", e),
+            })?;
+        
+        let mut reader = BufReader::with_capacity(64 * 1024, file); // 64KB buffer
+        let mut buffer = Vec::with_capacity(metadata.len() as usize);
+        
+        reader.read_to_end(&mut buffer).await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to read file stream: {}", e),
+            })?;
+        
+        Ok(buffer)
+    }
+    
+    /// Write file with buffering for better performance
+    async fn write_file_buffered(&self, path: &Path, content: &[u8]) -> DataResult<()> {
+        let file = File::create(path).await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to create file for writing: {}", e),
+            })?;
+        
+        let mut writer = BufWriter::with_capacity(64 * 1024, file); // 64KB buffer
+        
+        writer.write_all(content).await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to write file buffer: {}", e),
+            })?;
+        
+        writer.flush().await
+            .map_err(|e| DataError::FileSystem {
+                message: format!("Failed to flush file buffer: {}", e),
+            })?;
+        
+        Ok(())
+    }
+    
+    /// Async cleanup of empty directories
+    fn cleanup_empty_directories_async<'a>(&'a self, dir: &'a Path) -> futures::future::BoxFuture<'a, DataResult<()>> {
+        Box::pin(async move {
+            if dir.is_dir() {
+                // Check if directory is empty asynchronously
+                let mut entries = fs::read_dir(dir).await
+                    .map_err(|e| DataError::FileSystem {
+                        message: format!("Failed to read directory: {}", e),
+                    })?;
+                
+                let mut is_empty = true;
+                while let Some(_) = entries.next_entry().await
+                    .map_err(|e| DataError::FileSystem {
+                        message: format!("Failed to read directory entry: {}", e),
+                    })? {
+                    is_empty = false;
+                    break;
+                }
+                
+                if is_empty {
+                    let _ = fs::remove_dir(dir).await;
+                    
+                    // Recursively check parent directory
+                    if let Some(parent) = dir.parent() {
+                        if parent != self.config.files_dir {
+                            let _ = self.cleanup_empty_directories_async(parent).await;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        })
     }
     
     /// Create directory structure backup

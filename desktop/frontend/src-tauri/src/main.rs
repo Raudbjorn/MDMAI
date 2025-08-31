@@ -12,8 +12,8 @@ mod data_manager_commands;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tauri::Manager;
-use process_manager::{ProcessManagerState, ProcessConfig};
+use tauri::{Manager, Emitter};
+use process_manager::ProcessManagerState;
 use native_features::NativeFeaturesState;
 use data_manager_commands::DataManagerStateWrapper;
 
@@ -85,11 +85,12 @@ fn main() {
         ])
         .setup(|app| {
             // Initialize native features
-            let native_features: tauri::State<NativeFeaturesState> = app.state();
+            let native_features = app.state::<NativeFeaturesState>();
+            let native_features_clone = native_features.inner().clone();
             let app_handle = app.handle().clone();
             
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = native_features.initialize(&app_handle).await {
+            tauri::async_runtime::block_on(async {
+                if let Err(e) = native_features_clone.initialize(&app_handle).await {
                     log::error!("Failed to initialize native features: {}", e);
                 }
             });

@@ -2,18 +2,18 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, Manager, Runtime,
+    AppHandle, Manager, Runtime, Emitter,
     tray::{TrayIcon, TrayIconBuilder},
-    menu::{Menu, MenuItem, Submenu},
+    menu::{Menu, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
 };
 use log::{info, error, warn, debug};
 
 use crate::process_manager::{ProcessManagerState, ProcessState, HealthStatus};
 
 /// System tray manager for TTRPG Assistant
-pub struct SystemTrayManager {
-    app_handle: Arc<Mutex<Option<AppHandle>>>,
-    tray_icon: Arc<Mutex<Option<TrayIcon>>>,
+pub struct SystemTrayManager<R: Runtime = tauri::Wry> {
+    app_handle: Arc<Mutex<Option<AppHandle<R>>>>,
+    tray_icon: Arc<Mutex<Option<TrayIcon<R>>>>,
     menu_items: Arc<RwLock<TrayMenuItems>>,
 }
 
@@ -102,7 +102,7 @@ pub enum NotificationUrgency {
     Critical,
 }
 
-impl SystemTrayManager {
+impl<R: Runtime> SystemTrayManager<R> {
     /// Create a new system tray manager
     pub fn new() -> Self {
         SystemTrayManager {
@@ -113,11 +113,11 @@ impl SystemTrayManager {
     }
 
     /// Initialize the system tray with TTRPG-specific menu
-    pub async fn initialize<R: Runtime>(&self, app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn initialize(&self, app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
         *self.app_handle.lock().await = Some(app.clone());
         
         // Build the tray menu
-        let menu = self.build_tray_menu().await?;
+        let menu = self.build_tray_menu(app).await?;
         
         // Create tray icon
         let tray = TrayIconBuilder::with_id("main")
@@ -143,44 +143,81 @@ impl SystemTrayManager {
     }
 
     /// Build the system tray menu with TTRPG-specific items
-    async fn build_tray_menu(&self) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    async fn build_tray_menu(&self, app: &AppHandle<R>) -> Result<Menu<R>, Box<dyn std::error::Error>> {
         let menu_items = self.menu_items.read().await;
         
-        let menu = Menu::with_items(&[
-            &MenuItem::with_id(&menu_items.show_hide, "Show/Hide Window", true, None::<&str>)?,
-            &MenuItem::separator()?,
-            
-            // MCP Server Management Section
-            &MenuItem::with_id(&menu_items.mcp_server_status, "MCP Server: Stopped", false, None::<&str>)?,
-            &MenuItem::with_id(&menu_items.start_server, "Start Server", true, None::<&str>)?,
-            &MenuItem::with_id(&menu_items.stop_server, "Stop Server", false, None::<&str>)?,
-            &MenuItem::with_id(&menu_items.restart_server, "Restart Server", false, None::<&str>)?,
-            &MenuItem::separator()?,
-            
-            // Quick Actions Section
-            &Submenu::with_id_and_items(
-                "quick_actions",
-                "Quick Actions",
-                true,
-                &[
-                    &MenuItem::with_id(&menu_items.quick_campaign, "New Campaign", true, None::<&str>)?,
-                    &MenuItem::with_id(&menu_items.quick_rulebook, "Import Rulebook", true, None::<&str>)?,
-                ]
-            )?,
-            &MenuItem::separator()?,
-            
-            // Settings and About
-            &MenuItem::with_id(&menu_items.settings, "Settings", true, None::<&str>)?,
-            &MenuItem::with_id(&menu_items.about, "About", true, None::<&str>)?,
-            &MenuItem::separator()?,
-            &MenuItem::with_id(&menu_items.quit, "Quit", true, None::<&str>)?,
-        ])?;
+        let mut menu_builder = MenuBuilder::new(app);
         
-        Ok(menu)
+        // Show/Hide Window
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.show_hide, "Show/Hide Window")
+                .enabled(true)
+                .build(app)?
+        );
+        menu_builder = menu_builder.separator();
+        
+        // MCP Server Management Section
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.mcp_server_status, "MCP Server: Stopped")
+                .enabled(false)
+                .build(app)?
+        );
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.start_server, "Start Server")
+                .enabled(true)
+                .build(app)?
+        );
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.stop_server, "Stop Server")
+                .enabled(false)
+                .build(app)?
+        );
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.restart_server, "Restart Server")
+                .enabled(false)
+                .build(app)?
+        );
+        menu_builder = menu_builder.separator();
+        
+        // Quick Actions Section
+        let quick_actions_menu = SubmenuBuilder::new(app, "Quick Actions")
+            .item(
+                &MenuItemBuilder::with_id(&menu_items.quick_campaign, "New Campaign")
+                    .enabled(true)
+                    .build(app)?
+            )
+            .item(
+                &MenuItemBuilder::with_id(&menu_items.quick_rulebook, "Import Rulebook")
+                    .enabled(true)
+                    .build(app)?
+            )
+            .build()?;
+        menu_builder = menu_builder.item(&quick_actions_menu);
+        menu_builder = menu_builder.separator();
+        
+        // Settings and About
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.settings, "Settings")
+                .enabled(true)
+                .build(app)?
+        );
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.about, "About")
+                .enabled(true)
+                .build(app)?
+        );
+        menu_builder = menu_builder.separator();
+        menu_builder = menu_builder.item(
+            &MenuItemBuilder::with_id(&menu_items.quit, "Quit")
+                .enabled(true)
+                .build(app)?
+        );
+        
+        Ok(menu_builder.build()?)
     }
 
     /// Handle tray menu events (static version for async callback)
-    async fn handle_tray_menu_event_static<R: Runtime>(
+    async fn handle_tray_menu_event_static(
         app: AppHandle<R>, 
         event: tauri::menu::MenuEvent,
         menu_items: Arc<RwLock<TrayMenuItems>>
@@ -216,13 +253,13 @@ impl SystemTrayManager {
                 Self::handle_quit(&app).await;
             },
             _ => {
-                warn!("Unknown tray menu item clicked: {}", event.id());
+                warn!("Unknown tray menu item clicked: {:?}", event.id());
             }
         }
     }
 
     /// Toggle main window visibility
-    async fn toggle_window_visibility<R: Runtime>(app: &AppHandle<R>) {
+    async fn toggle_window_visibility(app: &AppHandle<R>) {
         if let Some(window) = app.get_webview_window("main") {
             match window.is_visible() {
                 Ok(true) => {
@@ -246,56 +283,56 @@ impl SystemTrayManager {
     }
 
     /// Handle start server action from tray
-    async fn handle_start_server<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_start_server(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "start_server") {
             error!("Failed to emit start server event: {}", e);
         }
     }
 
     /// Handle stop server action from tray
-    async fn handle_stop_server<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_stop_server(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "stop_server") {
             error!("Failed to emit stop server event: {}", e);
         }
     }
 
     /// Handle restart server action from tray
-    async fn handle_restart_server<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_restart_server(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "restart_server") {
             error!("Failed to emit restart server event: {}", e);
         }
     }
 
     /// Handle quick campaign creation
-    async fn handle_quick_campaign<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_quick_campaign(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "quick_campaign") {
             error!("Failed to emit quick campaign event: {}", e);
         }
     }
 
     /// Handle quick rulebook import
-    async fn handle_quick_rulebook<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_quick_rulebook(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "quick_rulebook") {
             error!("Failed to emit quick rulebook event: {}", e);
         }
     }
 
     /// Handle settings action
-    async fn handle_settings<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_settings(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "settings") {
             error!("Failed to emit settings event: {}", e);
         }
     }
 
     /// Handle about action
-    async fn handle_about<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_about(app: &AppHandle<R>) {
         if let Err(e) = app.emit("tray-action", "about") {
             error!("Failed to emit about event: {}", e);
         }
     }
 
     /// Handle quit action
-    async fn handle_quit<R: Runtime>(app: &AppHandle<R>) {
+    async fn handle_quit(app: &AppHandle<R>) {
         info!("Quit requested from system tray");
         app.exit(0);
     }
@@ -308,8 +345,8 @@ impl SystemTrayManager {
                 
                 // Update status text and menu item availability
                 let (status_text, start_enabled, stop_enabled, restart_enabled) = match state {
-                    ProcessState::Stopped => ("MCP Server: Stopped", true, false, false),
-                    ProcessState::Starting => ("MCP Server: Starting...", false, false, false),
+                    ProcessState::Stopped => ("MCP Server: Stopped".to_string(), true, false, false),
+                    ProcessState::Starting => ("MCP Server: Starting...".to_string(), false, false, false),
                     ProcessState::Running => {
                         let health_text = match health {
                             HealthStatus::Healthy => "Running (Healthy)",
@@ -319,37 +356,15 @@ impl SystemTrayManager {
                         };
                         (format!("MCP Server: {}", health_text), false, true, true)
                     },
-                    ProcessState::Stopping => ("MCP Server: Stopping...", false, false, false),
-                    ProcessState::Crashed => ("MCP Server: Crashed", true, false, false),
-                    ProcessState::Restarting => ("MCP Server: Restarting...", false, false, false),
+                    ProcessState::Stopping => ("MCP Server: Stopping...".to_string(), false, false, false),
+                    ProcessState::Crashed => ("MCP Server: Crashed".to_string(), true, false, false),
+                    ProcessState::Restarting => ("MCP Server: Restarting...".to_string(), false, false, false),
                 };
 
-                // Rebuild menu with updated status
-                let menu = Menu::with_items(&[
-                    &MenuItem::with_id(&menu_items.show_hide, "Show/Hide Window", true, None::<&str>)?,
-                    &MenuItem::separator()?,
-                    &MenuItem::with_id(&menu_items.mcp_server_status, status_text, false, None::<&str>)?,
-                    &MenuItem::with_id(&menu_items.start_server, "Start Server", start_enabled, None::<&str>)?,
-                    &MenuItem::with_id(&menu_items.stop_server, "Stop Server", stop_enabled, None::<&str>)?,
-                    &MenuItem::with_id(&menu_items.restart_server, "Restart Server", restart_enabled, None::<&str>)?,
-                    &MenuItem::separator()?,
-                    &Submenu::with_id_and_items(
-                        "quick_actions",
-                        "Quick Actions",
-                        true,
-                        &[
-                            &MenuItem::with_id(&menu_items.quick_campaign, "New Campaign", true, None::<&str>)?,
-                            &MenuItem::with_id(&menu_items.quick_rulebook, "Import Rulebook", true, None::<&str>)?,
-                        ]
-                    )?,
-                    &MenuItem::separator()?,
-                    &MenuItem::with_id(&menu_items.settings, "Settings", true, None::<&str>)?,
-                    &MenuItem::with_id(&menu_items.about, "About", true, None::<&str>)?,
-                    &MenuItem::separator()?,
-                    &MenuItem::with_id(&menu_items.quit, "Quit", true, None::<&str>)?,
-                ])?;
-
-                tray.set_menu(Some(menu))?;
+                // TODO: Update menu items based on status
+                // For now, we'll just update the tooltip
+                // In a real implementation, we would update specific menu items
+                // without rebuilding the entire menu
                 
                 // Update tray icon based on status
                 let icon_name = match (state, health) {
@@ -562,7 +577,7 @@ impl NativeFeaturesState {
     }
 
     /// Initialize all native features
-    pub async fn initialize<R: Runtime>(&self, app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn initialize(&self, app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         // Initialize system tray
         self.system_tray.initialize(app).await?;
         
@@ -590,28 +605,28 @@ pub async fn show_native_file_dialog(
     }
     
     for filter in &options.filters {
-        builder = builder.add_filter(&filter.name, &filter.extensions);
+        builder = builder.add_filter(&filter.name, &filter.extensions.iter().map(|s| s.as_str()).collect::<Vec<_>>());
     }
     
     let result = if options.directory {
         if options.multiple {
             return Err("Multiple directory selection not supported".to_string());
         } else {
-            match builder.pick_folder().await {
-                Some(path) => vec![path.to_string_lossy().to_string()],
+            match builder.blocking_pick_folder() {
+                Some(path) => vec![path.to_string()],
                 None => vec![],
             }
         }
     } else if options.multiple {
-        match builder.pick_files().await {
+        match builder.blocking_pick_files() {
             Some(paths) => paths.into_iter()
-                .map(|p| p.to_string_lossy().to_string())
+                .map(|p| p.to_string())
                 .collect(),
             None => vec![],
         }
     } else {
-        match builder.pick_file().await {
-            Some(path) => vec![path.to_string_lossy().to_string()],
+        match builder.blocking_pick_file() {
+            Some(path) => vec![path.to_string()],
             None => vec![],
         }
     };
@@ -637,11 +652,11 @@ pub async fn show_save_dialog(
     }
     
     for filter in &filters {
-        builder = builder.add_filter(&filter.name, &filter.extensions);
+        builder = builder.add_filter(&filter.name, &filter.extensions.iter().map(|s| s.as_str()).collect::<Vec<_>>());
     }
     
-    let result = builder.save_file().await
-        .map(|path| path.to_string_lossy().to_string());
+    let result = builder.blocking_save_file()
+        .map(|path| path.to_string());
     
     debug!("Save dialog result: {:?}", result);
     Ok(result)
@@ -667,8 +682,7 @@ pub async fn send_native_notification(
     // Note: Sound and urgency levels may need platform-specific handling
     // For now, we'll use the basic notification
     
-    let notification = builder.build().map_err(|e| e.to_string())?;
-    notification.show().map_err(|e| e.to_string())?;
+    builder.show().map_err(|e| e.to_string())?;
     
     info!("Native notification sent: {}", data.title);
     Ok(())

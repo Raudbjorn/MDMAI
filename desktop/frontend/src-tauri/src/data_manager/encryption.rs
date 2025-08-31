@@ -8,7 +8,7 @@
 
 use super::*;
 use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
+    aead::{Aead, AeadCore, KeyInit, OsRng, rand_core::RngCore},
     Aes256Gcm, Key, Nonce,
 };
 use argon2::{Argon2, PasswordHasher, PasswordVerifier, password_hash::{
@@ -186,11 +186,11 @@ impl EncryptionManager {
     
     /// Derive encryption key from password hash
     fn derive_key_from_hash(&self, password_hash: &PasswordHash) -> DataResult<Key<Aes256Gcm>> {
-        let hash_bytes = password_hash.hash
+        let hash = password_hash.hash
             .ok_or_else(|| DataError::Encryption {
                 message: "No hash in password hash".to_string(),
-            })?
-            .as_bytes();
+            })?;
+        let hash_bytes = hash.as_bytes();
         
         // Use SHA-256 to derive a 256-bit key from the hash
         let mut hasher = Sha256::new();
@@ -210,7 +210,7 @@ impl EncryptionManager {
             message: "Encryption not initialized".to_string(),
         })?;
         
-        let cipher = Aes256Gcm::new(Key::from_slice(&master_key));
+        let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&master_key));
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         
         let ciphertext = cipher.encrypt(&nonce, plaintext.as_bytes())
@@ -250,7 +250,7 @@ impl EncryptionManager {
         let (nonce_bytes, ciphertext) = combined.split_at(NONCE_SIZE);
         let nonce = Nonce::from_slice(nonce_bytes);
         
-        let cipher = Aes256Gcm::new(Key::from_slice(&master_key));
+        let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&master_key));
         let plaintext = cipher.decrypt(nonce, ciphertext)
             .map_err(|e| DataError::Encryption {
                 message: format!("Failed to decrypt string: {}", e),
@@ -291,25 +291,34 @@ impl EncryptionManager {
                 });
         }
         
-        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
-            message: "Encryption not initialized".to_string(),
-        })?;
-        
         let plaintext = fs::read(file_path)
             .map_err(|e| DataError::FileSystem {
                 message: format!("Failed to read file: {}", e),
             })?;
         
-        let cipher = Aes256Gcm::new(Key::from_slice(&master_key));
+        self.encrypt_bytes(&plaintext)
+    }
+    
+    /// Encrypt bytes directly (public for async usage)
+    pub fn encrypt_bytes(&self, plaintext: &[u8]) -> DataResult<Vec<u8>> {
+        if !self.config.encryption_enabled {
+            return Ok(plaintext.to_vec());
+        }
+        
+        let master_key = self.master_key.ok_or_else(|| DataError::Encryption {
+            message: "Encryption not initialized".to_string(),
+        })?;
+        
+        let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&master_key));
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         
         let ciphertext = cipher.encrypt(&nonce, plaintext.as_ref())
             .map_err(|e| DataError::Encryption {
-                message: format!("Failed to encrypt file: {}", e),
+                message: format!("Failed to encrypt data: {}", e),
             })?;
         
         // Combine nonce and ciphertext
-        let mut combined = Vec::new();
+        let mut combined = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
         combined.extend_from_slice(nonce.as_slice());
         combined.extend_from_slice(&ciphertext);
         
@@ -335,7 +344,7 @@ impl EncryptionManager {
         let (nonce_bytes, ciphertext) = encrypted_data.split_at(NONCE_SIZE);
         let nonce = Nonce::from_slice(nonce_bytes);
         
-        let cipher = Aes256Gcm::new(Key::from_slice(&master_key));
+        let cipher = Aes256Gcm::new(aes_gcm::Key::<Aes256Gcm>::from_slice(&master_key));
         cipher.decrypt(nonce, ciphertext)
             .map_err(|e| DataError::Encryption {
                 message: format!("Failed to decrypt file contents: {}", e),

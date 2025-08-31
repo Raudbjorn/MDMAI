@@ -7,6 +7,7 @@ use super::*;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use sqlx::Row;
 
 /// Migration metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +189,7 @@ impl MigrationManager {
     pub async fn get_applied_migrations(&self, storage: &Arc<RwLock<DataStorage>>) -> DataResult<Vec<Migration>> {
         let storage_guard = storage.read().await;
         
-        let rows = sqlx::query!(
+        let rows = sqlx::query(
             "SELECT version, name, checksum, applied_at FROM schema_migrations ORDER BY version"
         )
         .fetch_all(&storage_guard.pool)
@@ -199,13 +200,18 @@ impl MigrationManager {
         
         let mut applied = Vec::new();
         for row in rows {
+            let version: i64 = row.try_get("version").unwrap_or_default();
+            let name: String = row.try_get("name").unwrap_or_default();
+            let checksum: String = row.try_get("checksum").unwrap_or_default();
+            let applied_at: String = row.try_get("applied_at").unwrap_or_default();
+            
             applied.push(Migration {
-                version: row.version as u32,
-                name: row.name,
+                version: version as u32,
+                name,
                 description: "Applied migration".to_string(),
                 sql_file: String::new(),
-                checksum: row.checksum,
-                applied_at: Some(DateTime::parse_from_rfc3339(&row.applied_at)
+                checksum,
+                applied_at: Some(DateTime::parse_from_rfc3339(&applied_at)
                     .map_err(|e| DataError::Database {
                         message: format!("Invalid timestamp in migrations table: {}", e),
                     })?
@@ -290,13 +296,13 @@ impl MigrationManager {
         
         // Record migration as applied
         let now = Utc::now();
-        sqlx::query!(
-            "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)",
-            migration.version,
-            migration.name,
-            migration.checksum,
-            now.to_rfc3339()
+        sqlx::query(
+            "INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)"
         )
+        .bind(&migration.version)
+        .bind(&migration.name)
+        .bind(&migration.checksum)
+        .bind(&now.to_rfc3339())
         .execute(&mut *tx)
         .await
         .map_err(|e| DataError::Database {
@@ -362,7 +368,8 @@ impl MigrationManager {
                 }
                 
                 // Remove migration record
-                sqlx::query!("DELETE FROM schema_migrations WHERE version = ?", migration.version)
+                sqlx::query("DELETE FROM schema_migrations WHERE version = ?")
+                    .bind(&migration.version)
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| DataError::Database {

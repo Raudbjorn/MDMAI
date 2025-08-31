@@ -5,9 +5,8 @@
 
 use crate::data_manager::*;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 use tokio::sync::RwLock;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::Utc;
 
@@ -63,16 +62,11 @@ pub async fn initialize_data_manager_with_password(
 ) -> Result<(), String> {
     let mut guard = state.inner.write().await;
     let manager = if let Some(config) = config {
-        DataManagerState::with_config(config).await.map_err(|e| e.to_string())?
+        DataManagerState::with_config_and_password(config, &password).await.map_err(|e| e.to_string())?
     } else {
-        DataManagerState::new().await.map_err(|e| e.to_string())?
+        let default_config = DataManagerConfig::default();
+        DataManagerState::with_config_and_password(default_config, &password).await.map_err(|e| e.to_string())?
     };
-    
-    // Initialize encryption with password
-    if manager.config().encryption_enabled {
-        let mut encryption = manager.encryption().as_ref().clone();
-        encryption.initialize_with_password(&password).map_err(|e| e.to_string())?;
-    }
     
     manager.initialize().await.map_err(|e| e.to_string())?;
     *guard = Some(manager);
@@ -323,7 +317,7 @@ pub async fn get_storage_stats(
     state: State<'_, DataManagerStateWrapper>,
 ) -> Result<StorageStats, String> {
     let manager = state.get().await.ok_or("Data manager not initialized")?;
-    manager.file_manager().get_storage_stats().map_err(|e| e.to_string())
+    manager.file_manager().get_storage_stats().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -331,7 +325,7 @@ pub async fn find_duplicate_files(
     state: State<'_, DataManagerStateWrapper>,
 ) -> Result<Vec<DuplicateGroup>, String> {
     let manager = state.get().await.ok_or("Data manager not initialized")?;
-    manager.file_manager().find_duplicate_files().map_err(|e| e.to_string())
+    manager.file_manager().find_duplicate_files().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -170,6 +170,45 @@ impl DataManagerState {
             cache,
         })
     }
+
+    /// Create a new data manager with custom configuration and password
+    pub async fn with_config_and_password(config: DataManagerConfig, password: &str) -> DataResult<Self> {
+        // Initialize encryption manager with password
+        let mut encryption_mgr = EncryptionManager::new(&config)?;
+        if config.encryption_enabled {
+            encryption_mgr.initialize_with_password(password)?;
+        }
+        let encryption = Arc::new(encryption_mgr);
+        
+        // Initialize storage
+        let storage = Arc::new(RwLock::new(DataStorage::new(&config, &encryption).await?));
+        
+        // Initialize backup manager
+        let backup = Arc::new(BackupManager::new(&config, &encryption)?);
+        
+        // Initialize migration manager
+        let migration = Arc::new(MigrationManager::new(&config)?);
+        
+        // Initialize integrity checker
+        let integrity = Arc::new(IntegrityChecker::new(&config)?);
+        
+        // Initialize file manager
+        let file_manager = Arc::new(FileManager::new(&config, &encryption)?);
+        
+        // Initialize cache manager
+        let cache = Arc::new(RwLock::new(CacheManager::new(&config)?));
+        
+        Ok(Self {
+            config,
+            storage,
+            encryption,
+            backup,
+            migration,
+            integrity,
+            file_manager,
+            cache,
+        })
+    }
     
     /// Initialize the data manager (create directories, run migrations, etc.)
     pub async fn initialize(&self) -> DataResult<()> {

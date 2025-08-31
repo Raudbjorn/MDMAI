@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio::time::timeout;
 use serde::{Deserialize, Serialize};
-use log::{info, error, debug, warn};
+use log::{info, error, debug};
 
 // Resource types for tracking
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -100,8 +100,8 @@ pub struct ResourceManager {
     task_semaphore: Arc<Semaphore>,
     
     // State tracking
-    is_shutting_down: AtomicBool,
-    cleanup_in_progress: AtomicBool,
+    is_shutting_down: Arc<AtomicBool>,
+    cleanup_in_progress: Arc<AtomicBool>,
     
     // Statistics
     stats: Arc<RwLock<ResourceStats>>,
@@ -124,8 +124,8 @@ impl ResourceManager {
             connection_semaphore: Arc::new(Semaphore::new(limits.max_connections as usize)),
             file_semaphore: Arc::new(Semaphore::new(limits.max_file_handles as usize)),
             task_semaphore: Arc::new(Semaphore::new(limits.max_concurrent_tasks as usize)),
-            is_shutting_down: AtomicBool::new(false),
-            cleanup_in_progress: AtomicBool::new(false),
+            is_shutting_down: Arc::new(AtomicBool::new(false)),
+            cleanup_in_progress: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RwLock::new(ResourceStats::default())),
             monitor_task: Arc::new(Mutex::new(None)),
             cleanup_task: Arc::new(Mutex::new(None)),
@@ -142,8 +142,8 @@ impl ResourceManager {
             file_semaphore: Arc::new(Semaphore::new(limits.max_file_handles as usize)),
             task_semaphore: Arc::new(Semaphore::new(limits.max_concurrent_tasks as usize)),
             limits: Arc::new(RwLock::new(limits)),
-            is_shutting_down: AtomicBool::new(false),
-            cleanup_in_progress: AtomicBool::new(false),
+            is_shutting_down: Arc::new(AtomicBool::new(false)),
+            cleanup_in_progress: Arc::new(AtomicBool::new(false)),
             stats: Arc::new(RwLock::new(ResourceStats::default())),
             monitor_task: Arc::new(Mutex::new(None)),
             cleanup_task: Arc::new(Mutex::new(None)),
@@ -331,7 +331,7 @@ impl ResourceManager {
             resource_type,
             created_at: Instant::now(),
             size_bytes,
-            description,
+            description: description.clone(),
             is_critical,
         };
         
@@ -637,7 +637,7 @@ mod tests {
     async fn test_resource_registration() {
         let manager = ResourceManager::new();
         
-        let cleanup_called = Arc::new(AtomicBool::new(false));
+        let cleanup_called = Arc::new(Arc::new(AtomicBool::new(false)));
         let cleanup_called_clone = cleanup_called.clone();
         
         let id = manager.register_resource(
