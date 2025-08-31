@@ -6,29 +6,23 @@
 	// Local state
 	let uploadCount = $state(0);
 	let currentUpload = $state<{file: File; model: string} | null>(null);
-	let recentUploads = $state<Array<{
+	let recentUploads = $state<Array<RecentUpload>>([]);
+	
+	type RecentUpload = {
 		id: string;
 		filename: string;
 		model: string;
 		timestamp: Date;
 		status: 'success' | 'error';
 		message?: string;
-	}>>([]);
+	};
 
 	onMount(() => {
-		// Load recent uploads from localStorage
 		const saved = localStorage.getItem('recent_uploads');
 		if (saved) {
 			try {
-				const parsed = JSON.parse(saved) as Array<{
-					id: string;
-					filename: string;
-					model: string;
-					timestamp: string; // Dates are stored as strings
-					status: 'success' | 'error';
-					message?: string;
-				}>;
-				recentUploads = parsed.map((u) => ({
+				const parsed = JSON.parse(saved);
+				recentUploads = parsed.map((u: any) => ({
 					...u,
 					timestamp: new Date(u.timestamp)
 				}));
@@ -38,26 +32,14 @@
 		}
 	});
 
-	function handleUploadStart(event: CustomEvent<{ file: File; model: string }>) {
-		// Store current upload info for success handler
-		currentUpload = event.detail;
-	}
-
-	function generateUUID(): string {
-		// Use crypto.randomUUID() if available, otherwise fallback to manual UUID generation
-		if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-			return crypto.randomUUID();
-		}
-		// Fallback UUID generation for older browsers
-		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+	const generateUUID = () => crypto.randomUUID?.() || 
+		'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
 			const r = Math.random() * 16 | 0;
-			const v = c === 'x' ? r : (r & 0x3 | 0x8);
-			return v.toString(16);
+			return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
 		});
-	}
 
-	function addRecentUpload(status: 'success' | 'error', message: string) {
-		const upload = {
+	const addRecentUpload = (status: 'success' | 'error', message: string) => {
+		const upload: RecentUpload = {
 			id: generateUUID(),
 			filename: currentUpload?.file.name || 'document.pdf',
 			model: currentUpload?.model || 'Unknown Model',
@@ -69,36 +51,41 @@
 		recentUploads = [upload, ...recentUploads].slice(0, 5);
 		localStorage.setItem('recent_uploads', JSON.stringify(recentUploads));
 		currentUpload = null;
-	}
+	};
 
-	function handleUploadSuccess(event: CustomEvent<{ message: string }>) {
+	const handleUploadStart = (event: CustomEvent<{ file: File; model: string }>) => {
+		currentUpload = event.detail;
+	};
+
+	const handleUploadSuccess = (event: CustomEvent<{ message: string }>) => {
 		uploadCount++;
 		addRecentUpload('success', event.detail.message);
-	}
+	};
 
-	function handleUploadError(event: CustomEvent<{ error: string }>) {
+	const handleUploadError = (event: CustomEvent<{ error: string }>) => {
 		addRecentUpload('error', event.detail.error);
-	}
+	};
 
-	function formatTimestamp(date: Date): string {
-		const now = new Date();
-		const diff = now.getTime() - date.getTime();
+	const formatTimestamp = (date: Date): string => {
+		const diff = Date.now() - date.getTime();
 		const minutes = Math.floor(diff / 60000);
 		const hours = Math.floor(diff / 3600000);
 		const days = Math.floor(diff / 86400000);
 
 		if (minutes < 1) return 'Just now';
-		if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
-		if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
-		if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
-		
+		if (minutes < 60) return `${minutes}m ago`;
+		if (hours < 24) return `${hours}h ago`;
+		if (days < 7) return `${days}d ago`;
 		return date.toLocaleDateString();
-	}
+	};
 
-	function clearRecentUploads() {
+	const clearRecentUploads = () => {
 		recentUploads = [];
 		localStorage.removeItem('recent_uploads');
-	}
+	};
+
+	// Derived state for statistics
+	const successfulUploads = $derived(recentUploads.filter(u => u.status === 'success').length);
 </script>
 
 <svelte:head>
@@ -168,7 +155,7 @@
 						<span class="stat-label">Documents Today</span>
 					</div>
 					<div class="stat">
-						<span class="stat-value">{recentUploads.filter(u => u.status === 'success').length}</span>
+						<span class="stat-value">{successfulUploads}</span>
 						<span class="stat-label">Successful</span>
 					</div>
 				</div>

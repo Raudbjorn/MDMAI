@@ -43,11 +43,11 @@ export interface ProviderConfig {
 	timeout: number;
 	max_retries: number;
 	retry_delay: number;
-	rate_limit_rpm: number; // Requests per minute
-	rate_limit_tpm: number; // Tokens per minute
-	budget_limit?: number; // USD per day
+	rate_limit_rpm: number;
+	rate_limit_tpm: number;
+	budget_limit?: number;
 	enabled: boolean;
-	priority: number; // Higher = preferred
+	priority: number;
 	metadata?: Record<string, any>;
 }
 
@@ -58,8 +58,8 @@ export interface ModelSpec {
 	capabilities: ProviderCapability[];
 	context_length: number;
 	max_output_tokens: number;
-	cost_per_input_token: number; // USD per 1K tokens
-	cost_per_output_token: number; // USD per 1K tokens
+	cost_per_input_token: number;
+	cost_per_output_token: number;
 	cost_tier: CostTier;
 	supports_streaming: boolean;
 	supports_tools: boolean;
@@ -101,10 +101,10 @@ export interface UsageRecord {
 export interface CostBudget {
 	budget_id: string;
 	name: string;
-	daily_limit?: number; // USD
-	monthly_limit?: number; // USD
+	daily_limit?: number;
+	monthly_limit?: number;
 	provider_limits: Partial<Record<ProviderType, number>>;
-	alert_thresholds: number[]; // Percentages (e.g., [0.5, 0.8, 0.95])
+	alert_thresholds: number[];
 	enabled: boolean;
 	created_at: Date;
 }
@@ -120,8 +120,8 @@ export interface AIProviderStats {
 	avg_latency_ms: number;
 	uptime_percentage: number;
 	last_request?: Date;
-	daily_usage: Record<string, number>; // Date -> cost
-	monthly_usage: Record<string, number>; // Month -> cost
+	daily_usage: Record<string, number>;
+	monthly_usage: Record<string, number>;
 }
 
 export interface ProviderSelection {
@@ -136,38 +136,39 @@ export interface ProviderSelection {
 }
 
 // API Request/Response types
-export interface ProviderConfigRequest {
-	configs: ProviderConfig[];
-	budgets?: CostBudget[];
+export interface APIRequest<T = any> {
+	data: T;
+	timestamp?: Date;
 }
 
-export interface ProviderConfigResponse {
+export interface APIResponse<T = any> {
 	success: boolean;
 	message?: string;
-	providers?: ProviderConfig[];
-	budgets?: CostBudget[];
+	data?: T;
+	error?: string;
 }
 
-export interface ProviderStatsRequest {
+export interface ProviderConfigRequest extends APIRequest<{
+	configs: ProviderConfig[];
+	budgets?: CostBudget[];
+}> {}
+
+export interface ProviderStatsRequest extends APIRequest<{
 	provider_type?: ProviderType;
 	start_date?: string;
 	end_date?: string;
-}
+}> {}
 
-export interface ProviderStatsResponse {
+export interface ProviderStatsResponse extends APIResponse<{
 	stats: AIProviderStats[];
 	total_cost: number;
-	period: {
-		start: string;
-		end: string;
-	};
-}
+	period: { start: string; end: string };
+}> {}
 
-export interface ProviderHealthResponse {
+export interface ProviderHealthResponse extends APIResponse<{
 	health: ProviderHealth[];
 	overall_status: ProviderStatus;
-	timestamp: Date;
-}
+}> {}
 
 // Credential management types
 export interface ProviderCredentials {
@@ -185,7 +186,34 @@ export interface CredentialValidation {
 	tested_at: Date;
 }
 
+// Simplified base types for common patterns
+export interface BaseEntity {
+	id: string;
+	created_at: Date;
+	updated_at: Date;
+}
+
+export interface TimestampedEntity {
+	timestamp: Date;
+}
+
+export interface StatusEntity {
+	status: ProviderStatus;
+	last_updated: Date;
+}
+
 // Result type for error handling
 export type Result<T, E = Error> = 
 	| { ok: true; value: T }
 	| { ok: false; error: E };
+
+// Common utility types
+export type Partial<T> = { [P in keyof T]?: T[P] };
+export type Required<T> = { [P in keyof T]-?: T[P] };
+export type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
+
+// Provider-specific utility types
+export type ProviderConfigUpdate = Partial<Omit<ProviderConfig, 'provider_type'>>;
+export type ModelSpecSummary = Pick<ModelSpec, 'model_id' | 'display_name' | 'is_available'>;
+export type UsageSummary = Pick<UsageRecord, 'provider_type' | 'cost' | 'timestamp' | 'success'>;

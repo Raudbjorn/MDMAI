@@ -236,7 +236,7 @@
 				</CardHeader>
 				<CardContent>
 					<div class="space-y-2">
-						{#each sessionStore.messages.slice(-5) as message}
+						{#each recentMessages as message}
 							<div class="flex items-center gap-2 text-sm">
 								<span class="text-xs text-muted-foreground">
 									{new Date(message.timestamp).toLocaleTimeString()}
