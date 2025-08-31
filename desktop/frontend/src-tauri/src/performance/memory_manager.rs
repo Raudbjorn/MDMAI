@@ -249,8 +249,12 @@ impl CacheManager {
         }
         
         // Evict LRU entries if memory limit would be exceeded
-        let current_memory = *self.current_memory_bytes.read().await;
-        while current_memory + incoming_size > self.max_memory_bytes && !cache.is_empty() {
+        while !cache.is_empty() {
+            let current_memory = *self.current_memory_bytes.read().await;
+            if current_memory + incoming_size <= self.max_memory_bytes {
+                break; // Memory limit satisfied
+            }
+            
             if let Some((key, entry)) = cache.pop_front() {
                 self.update_memory_usage_subtract(stats, &entry).await;
                 stats.memory_evictions += 1;

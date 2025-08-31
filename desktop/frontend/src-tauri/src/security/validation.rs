@@ -583,7 +583,17 @@ impl InputValidator {
             .and_then(|n| n.to_str())
             .unwrap_or(command);
 
-        self.config.allowed_commands.contains(&command_name.to_string())
+        // Use configurable command allowlist instead of hardcoded values
+        if self.config.allowed_commands.is_empty() {
+            // If no commands are explicitly allowed, use a safe default set
+            let default_allowed_commands = [
+                "python", "python3", "node", "npm", "cargo", "rustc", 
+                "git", "cat", "echo", "ls", "pwd", "which"
+            ];
+            default_allowed_commands.contains(&command_name)
+        } else {
+            self.config.allowed_commands.contains(&command_name.to_string())
+        }
     }
 
     fn contains_injection_patterns(&self, input: &str) -> bool {

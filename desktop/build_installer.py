@@ -7,12 +7,16 @@ Supports dynamic architecture detection for multiple platforms.
 """
 
 import argparse
+import base64
+import json
 import os
 import platform
 import shutil
+import struct
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Set
@@ -542,22 +546,113 @@ class InstallerAssetsManager:
                 self._generate_placeholder_png(asset_path, asset)
                 
     def _generate_placeholder_bmp(self, path: Path, asset_type: str) -> None:
-        """Generate placeholder BMP file."""
-        # For now, create a simple text file placeholder
-        # In production, you would generate actual BMP files
-        with open(path, "w") as f:
-            f.write(f"# Placeholder for {asset_type}\n")
-            f.write(f"# Replace with actual {asset_type} asset\n")
-            f.write(f"# Generated on: {datetime.now().isoformat()}\n")
+        """Generate a minimal valid BMP file.
+        
+        Creates a 1x1 pixel BMP file that serves as a valid placeholder.
+        The BMP format is simple and doesn't require external libraries.
+        """
+        # Determine dimensions based on asset type for Windows installers
+        dimensions = {
+            "banner.bmp": (493, 58),      # Standard WiX banner size
+            "dialog.bmp": (493, 312),     # Standard WiX dialog size
+            "header.bmp": (150, 57),      # NSIS header size
+            "sidebar.bmp": (164, 314),    # NSIS sidebar size
+        }
+        
+        width, height = dimensions.get(asset_type, (100, 100))
+        
+        # Calculate row size with padding (each row must be multiple of 4 bytes)
+        bytes_per_row = width * 3
+        row_padding = (4 - (bytes_per_row % 4)) % 4
+        padded_row_size = bytes_per_row + row_padding
+        pixel_data_size = padded_row_size * height
+        
+        # BMP file header (14 bytes)
+        file_header = struct.pack(
+            '<2sIHHI',
+            b'BM',           # Signature
+            54 + pixel_data_size,  # File size (header + pixel data with padding)
+            0,               # Reserved
+            0,               # Reserved
+            54               # Offset to pixel data
+        )
+        
+        # BMP info header (40 bytes)
+        info_header = struct.pack(
+            '<IIIHHIIIIII',
+            40,              # Header size
+            width,           # Image width
+            height,          # Image height
+            1,               # Color planes
+            24,              # Bits per pixel (24-bit RGB)
+            0,               # Compression (0 = none)
+            pixel_data_size,     # Image size
+            2835,            # X pixels per meter (72 DPI)
+            2835,            # Y pixels per meter (72 DPI)
+            0,               # Colors used (0 = all)
+            0                # Important colors (0 = all)
+        )
+        
+        # Create pixel data (solid color based on asset type)
+        colors = {
+            "banner": (70, 130, 180),     # Steel blue
+            "dialog": (240, 240, 240),    # Light gray
+            "header": (100, 149, 237),    # Cornflower blue
+            "sidebar": (70, 130, 180),    # Steel blue
+        }
+        
+        # Extract base name without extension
+        base_name = asset_type.replace(".bmp", "").split(".")[0]
+        r, g, b = colors.get(base_name, (128, 128, 128))  # Default gray
+        
+        # BMP stores pixels in BGR format, bottom-up
+        pixel_data = bytearray()
+        for _ in range(height):
+            for _ in range(width):
+                pixel_data.extend([b, g, r])  # BGR format
+            # Add padding to make each row a multiple of 4 bytes
+            padding = (4 - (width * 3) % 4) % 4
+            pixel_data.extend([0] * padding)
+        
+        # Write the BMP file
+        with open(path, 'wb') as f:
+            f.write(file_header)
+            f.write(info_header)
+            f.write(pixel_data)
+        
+        print(f"    ✓ Generated BMP placeholder: {path.name} ({width}x{height})")
             
     def _generate_placeholder_png(self, path: Path, asset_type: str) -> None:
-        """Generate placeholder PNG file."""
-        # For now, create a simple text file placeholder
-        # In production, you would generate actual PNG files
-        with open(path, "w") as f:
-            f.write(f"# Placeholder for {asset_type}\n")
-            f.write(f"# Replace with actual {asset_type} asset\n")
-            f.write(f"# Generated on: {subprocess.run(['date'], capture_output=True, text=True).stdout.strip()}\n")
+        """Generate a minimal valid PNG file.
+        
+        Creates a small PNG using base64-encoded data. This ensures the file
+        is a valid PNG that can be processed by installer tools.
+        """
+        # Minimal 1x1 transparent PNG (base64 encoded)
+        # This is the smallest possible valid PNG file
+        minimal_png_b64 = (
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        )
+        
+        # For DMG backgrounds, we want a larger placeholder with color
+        if "dmg-background" in asset_type:
+            # 100x100 solid color PNG (cornflower blue)
+            # This is a simple colored square that serves as a visible placeholder
+            dmg_background_b64 = (
+                "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAABmJLR0QA/wD/AP+gvaeTAAAA"
+                "CXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH5QEBDAoaLp8e1AAAADZJREFUeNrtwQENAAAA"
+                "wqD3T20ON6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAICXAcTgAAG3xC0cAAAAAElF"
+                "TkSuQmCC"
+            )
+            png_data = base64.b64decode(dmg_background_b64)
+        else:
+            png_data = base64.b64decode(minimal_png_b64)
+        
+        # Write the PNG file
+        with open(path, 'wb') as f:
+            f.write(png_data)
+        
+        print(f"    ✓ Generated PNG placeholder: {path.name}")
 
 
 class CodeSigner:
@@ -625,15 +720,273 @@ class CodeSigner:
         return artifact.suffix.lower() in extensions
         
     def _sign_single_artifact(self, artifact: Path) -> BuildResult:
-        """Sign a single artifact."""
+        """Sign a single artifact with platform-specific code signing.
+        
+        Implements actual code signing for:
+        - Windows: Using signtool.exe with certificate
+        - macOS: Using codesign and notarization
+        - Linux: Using GPG signatures
+        """
         result = BuildResult()
         
-        # Platform-specific signing logic would go here
-        # For now, just log that signing would happen
         print(f"  🔐 Signing {artifact.name}...")
-        result.add_warning(f"Code signing for {artifact.name} (placeholder)")
+        
+        try:
+            match self.config.platform.os:
+                case OperatingSystem.WINDOWS:
+                    return self._sign_windows_artifact(artifact)
+                case OperatingSystem.DARWIN:
+                    return self._sign_macos_artifact(artifact)
+                case OperatingSystem.LINUX:
+                    return self._sign_linux_artifact(artifact)
+                case _:
+                    result.add_warning(f"Code signing not implemented for {self.config.platform.os}")
+                    return result
+        except Exception as e:
+            result.add_error(f"Failed to sign {artifact.name}: {str(e)}")
+            return result
+    
+    def _sign_windows_artifact(self, artifact: Path) -> BuildResult:
+        """Sign Windows artifacts using signtool.exe."""
+        result = BuildResult()
+        
+        # Get signing certificate and password from environment
+        cert_path = os.getenv("WINDOWS_CERTIFICATE_PATH")
+        cert_password = os.getenv("WINDOWS_CERTIFICATE_PASSWORD")
+        timestamp_url = os.getenv("WINDOWS_TIMESTAMP_URL", "http://timestamp.digicert.com")
+        
+        if not cert_path or not cert_password:
+            result.add_error("Missing Windows signing certificate or password")
+            return result
+        
+        # Check if signtool is available
+        signtool_path = self._find_signtool()
+        if not signtool_path:
+            result.add_error("signtool.exe not found. Install Windows SDK or Visual Studio.")
+            return result
+        
+        # Build signing command
+        cmd = [
+            str(signtool_path),
+            "sign",
+            "/f", cert_path,                    # Certificate file
+            "/p", cert_password,                # Certificate password
+            "/t", timestamp_url,                # Timestamp server
+            "/fd", "sha256",                    # File digest algorithm
+            "/tr", timestamp_url,               # RFC 3161 timestamp
+            "/td", "sha256",                    # Timestamp digest algorithm
+            "/v",                               # Verbose output
+            str(artifact)
+        ]
+        
+        # Add description if available
+        description = os.getenv("WINDOWS_SIGN_DESCRIPTION", "TTRPG Assistant")
+        if description:
+            cmd.extend(["/d", description])
+        
+        # Execute signing
+        if self.runner.run(cmd, description=f"Signing {artifact.name}") != 0:
+            result.add_error(f"Failed to sign {artifact.name}")
+        else:
+            print(f"    ✓ Successfully signed {artifact.name}")
+            
+            # Verify signature
+            verify_cmd = [str(signtool_path), "verify", "/pa", "/v", str(artifact)]
+            if self.runner.run(verify_cmd, description="Verifying signature") != 0:
+                result.add_warning("Signature verification failed")
         
         return result
+    
+    def _sign_macos_artifact(self, artifact: Path) -> BuildResult:
+        """Sign macOS artifacts using codesign and notarization."""
+        result = BuildResult()
+        
+        # Get signing identity and credentials
+        signing_identity = os.getenv("MACOS_SIGNING_IDENTITY")
+        apple_id = os.getenv("APPLE_ID")
+        apple_password = os.getenv("APPLE_PASSWORD")  # App-specific password
+        team_id = os.getenv("APPLE_TEAM_ID")
+        
+        if not signing_identity:
+            result.add_error("Missing macOS signing identity")
+            return result
+        
+        # Step 1: Code sign the artifact
+        codesign_cmd = [
+            "codesign",
+            "--force",                          # Replace existing signature
+            "--timestamp",                      # Add secure timestamp
+            "--options", "runtime",             # Enable hardened runtime
+            "--sign", signing_identity,         # Signing identity
+            "--verbose",                        # Verbose output
+            str(artifact)
+        ]
+        
+        # Add entitlements if file exists
+        entitlements_file = self.config.tauri_dir / "entitlements.plist"
+        if entitlements_file.exists():
+            codesign_cmd.extend(["--entitlements", str(entitlements_file)])
+        
+        if self.runner.run(codesign_cmd, description=f"Code signing {artifact.name}") != 0:
+            result.add_error(f"Failed to codesign {artifact.name}")
+            return result
+        
+        print(f"    ✓ Code signed {artifact.name}")
+        
+        # Step 2: Notarize if credentials are available
+        if apple_id and apple_password and team_id:
+            result_notarize = self._notarize_macos_artifact(
+                artifact, apple_id, apple_password, team_id
+            )
+            result.errors.extend(result_notarize.errors)
+            result.warnings.extend(result_notarize.warnings)
+        else:
+            result.add_warning("Skipping notarization (missing Apple credentials)")
+        
+        # Step 3: Verify signature
+        verify_cmd = ["codesign", "--verify", "--verbose", str(artifact)]
+        if self.runner.run(verify_cmd, description="Verifying signature") != 0:
+            result.add_warning("Signature verification failed")
+        
+        return result
+    
+    def _notarize_macos_artifact(self, artifact: Path, apple_id: str, 
+                                  apple_password: str, team_id: str) -> BuildResult:
+        """Notarize macOS artifact with Apple."""
+        result = BuildResult()
+        
+        print(f"    📝 Notarizing {artifact.name}...")
+        
+        # Submit for notarization
+        submit_cmd = [
+            "xcrun", "notarytool", "submit",
+            str(artifact),
+            "--apple-id", apple_id,
+            "--password", apple_password,
+            "--team-id", team_id,
+            "--wait",                           # Wait for notarization
+            "--timeout", "30m",                 # 30 minute timeout
+            "--verbose"
+        ]
+        
+        if self.runner.run(submit_cmd, description="Submitting for notarization") != 0:
+            result.add_error("Notarization submission failed")
+            return result
+        
+        # Staple the notarization ticket
+        staple_cmd = ["xcrun", "stapler", "staple", str(artifact)]
+        if self.runner.run(staple_cmd, description="Stapling notarization") != 0:
+            result.add_warning("Failed to staple notarization ticket")
+        else:
+            print(f"    ✓ Notarized and stapled {artifact.name}")
+        
+        return result
+    
+    def _sign_linux_artifact(self, artifact: Path) -> BuildResult:
+        """Sign Linux artifacts using GPG."""
+        result = BuildResult()
+        
+        # Get GPG key ID from environment
+        gpg_key_id = os.getenv("GPG_KEY_ID")
+        
+        if not gpg_key_id:
+            result.add_error("Missing GPG key ID for signing")
+            return result
+        
+        # Create detached signature
+        signature_file = artifact.with_suffix(artifact.suffix + ".sig")
+        
+        gpg_cmd = [
+            "gpg",
+            "--batch",                          # Non-interactive mode
+            "--yes",                            # Overwrite existing
+            "--detach-sign",                    # Create detached signature
+            "--armor",                          # ASCII armored output
+            "--local-user", gpg_key_id,         # Signing key
+            "--output", str(signature_file),    # Output file
+            str(artifact)
+        ]
+        
+        # Add passphrase if provided via environment
+        gpg_passphrase = os.getenv("GPG_PASSPHRASE")
+        if gpg_passphrase:
+            gpg_cmd.extend(["--passphrase", gpg_passphrase, "--pinentry-mode", "loopback"])
+        
+        if self.runner.run(gpg_cmd, description=f"GPG signing {artifact.name}") != 0:
+            result.add_error(f"Failed to GPG sign {artifact.name}")
+            return result
+        
+        print(f"    ✓ Created GPG signature: {signature_file.name}")
+        
+        # Verify signature
+        verify_cmd = ["gpg", "--verify", str(signature_file), str(artifact)]
+        if self.runner.run(verify_cmd, description="Verifying GPG signature") != 0:
+            result.add_warning("GPG signature verification failed")
+        
+        # Add signature file as an artifact
+        result.add_artifact(signature_file)
+        
+        # For APT repositories, also create Release file signature if it's a .deb
+        if artifact.suffix == ".deb":
+            self._create_apt_repository_signature(artifact, gpg_key_id, result)
+        
+        return result
+    
+    def _create_apt_repository_signature(self, deb_file: Path, gpg_key_id: str, 
+                                          result: BuildResult) -> None:
+        """Create APT repository signatures for .deb packages."""
+        # This would typically be done as part of repository management
+        # but we'll create the InRelease file signature here
+        repo_dir = deb_file.parent / "repo"
+        if repo_dir.exists():
+            release_file = repo_dir / "Release"
+            if release_file.exists():
+                in_release_file = repo_dir / "InRelease"
+                cmd = [
+                    "gpg",
+                    "--batch",
+                    "--yes",
+                    "--clearsign",
+                    "--local-user", gpg_key_id,
+                    "--output", str(in_release_file),
+                    str(release_file)
+                ]
+                
+                if self.runner.run(cmd, description="Creating InRelease file") == 0:
+                    print(f"    ✓ Created APT repository signature")
+                    result.add_artifact(in_release_file)
+    
+    def _find_signtool(self) -> Optional[Path]:
+        """Find signtool.exe in Windows SDK or Visual Studio installations."""
+        # Common signtool locations
+        potential_paths = [
+            # Windows SDK paths
+            Path("C:/Program Files (x86)/Windows Kits/10/bin"),
+            Path("C:/Program Files/Windows Kits/10/bin"),
+            # Visual Studio 2022 paths
+            Path("C:/Program Files/Microsoft Visual Studio/2022/Enterprise/SDK"),
+            Path("C:/Program Files/Microsoft Visual Studio/2022/Professional/SDK"),
+            Path("C:/Program Files/Microsoft Visual Studio/2022/Community/SDK"),
+            # Visual Studio 2019 paths
+            Path("C:/Program Files (x86)/Microsoft Visual Studio/2019/Enterprise/SDK"),
+            Path("C:/Program Files (x86)/Microsoft Visual Studio/2019/Professional/SDK"),
+            Path("C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/SDK"),
+        ]
+        
+        for base_path in potential_paths:
+            if base_path.exists():
+                # Search for signtool.exe in subdirectories
+                for signtool in base_path.rglob("signtool.exe"):
+                    # Prefer x64 version
+                    if "x64" in str(signtool) or "x86" not in str(signtool):
+                        return signtool
+        
+        # Try to find via PATH
+        signtool_in_path = shutil.which("signtool")
+        if signtool_in_path:
+            return Path(signtool_in_path)
+        
+        return None
 
 
 class UpdateManifestGenerator:
@@ -690,17 +1043,28 @@ class UpdateManifestGenerator:
         return artifact.suffix.lower() in installer_extensions
         
     def _get_version(self) -> str:
-        """Get application version from Tauri config."""
+        """Get application version from Tauri config with proper error handling."""
         tauri_config = self.config.tauri_dir / "tauri.conf.json"
         
         if tauri_config.exists():
             try:
-                import json
-                with open(tauri_config) as f:
+                with open(tauri_config, 'r', encoding='utf-8') as f:
                     config = json.load(f)
-                    return config.get("version", "1.0.0")
-            except Exception:
-                pass
+                    # Handle nested version in package or root
+                    if "package" in config and "version" in config["package"]:
+                        return config["package"]["version"]
+                    elif "version" in config:
+                        return config["version"]
+                    else:
+                        print("⚠️  Version not found in tauri.conf.json, using default")
+            except json.JSONDecodeError as e:
+                print(f"⚠️  Failed to parse tauri.conf.json: {e}")
+            except FileNotFoundError:
+                print(f"⚠️  tauri.conf.json not found at {tauri_config}")
+            except PermissionError as e:
+                print(f"⚠️  Permission denied reading tauri.conf.json: {e}")
+            except Exception as e:
+                print(f"⚠️  Unexpected error reading version: {type(e).__name__}: {e}")
                 
         return "1.0.0"
 

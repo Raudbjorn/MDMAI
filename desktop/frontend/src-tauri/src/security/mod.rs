@@ -58,6 +58,8 @@ pub struct SecurityConfig {
     pub alert_thresholds: AlertThresholds,
     /// Enable keychain integration
     pub keychain_integration_enabled: bool,
+    /// Allowed commands for validation
+    pub allowed_commands: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +146,20 @@ impl Default for SecurityConfig {
                 failed_auth_threshold: 5,
             },
             keychain_integration_enabled: true,
+            allowed_commands: vec![
+                "python".to_string(),
+                "python3".to_string(),
+                "node".to_string(),
+                "npm".to_string(),
+                "cargo".to_string(),
+                "rustc".to_string(),
+                "git".to_string(),
+                "cat".to_string(),
+                "echo".to_string(),
+                "ls".to_string(),
+                "pwd".to_string(),
+                "which".to_string(),
+            ],
         }
     }
 }

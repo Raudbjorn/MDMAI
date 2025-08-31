@@ -170,7 +170,7 @@ impl CommandBatcher {
         let batch_id = uuid::Uuid::new_v4().to_string();
         
         // Collect commands to execute
-        let (commands, callbacks) = {
+        let (commands, mut callbacks) = {
             let mut pending = self.pending_commands.lock().await;
             let mut callback_map = self.pending_callbacks.lock().await;
             
@@ -196,12 +196,13 @@ impl CommandBatcher {
         let mut sorted_commands = commands;
         sorted_commands.sort_by_key(|cmd| cmd.priority);
 
-        // Execute commands (in reality, this would call the actual IPC mechanism)
-        let mut results = Vec::new();
+        // Execute commands and collect results, sending callbacks immediately
+        let mut batch_results = Vec::new();
+        
         for command in &sorted_commands {
             let start_time = Instant::now();
             
-            // Simulate command execution
+            // Execute the command
             let result = self.execute_single_command(command).await;
             
             let command_result = CommandResult {
@@ -213,30 +214,39 @@ impl CommandBatcher {
                 cached: false, // Would be set by response cache
             };
             
-            results.push(command_result.clone());
-            
-            // Send result back to waiting caller
-            if let Some(callback) = callbacks.get(&command.id) {
-                // We can't use the callback here because it's been moved
-                // This is a simplified example - in reality you'd handle this differently
+            // Send result back to waiting caller immediately
+            if let Some(callback) = callbacks.remove(&command.id) {
+                if let Err(_) = callback.send(command_result.clone()) {
+                    warn!("Failed to send command result to caller for command: {}", command.id);
+                }
+            } else {
+                warn!("No callback found for command: {}", command.id);
             }
+            
+            batch_results.push(command_result);
+        }
+
+        // Handle any remaining callbacks (orphaned callbacks)
+        for (command_id, callback) in callbacks {
+            warn!("Orphaned callback found for command: {}", command_id);
+            let error_result = CommandResult {
+                id: command_id.clone(),
+                success: false,
+                result: None,
+                error: Some("Command not found in batch".to_string()),
+                duration: Duration::ZERO,
+                cached: false,
+            };
+            let _ = callback.send(error_result);
         }
 
         let total_duration = batch_start.elapsed();
         let batch_result = BatchResult {
             batch_id: batch_id.clone(),
-            commands: results,
+            commands: batch_results,
             total_duration,
             compression_ratio: None, // Would be calculated if compression is enabled
         };
-
-        // Send results to all waiting callers
-        for (command_id, callback) in callbacks {
-            if let Some(result) = batch_result.commands.iter()
-                .find(|r| r.id == command_id) {
-                let _ = callback.send(result.clone());
-            }
-        }
 
         // Update statistics
         self.update_batch_stats(&batch_result).await;

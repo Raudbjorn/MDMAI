@@ -194,16 +194,14 @@ impl CryptoManager {
                 (key.clone(), key) // HMAC uses the same key for signing and verification
             }
             SignatureAlgorithm::Ed25519 => {
-                // In a real implementation, use a proper Ed25519 library
-                let private_key = self.generate_random_bytes(32);
-                let public_key = self.generate_random_bytes(32); // Placeholder
-                (private_key, public_key)
+                return Err(SecurityError::CryptographicError {
+                    message: "Ed25519 algorithm not yet implemented. Please use HMACSHA256 instead.".to_string(),
+                });
             }
             SignatureAlgorithm::ECDSAP256 => {
-                // In a real implementation, use a proper ECDSA library
-                let private_key = self.generate_random_bytes(32);
-                let public_key = self.generate_random_bytes(64); // Placeholder
-                (private_key, public_key)
+                return Err(SecurityError::CryptographicError {
+                    message: "ECDSA-P256 algorithm not yet implemented. Please use HMACSHA256 instead.".to_string(),
+                });
             }
         };
 
@@ -241,12 +239,14 @@ impl CryptoManager {
                 self.sign_hmac_sha256(data, &signing_key.private_key)?
             }
             SignatureAlgorithm::Ed25519 => {
-                // Placeholder - would use actual Ed25519 signing
-                self.generate_random_bytes(64)
+                return Err(SecurityError::CryptographicError {
+                    message: "Ed25519 algorithm not implemented".to_string(),
+                });
             }
             SignatureAlgorithm::ECDSAP256 => {
-                // Placeholder - would use actual ECDSA signing
-                self.generate_random_bytes(64)
+                return Err(SecurityError::CryptographicError {
+                    message: "ECDSA-P256 algorithm not implemented".to_string(),
+                });
             }
         };
 
@@ -271,12 +271,14 @@ impl CryptoManager {
                 self.verify_hmac_sha256(data, &signature.signature, &verification_key.public_key)
             }
             SignatureAlgorithm::Ed25519 => {
-                // Placeholder - would use actual Ed25519 verification
-                Ok(true)
+                Err(SecurityError::CryptographicError {
+                    message: "Ed25519 algorithm not implemented".to_string(),
+                })
             }
             SignatureAlgorithm::ECDSAP256 => {
-                // Placeholder - would use actual ECDSA verification
-                Ok(true)
+                Err(SecurityError::CryptographicError {
+                    message: "ECDSA-P256 algorithm not implemented".to_string(),
+                })
             }
         }
     }
