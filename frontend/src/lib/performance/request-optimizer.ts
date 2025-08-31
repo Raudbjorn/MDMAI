@@ -122,7 +122,7 @@ export class RequestOptimizer {
                 timeoutId = null;
               }
               maxTimeoutId = null;
-            }, config.maxWait) as any;
+            }, config.maxWait);
           }
         }
       });
