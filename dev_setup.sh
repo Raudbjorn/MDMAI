@@ -45,7 +45,12 @@ print_status "Cleaned up old virtual environments"
 
 # 2. Create new virtual environment
 print_info "Creating new Python virtual environment..."
-python3 -m venv venv
+PYTHON_CMD=$(command -v python3 || command -v python)
+if [ -z "$PYTHON_CMD" ]; then
+    print_error "Python not found. Please install Python 3."
+    exit 1
+fi
+"$PYTHON_CMD" -m venv venv
 print_status "Created virtual environment: venv/"
 
 # 3. Activate and upgrade pip
