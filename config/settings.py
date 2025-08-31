@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Embeddings
     embedding_model: str = Field(default="all-MiniLM-L6-v2", env="EMBEDDING_MODEL")
     embedding_batch_size: int = Field(default=32, env="EMBEDDING_BATCH_SIZE")
+    use_ollama_embeddings: bool = Field(default=False, env="USE_OLLAMA_EMBEDDINGS")
+    ollama_embedding_model: str = Field(default="nomic-embed-text", env="OLLAMA_EMBEDDING_MODEL")
+    ollama_base_url: str = Field(default="http://localhost:11434", env="OLLAMA_BASE_URL")
     
     # Cache
     cache_dir: Path = Field(default=Path("./data/cache"), env="CACHE_DIR")

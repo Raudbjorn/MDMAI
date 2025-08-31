@@ -6,6 +6,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 
 - **PDF Processing**: Extracts and indexes content from TTRPG rulebooks
 - **Hybrid Search**: Combines semantic and keyword search for accurate results
+- **Ollama Embeddings**: Optional high-quality local embeddings using Ollama models
 - **Campaign Management**: Store and retrieve campaign-specific data
 - **Session Tracking**: Manage initiative, monster health, and session notes
 - **Personality System**: Adapts responses to match game system tone
@@ -143,6 +144,8 @@ await server_info()
 - **FastAPI** - Web framework for bridge service
 - **ChromaDB** - Vector database for semantic search
 - **pypdf/pdfplumber** - PDF processing
+- **Ollama** - Optional local embedding models (nomic-embed-text, mxbai-embed-large, etc.)
+- **Sentence Transformers** - Default embedding generation
 - **SQLAlchemy 2.0** - Relational data (optional)
 - **Result pattern** - Error handling as values
 
