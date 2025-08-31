@@ -215,7 +215,7 @@ class MCPProcess:
             self.num_errors += 1
             self.pending_requests.pop(request_id, None)
             raise TimeoutError(f"Request {method} timed out after {pending.timeout}s")
-        except Exception:
+        except Exception as e:
             self.num_errors += 1
             self.pending_requests.pop(request_id, None)
             raise
