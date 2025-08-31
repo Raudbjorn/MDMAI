@@ -36,6 +36,7 @@ class MCPProcess:
         self.env = env or {}
         self.process: Optional[asyncio.subprocess.Process] = None
         self.reader_task: Optional[asyncio.Task] = None
+        self.health_check_task: Optional[asyncio.Task] = None
         self.pending_requests: Dict[str, PendingRequest] = {}
         self.capabilities: Dict[str, Any] = {}
         self.started_at: Optional[datetime] = None
@@ -43,9 +44,11 @@ class MCPProcess:
         self.num_requests: int = 0
         self.num_errors: int = 0
         self.restart_count: int = 0
+        self.max_restarts: int = 3  # Maximum restart attempts
         self._lock = asyncio.Lock()
         self._running = False
         self._initialized = False
+        self._auto_restart = True
     
     async def start(self) -> bool:
         """Start the MCP server subprocess."""

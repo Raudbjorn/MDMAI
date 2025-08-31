@@ -88,11 +88,25 @@ class OllamaModelCache:
 class OllamaRoutes:
     """Ollama API routes handler."""
     
+    # Model dimension mappings for common embedding models
+    EMBEDDING_DIMENSIONS = {
+        "nomic-embed": 768,
+        "nomic-embed-text": 768,
+        "all-minilm": 384,
+        "mxbai-embed-large": 1024,
+        "bge-small": 384,
+        "bge-base": 768,
+        "bge-large": 1024,
+        "e5-small": 384,
+        "e5-base": 768,
+        "e5-large": 1024,
+    }
+    
     def __init__(self, base_url: str = "http://localhost:11434", cache_ttl: int = 60):
         self.base_url = base_url
         self.api_url = f"{base_url}/api"
         self.model_cache = OllamaModelCache(ttl_seconds=cache_ttl)
-        self.current_model: Optional[str] = None
+        self.current_model: Optional[OllamaModel] = None
         self.router = self._create_router()
     
     def _classify_model(self, model_name: str) -> ModelType:
@@ -132,13 +146,12 @@ class OllamaRoutes:
                 model_name = model_data.get("name", "")
                 model_type = self._classify_model(model_name)
                 
-                # Get dimension for embedding models (simplified)
+                # Get dimension for embedding models
                 dimension = None
                 if model_type == ModelType.EMBEDDING:
-                    if "nomic-embed" in model_name:
-                        dimension = 768
-                    elif "all-minilm" in model_name:
-                        dimension = 384
+                    # Check for known models
+                    base_name = model_name.split(":")[0]
+                    dimension = self._get_embedding_dimension(base_name)
                 
                 models.append(OllamaModel(
                     name=model_name,
@@ -213,7 +226,14 @@ class OllamaRoutes:
             model_info = next((m for m in models if m.name == model_name), None)
             dimension = model_info.dimension if model_info else None
             
-            self.current_model = model_name
+            # Store current model object
+            self.current_model = model_info or OllamaModel(
+                name=model_name,
+                type=ModelType.EMBEDDING,
+                size=0,
+                modified_at=datetime.now(),
+                dimension=dimension
+            )
             
             return ModelSelectionResponse(
                 success=True,
@@ -230,6 +250,27 @@ class OllamaRoutes:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to select model: {str(e)}"
             )
+    
+    def _get_embedding_dimension(self, model_name: str) -> Optional[int]:
+        """Get embedding dimension for known models."""
+        # Direct match
+        if model_name in self.EMBEDDING_DIMENSIONS:
+            return self.EMBEDDING_DIMENSIONS[model_name]
+        
+        # Partial match for model families
+        for key, dim in self.EMBEDDING_DIMENSIONS.items():
+            if key in model_name or model_name in key:
+                return dim
+        
+        # Default dimensions for common patterns
+        if "large" in model_name:
+            return 1024
+        elif "base" in model_name or "medium" in model_name:
+            return 768
+        elif "small" in model_name or "mini" in model_name:
+            return 384
+        
+        return None
     
     def _create_router(self) -> APIRouter:
         """Create FastAPI router with endpoints."""

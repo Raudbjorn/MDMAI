@@ -146,6 +146,7 @@ export interface APIResponse<T = any> {
 	message?: string;
 	data?: T;
 	error?: string;
+	timestamp?: Date;
 }
 
 export interface ProviderConfigRequest extends APIRequest<{
@@ -206,12 +207,6 @@ export interface StatusEntity {
 export type Result<T, E = Error> = 
 	| { ok: true; value: T }
 	| { ok: false; error: E };
-
-// Common utility types
-export type Partial<T> = { [P in keyof T]?: T[P] };
-export type Required<T> = { [P in keyof T]-?: T[P] };
-export type Pick<T, K extends keyof T> = { [P in K]: T[P] };
-export type Omit<T, K extends keyof T> = Pick<T, Exclude<keyof T, K>>;
 
 // Provider-specific utility types
 export type ProviderConfigUpdate = Partial<Omit<ProviderConfig, 'provider_type'>>;

@@ -21,10 +21,22 @@
 		const saved = localStorage.getItem('recent_uploads');
 		if (saved) {
 			try {
-				const parsed = JSON.parse(saved);
-				recentUploads = parsed.map((u: any) => ({
-					...u,
-					timestamp: new Date(u.timestamp)
+				const parsed = JSON.parse(saved) as Array<{
+					id: string;
+					filename: string;
+					model: string;
+					timestamp: string;
+					status: 'success' | 'error';
+					message?: string;
+				}>;
+				// Validate and transform the data with proper type safety
+				recentUploads = parsed.map((u) => ({
+					id: u.id || crypto.randomUUID?.() || Math.random().toString(36),
+					filename: u.filename || 'Unknown',
+					model: u.model || 'default',
+					timestamp: new Date(u.timestamp),
+					status: u.status || 'success',
+					message: u.message
 				}));
 			} catch (e) {
 				console.error('Failed to load recent uploads:', e);

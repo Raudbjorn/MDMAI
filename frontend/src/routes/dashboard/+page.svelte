@@ -9,6 +9,9 @@
 	let searchQuery = $state('');
 	let searchResults = $state<any[]>([]);
 	let isSearching = $state(false);
+	
+	// Derived state for recent messages
+	let recentMessages = $derived(sessionStore.messages.slice(-5));
 
 	async function handleSearch() {
 		if (!searchQuery.trim()) return;
