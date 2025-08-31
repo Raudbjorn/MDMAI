@@ -341,6 +341,194 @@ async def set_active_personality(
 7. **Storage**: Store in ChromaDB with metadata
 8. **Pattern Learning**: Update adaptive learning cache
 
+### TTRPG Content Expansion Pipeline
+
+#### Overview
+Extract and categorize game elements from 271+ TTRPG rulebooks to expand character generation beyond generic D&D fantasy. This pipeline identifies races, classes, roles, equipment, and setting-specific elements across diverse genres (sci-fi, cosmic horror, cyberpunk, etc.).
+
+#### Content Extraction Strategy
+
+##### 1. Genre Classification
+```python
+class TTRPGGenre(Enum):
+    FANTASY = "fantasy"           # D&D, Pathfinder, etc.
+    SCI_FI = "sci_fi"             # Traveller, Star Wars RPG
+    CYBERPUNK = "cyberpunk"       # 2040, Shadowrun
+    COSMIC_HORROR = "cosmic_horror"  # Call of Cthulhu, Delta Green
+    POST_APOCALYPTIC = "post_apoc"   # Fallout, Mutant Year Zero
+    STEAMPUNK = "steampunk"       # Iron Kingdoms, Castle Falkenstein
+    SUPERHERO = "superhero"       # Mutants & Masterminds
+    HISTORICAL = "historical"     # Pendragon, Ars Magica
+    URBAN_FANTASY = "urban_fantasy"  # World of Darkness
+```
+
+##### 2. Content Pattern Recognition
+The pipeline uses pattern matching and NLP to identify:
+- **Character Types**: races/species, classes/professions, backgrounds
+- **Abilities**: skills, feats, powers, spells, cyberware
+- **Equipment**: weapons, armor, gear, vehicles
+- **NPCs**: roles, archetypes, stat blocks
+- **Setting Elements**: factions, locations, terminology
+
+##### 3. Extraction Patterns
+```python
+# Pattern examples for different content types
+RACE_PATTERNS = [
+    r"(?:Race|Species|Origin|Heritage):\s*([A-Z][a-z]+)",
+    r"Playing a(?:n)?\s+([A-Z][a-z]+)",
+    r"([A-Z][a-z]+)\s+Racial\s+Traits",
+]
+
+CLASS_PATTERNS = [
+    r"(?:Class|Profession|Career|Role):\s*([A-Z][a-z]+)",
+    r"The\s+([A-Z][a-z]+)\s+class",
+    r"([A-Z][a-z]+)\s+Starting\s+Equipment",
+]
+
+NPC_ROLE_PATTERNS = [
+    r"([A-Z][a-z]+)\s+(?:Stat Block|Statistics)",
+    r"(?:Typical|Average)\s+([A-Z][a-z]+)",
+]
+```
+
+##### 4. Multi-Stage Processing
+1. **Initial Scan**: Quick pattern matching for common structures
+2. **Context Analysis**: Use surrounding text to validate matches
+3. **Cross-Reference**: Check against game system terminology
+4. **Deduplication**: Merge similar concepts across systems
+5. **Categorization**: Assign to appropriate genre and type
+
+#### Data Model Extensions
+
+##### Extended Character Models
+```python
+@dataclass
+class ExtendedCharacterRace:
+    name: str
+    genre: TTRPGGenre
+    system: str  # "D&D 5e", "Cyberpunk 2020", etc.
+    description: str
+    stat_modifiers: Dict[str, int]
+    abilities: List[str]
+    restrictions: List[str]
+    source_book: str
+    page_reference: int
+    
+@dataclass
+class ExtendedCharacterClass:
+    name: str
+    genre: TTRPGGenre
+    system: str
+    description: str
+    primary_attributes: List[str]
+    skills: List[str]
+    equipment: List[str]
+    progression: Dict[int, List[str]]  # level -> abilities
+    source_book: str
+    page_reference: int
+
+@dataclass
+class ExtendedNPCRole:
+    name: str
+    genre: TTRPGGenre
+    system: str
+    description: str
+    typical_stats: Dict[str, Any]
+    behaviors: List[str]
+    motivations: List[str]
+    source_book: str
+    page_reference: int
+```
+
+##### Content Repository Structure
+```python
+class TTRPGContentRepository:
+    def __init__(self):
+        self.races: Dict[TTRPGGenre, List[ExtendedCharacterRace]] = {}
+        self.classes: Dict[TTRPGGenre, List[ExtendedCharacterClass]] = {}
+        self.npc_roles: Dict[TTRPGGenre, List[ExtendedNPCRole]] = {}
+        self.equipment: Dict[TTRPGGenre, List[Equipment]] = {}
+        self.name_generators: Dict[TTRPGGenre, NameGenerator] = {}
+        self.backstory_templates: Dict[TTRPGGenre, List[str]] = {}
+```
+
+#### Processing Implementation
+
+##### Phase 1: PDF Analysis Script
+```python
+async def analyze_ttrpg_pdfs(pdf_directory: str) -> TTRPGContentRepository:
+    """One-time script to extract content from all PDFs."""
+    repository = TTRPGContentRepository()
+    
+    for pdf_path in Path(pdf_directory).glob("*.pdf"):
+        # Extract text and metadata
+        content = await extract_pdf_content(pdf_path)
+        genre = classify_genre(content, pdf_path.name)
+        
+        # Extract game elements
+        races = extract_races(content, genre)
+        classes = extract_classes(content, genre)
+        npcs = extract_npc_roles(content, genre)
+        
+        # Store in repository
+        repository.add_content(genre, races, classes, npcs)
+    
+    return repository
+```
+
+##### Phase 2: Content Validation
+- Manual review of extracted content
+- Verification against known game systems
+- Correction of misclassified elements
+- Addition of missing metadata
+
+##### Phase 3: Integration with Generators
+```python
+class EnhancedCharacterGenerator:
+    def __init__(self, repository: TTRPGContentRepository):
+        self.repository = repository
+    
+    async def generate_character(
+        self,
+        genre: TTRPGGenre = None,
+        system: str = None,
+        level: int = 1
+    ) -> Character:
+        # Select appropriate content based on genre/system
+        if genre:
+            available_races = self.repository.races.get(genre, [])
+            available_classes = self.repository.classes.get(genre, [])
+        
+        # Generate using expanded content
+        race = random.choice(available_races)
+        char_class = random.choice(available_classes)
+        
+        return self.build_character(race, char_class, level)
+```
+
+#### Storage Schema Updates
+
+##### ChromaDB Collections
+- **expanded_races**: All races across genres with embeddings
+- **expanded_classes**: All classes/professions with embeddings
+- **expanded_npcs**: NPC roles and archetypes
+- **genre_personalities**: Genre-specific narrative styles
+- **system_mechanics**: Game-specific rules and mechanics
+
+##### Metadata Structure
+```python
+metadata = {
+    "genre": "cyberpunk",
+    "system": "Cyberpunk 2020",
+    "content_type": "race",
+    "name": "Netrunner",
+    "source_book": "Cyberpunk 2020 Core",
+    "page": 42,
+    "extraction_confidence": 0.95,
+    "validated": True
+}
+```
+
 ### Search Pipeline
 1. **Query Processing**: Clean and expand query
 2. **Hybrid Search**:

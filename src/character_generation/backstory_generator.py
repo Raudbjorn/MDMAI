@@ -4,7 +4,14 @@ import logging
 import random
 from typing import Any, Dict, List, Optional
 
-from .models import Backstory, Character, CharacterClass, CharacterRace
+from .models import (
+    Backstory,
+    Character,
+    CharacterClass,
+    CharacterRace,
+    ExtendedCharacter,
+    TTRPGGenre,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +40,37 @@ class BackstoryGenerator:
             "When {event} destroyed {precious_thing}, {name} swore to {oath}.",
             "{name} survived {disaster}, but the scars run deeper than flesh.",
             "The {adjective} night when {tragedy} occurred haunts {name} still.",
+        ],
+        # Genre-specific templates
+        "cyberpunk": [
+            "{name} jacked in for the first time at {age}, discovering a talent for {skill} that would define their life.",
+            "Born in the {adjective} sprawl of {location}, {name} learned that {lesson} in the neon-lit streets.",
+            "After {event} cost them their {precious_thing}, {name} replaced flesh with chrome, seeking {desire}.",
+        ],
+        "sci-fi": [
+            "{name} was born on {location}, where {adjective} conditions forged their {quality} nature.",
+            "As a {order} generation colonist, {name} inherited both {virtue} and {burden} from the stars.",
+            "When {event} struck their {precious_thing}, {name} took to the void seeking {desire}.",
+        ],
+        "cosmic_horror": [
+            "{name}'s research into {forbidden_topic} began innocently, but {event} revealed truths better left unknown.",
+            "The {adjective} dreams started when {name} was {age}, whispers of {entity} echoing through their mind.",
+            "After discovering {artifact} in {location}, {name} could never again see the world as others do.",
+        ],
+        "post_apocalyptic": [
+            "{name} emerged from {location} into a world transformed by {disaster}, carrying only {precious_thing}.",
+            "Born {time} after the {event}, {name} knows only the {adjective} wasteland and the law of {principle}.",
+            "When {threat} destroyed their {community}, {name} learned that {lesson} in the ashes.",
+        ],
+        "western": [
+            "{name} rode into {location} with {precious_thing} and a {adjective} reputation trailing behind.",
+            "After {event} at {location}, {name} had no choice but to {action} and head for the frontier.",
+            "The {adjective} dust of {location} couldn't hide {name}'s past, where {secret} waited to be revealed.",
+        ],
+        "superhero": [
+            "The accident that gave {name} their powers also took their {precious_thing}, leaving them with {burden}.",
+            "{name} discovered their abilities during {event}, realizing that with great power comes {responsibility}.",
+            "Born with {quality}, {name} struggled to hide their true nature until {event} forced them to {action}.",
         ],
     }
 
@@ -131,6 +169,29 @@ class BackstoryGenerator:
             "traditions": ["pact ceremonies", "blood bonds", "name earning"],
             "conflicts": ["prejudice", "infernal heritage", "trust issues"],
         },
+        # Sci-Fi Races
+        CharacterRace.CYBORG: {
+            "values": ["efficiency", "enhancement", "transcendence", "logic"],
+            "traditions": ["upgrade ceremonies", "data sharing", "system optimization"],
+            "conflicts": ["humanity loss", "obsolescence", "maintenance costs"],
+        },
+        CharacterRace.ANDROID: {
+            "values": ["purpose", "perfection", "service", "evolution"],
+            "traditions": ["activation day", "core updates", "memory backups"],
+            "conflicts": ["free will", "emotions", "identity"],
+        },
+        # Cyberpunk Races
+        CharacterRace.AUGMENTED_HUMAN: {
+            "values": ["power", "style", "edge", "survival"],
+            "traditions": ["chrome rituals", "street reputation", "gang loyalty"],
+            "conflicts": ["cyberpsychosis", "debt", "corporate control"],
+        },
+        # Post-Apocalyptic Races
+        CharacterRace.MUTANT: {
+            "values": ["adaptation", "survival", "community", "evolution"],
+            "traditions": ["mutation rites", "rad-storm sheltering", "scav sharing"],
+            "conflicts": ["pure strain prejudice", "instability", "rejection"],
+        },
     }
 
     # Relationship templates
@@ -204,6 +265,9 @@ class BackstoryGenerator:
         """
         logger.info(f"Generating {depth} backstory for {character.name}")
 
+        # Store current character for context in helper methods
+        self._current_character = character
+
         backstory = Backstory()
 
         # Determine narrative style based on system personality
@@ -260,70 +324,106 @@ class BackstoryGenerator:
             "Blades in the Dark": "Victorian crime",
             "Delta Green": "conspiracy thriller",
             "Pathfinder": "high fantasy",
+            "Cyberpunk": "noir dystopian",
+            "Traveller": "space opera",
+            "Apocalypse World": "gritty survival",
+            "Masks": "coming-of-age superhero",
+            "Deadlands": "weird western",
         }
 
         return styles.get(system, "neutral")
 
     def _generate_origin(self, character: Character, hints: Optional[str]) -> str:
         """Generate character origin story."""
+        # Check genre for genre-specific templates
+        genre = getattr(character, 'genre', TTRPGGenre.FANTASY)
+        
+        # Map genres to template keys
+        genre_template_map = {
+            TTRPGGenre.CYBERPUNK: "cyberpunk",
+            TTRPGGenre.SCI_FI: "sci-fi",
+            TTRPGGenre.COSMIC_HORROR: "cosmic_horror",
+            TTRPGGenre.POST_APOCALYPTIC: "post_apocalyptic",
+            TTRPGGenre.WESTERN: "western",
+            TTRPGGenre.SUPERHERO: "superhero",
+        }
+        
         # Determine origin type
-        origin_types = ["noble", "commoner", "outsider", "tragedy"]
-
-        if hints:
-            # Parse hints for origin preferences
-            if any(word in hints.lower() for word in ["noble", "royal", "lord"]):
-                origin_type = "noble"
-            elif any(word in hints.lower() for word in ["tragic", "loss", "revenge"]):
-                origin_type = "tragedy"
-            elif any(word in hints.lower() for word in ["mysterious", "unknown", "found"]):
-                origin_type = "outsider"
-            else:
-                origin_type = "commoner"
+        if genre in genre_template_map:
+            origin_type = genre_template_map[genre]
         else:
-            origin_type = random.choice(origin_types)
+            # Fantasy and other genres use traditional templates
+            origin_types = ["noble", "commoner", "outsider", "tragedy"]
+            
+            if hints:
+                # Parse hints for origin preferences
+                if any(word in hints.lower() for word in ["noble", "royal", "lord"]):
+                    origin_type = "noble"
+                elif any(word in hints.lower() for word in ["tragic", "loss", "revenge"]):
+                    origin_type = "tragedy"
+                elif any(word in hints.lower() for word in ["mysterious", "unknown", "found"]):
+                    origin_type = "outsider"
+                else:
+                    origin_type = "commoner"
+            else:
+                origin_type = random.choice(origin_types)
 
         # Get template and fill it
-        templates = self.ORIGIN_TEMPLATES[origin_type]
+        templates = self.ORIGIN_TEMPLATES.get(origin_type, self.ORIGIN_TEMPLATES["commoner"])
         template = random.choice(templates)
 
-        # Generate template variables
-        variables = {
-            "name": character.name,
-            "adjective": random.choice(["ancient", "renowned", "forgotten", "modest"]),
-            "family_name": self._generate_family_name(character.race),
-            "desire": random.choice(["adventure", "knowledge", "freedom", "purpose"]),
-            "order": random.choice(["first", "second", "third", "youngest", "eldest"]),
-            "original_path": random.choice(["politics", "military", "priesthood", "scholarship"]),
-            "event": random.choice(
-                ["a prophetic dream", "a chance encounter", "a family tragedy", "a divine vision"]
-            ),
-            "location": self._generate_location(character.race),
-            "quality": random.choice(["honest", "harsh", "simple", "dangerous"]),
-            "profession": random.choice(["farmer", "merchant", "blacksmith", "innkeeper"]),
-            "lesson": random.choice(
-                ["hard work pays off", "trust no one", "kindness matters", "strength prevails"]
-            ),
-            "skill": random.choice(["combat", "magic", "thievery", "diplomacy"]),
-            "past_element": random.choice(
-                ["their past", "their true name", "their homeland", "their family"]
-            ),
-            "origin": self._generate_location(character.race),
-            "reason": random.choice(
-                ["heresy", "a crime they didn't commit", "forbidden love", "speaking truth"]
-            ),
-            "discovery": random.choice(
-                ["a new purpose", "unexpected allies", "hidden strength", "their destiny"]
-            ),
-            "precious_thing": random.choice(
-                ["their home", "their family", "their innocence", "everything"]
-            ),
-            "oath": random.choice(
-                ["seek vengeance", "protect others", "find justice", "prevent it happening again"]
-            ),
-            "disaster": random.choice(["the great fire", "the plague", "the war", "the massacre"]),
-            "tragedy": random.choice(["the betrayal", "the attack", "the ritual", "the accident"]),
-            "vice": random.choice(["cruelty", "greed", "pride", "wrath"]),
-        }
+        # Generate template variables with genre-specific options
+        if genre == TTRPGGenre.CYBERPUNK:
+            variables = self._generate_cyberpunk_variables(character)
+        elif genre == TTRPGGenre.SCI_FI:
+            variables = self._generate_scifi_variables(character)
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            variables = self._generate_cosmic_horror_variables(character)
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            variables = self._generate_post_apocalyptic_variables(character)
+        elif genre == TTRPGGenre.WESTERN:
+            variables = self._generate_western_variables(character)
+        elif genre == TTRPGGenre.SUPERHERO:
+            variables = self._generate_superhero_variables(character)
+        else:
+            # Default fantasy variables
+            variables = {
+                "name": character.name,
+                "adjective": random.choice(["ancient", "renowned", "forgotten", "modest"]),
+                "family_name": self._generate_family_name(character.race),
+                "desire": random.choice(["adventure", "knowledge", "freedom", "purpose"]),
+                "order": random.choice(["first", "second", "third", "youngest", "eldest"]),
+                "original_path": random.choice(["politics", "military", "priesthood", "scholarship"]),
+                "event": random.choice(
+                    ["a prophetic dream", "a chance encounter", "a family tragedy", "a divine vision"]
+                ),
+                "location": self._generate_location(character.race),
+                "quality": random.choice(["honest", "harsh", "simple", "dangerous"]),
+                "profession": random.choice(["farmer", "merchant", "blacksmith", "innkeeper"]),
+                "lesson": random.choice(
+                    ["hard work pays off", "trust no one", "kindness matters", "strength prevails"]
+                ),
+                "skill": random.choice(["combat", "magic", "thievery", "diplomacy"]),
+                "past_element": random.choice(
+                    ["their past", "their true name", "their homeland", "their family"]
+                ),
+                "origin": self._generate_location(character.race),
+                "reason": random.choice(
+                    ["heresy", "a crime they didn't commit", "forbidden love", "speaking truth"]
+                ),
+                "discovery": random.choice(
+                    ["a new purpose", "unexpected allies", "hidden strength", "their destiny"]
+                ),
+                "precious_thing": random.choice(
+                    ["their home", "their family", "their innocence", "everything"]
+                ),
+                "oath": random.choice(
+                    ["seek vengeance", "protect others", "find justice", "prevent it happening again"]
+                ),
+                "disaster": random.choice(["the great fire", "the plague", "the war", "the massacre"]),
+                "tragedy": random.choice(["the betrayal", "the attack", "the ritual", "the accident"]),
+                "vice": random.choice(["cruelty", "greed", "pride", "wrath"]),
+            }
 
         # Format template with variables
         origin = template.format(**variables)
@@ -666,13 +766,118 @@ class BackstoryGenerator:
 
     def _generate_location(self, race: Optional[CharacterRace]) -> str:
         """Generate a location name based on race."""
-        locations = {
-            CharacterRace.HUMAN: ["Waterdeep", "Baldur's Gate", "Neverwinter", "King's Landing"],
-            CharacterRace.ELF: ["Silverymoon", "Evermeet", "Myth Drannor", "the Feywild"],
-            CharacterRace.DWARF: ["Mithral Hall", "Ironforge", "the Lonely Mountain", "Gauntlgrym"],
-            CharacterRace.HALFLING: ["the Shire", "Luiren", "Green Fields", "Hobbiton"],
-            None: ["a distant land", "the frontier", "the old kingdom", "parts unknown"],
+        # Check if character has a genre
+        genre = TTRPGGenre.FANTASY  # Default
+        if hasattr(self, '_current_character') and hasattr(self._current_character, 'genre'):
+            genre = self._current_character.genre
+        
+        # Genre-specific locations
+        if genre == TTRPGGenre.CYBERPUNK:
+            return random.choice(["Night City", "Neo-Tokyo", "The Sprawl", "Chrome District"])
+        elif genre == TTRPGGenre.SCI_FI:
+            return random.choice(["Mars Colony", "Titan Station", "Alpha Centauri", "The Belt"])
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            return random.choice(["Arkham", "Innsmouth", "Dunwich", "Miskatonic University"])
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            return random.choice(["The Wasteland", "Vault 13", "New Vegas", "The Citadel"])
+        elif genre == TTRPGGenre.WESTERN:
+            return random.choice(["Tombstone", "Deadwood", "Dodge City", "El Paso"])
+        elif genre == TTRPGGenre.SUPERHERO:
+            return random.choice(["Metropolis", "Gotham City", "Central City", "New York"])
+        else:
+            # Fantasy locations
+            locations = {
+                CharacterRace.HUMAN: ["Waterdeep", "Baldur's Gate", "Neverwinter", "King's Landing"],
+                CharacterRace.ELF: ["Silverymoon", "Evermeet", "Myth Drannor", "the Feywild"],
+                CharacterRace.DWARF: ["Mithral Hall", "Ironforge", "the Lonely Mountain", "Gauntlgrym"],
+                CharacterRace.HALFLING: ["the Shire", "Luiren", "Green Fields", "Hobbiton"],
+                None: ["a distant land", "the frontier", "the old kingdom", "parts unknown"],
+            }
+            locs = locations.get(race, locations[None])
+            return random.choice(locs)
+
+    def _generate_cyberpunk_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Cyberpunk-specific template variables."""
+        return {
+            "name": character.name,
+            "age": random.choice(["twelve", "fifteen", "eighteen", "twenty-one"]),
+            "adjective": random.choice(["neon-soaked", "chrome-plated", "data-corrupted", "augmented"]),
+            "location": self._generate_location(character.race),
+            "skill": random.choice(["netrunning", "combat", "hacking", "dealing", "fixing"]),
+            "lesson": random.choice(["chrome is king", "data is power", "trust no corp", "meat is weak"]),
+            "event": random.choice(["a botched run", "corporate betrayal", "a gang war", "cyberpsychosis"]),
+            "precious_thing": random.choice(["humanity", "memories", "organic body", "freedom"]),
+            "desire": random.choice(["revenge", "freedom", "power", "transcendence"]),
+            "family_name": random.choice(["Chrome", "Neon", "Binary", "Ghost"]),
+            "quality": random.choice(["ruthless", "street-smart", "augmented", "connected"]),
         }
 
-        locs = locations.get(race, locations[None])
-        return random.choice(locs)
+    def _generate_scifi_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Sci-Fi-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["stellar", "void-touched", "gravity-born", "synthetic"]),
+            "location": self._generate_location(character.race),
+            "order": random.choice(["first", "third", "fifth", "tenth"]),
+            "virtue": random.choice(["exploration", "discovery", "unity", "progress"]),
+            "burden": random.choice(["isolation", "responsibility", "alien heritage", "time debt"]),
+            "event": random.choice(["solar flare", "alien contact", "jump failure", "colony collapse"]),
+            "precious_thing": random.choice(["homeworld", "ship", "crew", "memories"]),
+            "desire": random.choice(["home", "discovery", "peace", "understanding"]),
+            "quality": random.choice(["adaptable", "resilient", "curious", "determined"]),
+        }
+
+    def _generate_cosmic_horror_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Cosmic Horror-specific template variables."""
+        return {
+            "name": character.name,
+            "age": random.choice(["young", "middle-aged", "elderly", "uncertain"]),
+            "adjective": random.choice(["unspeakable", "forbidden", "eldritch", "sanity-blasting"]),
+            "location": self._generate_location(character.race),
+            "forbidden_topic": random.choice(["ancient texts", "stellar alignments", "dreams", "genealogy"]),
+            "event": random.choice(["the ritual", "the summoning", "the awakening", "the revelation"]),
+            "entity": random.choice(["the Old Ones", "something ancient", "the void", "forgotten gods"]),
+            "artifact": random.choice(["the tome", "the idol", "the medallion", "the map"]),
+            "precious_thing": random.choice(["sanity", "innocence", "faith", "humanity"]),
+        }
+
+    def _generate_post_apocalyptic_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Post-Apocalyptic-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["irradiated", "desolate", "brutal", "scarred"]),
+            "location": self._generate_location(character.race),
+            "disaster": random.choice(["the bombs", "the plague", "the collapse", "the war"]),
+            "time": random.choice(["generations", "decades", "years", "cycles"]),
+            "event": random.choice(["the bombs", "the plague", "the collapse", "the great dying"]),
+            "precious_thing": random.choice(["clean water", "medicine", "ammunition", "hope"]),
+            "principle": random.choice(["survival", "strength", "scavenging", "mutation"]),
+            "threat": random.choice(["raiders", "radiation", "mutants", "starvation"]),
+            "community": random.choice(["settlement", "vault", "tribe", "caravan"]),
+            "lesson": random.choice(["trust kills", "strength survives", "adapt or die", "hope is dangerous"]),
+        }
+
+    def _generate_western_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Western-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["dusty", "lawless", "frontier", "wild"]),
+            "location": self._generate_location(character.race),
+            "precious_thing": random.choice(["six-shooter", "horse", "badge", "gold"]),
+            "event": random.choice(["the shootout", "the hanging", "the robbery", "the betrayal"]),
+            "action": random.choice(["draw iron", "ride hard", "face justice", "seek revenge"]),
+            "secret": random.choice(["a bounty", "a murder", "stolen gold", "true identity"]),
+            "reputation": random.choice(["dangerous", "mysterious", "deadly", "honorable"]),
+        }
+
+    def _generate_superhero_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Superhero-specific template variables."""
+        return {
+            "name": character.name,
+            "precious_thing": random.choice(["normal life", "loved ones", "innocence", "humanity"]),
+            "burden": random.choice(["responsibility", "guilt", "destiny", "power"]),
+            "event": random.choice(["the accident", "the experiment", "the awakening", "the attack"]),
+            "responsibility": random.choice(["great responsibility", "protecting others", "justice", "hope"]),
+            "quality": random.choice(["extraordinary abilities", "great power", "unique gifts", "mutations"]),
+            "action": random.choice(["reveal themselves", "become a hero", "embrace destiny", "fight back"]),
+        }
