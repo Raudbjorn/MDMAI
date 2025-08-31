@@ -78,10 +78,9 @@ class OllamaEmbeddingProvider:
         except (requests.RequestException, ConnectionError):
             logger.warning("Ollama service not running. Checking if installed...")
             try:
-                # Use shlex for safe command construction
-                cmd = shlex.split("ollama --version")
+                # Use direct list for static commands
                 result = subprocess.run(
-                    cmd, 
+                    ["ollama", "--version"], 
                     capture_output=True, 
                     text=True,
                     timeout=5,  # Add timeout
@@ -95,24 +94,27 @@ class OllamaEmbeddingProvider:
     def start_ollama_service(self) -> bool:
         """Attempt to start Ollama service."""
         try:
-            # Use shlex for safe command construction
-            cmd = shlex.split("ollama serve")
+            # Use direct list for static commands
             # Start process with proper isolation
             process = subprocess.Popen(
-                cmd,
+                ["ollama", "serve"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True  # Isolate process group
             )
-            import time
-            time.sleep(3)  # Give service time to start
             
-            # Check if process started successfully
+            # Poll for service to be ready (improved from fixed sleep)
+            import time
+            for _ in range(10):  # Poll for up to 5 seconds
+                if self.check_ollama_installed():
+                    return True
+                time.sleep(0.5)
+            
+            # Check if process failed to start
             if process.poll() is not None:
                 logger.error(f"Ollama service exited with code: {process.returncode}")
-                return False
-                
-            return self.check_ollama_installed()
+            
+            return False
         except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to start Ollama service: {e}")
             return False
@@ -150,8 +152,9 @@ class OllamaEmbeddingProvider:
         try:
             logger.info(f"Pulling Ollama model: {model_name}")
             
-            # Validate model name to prevent injection
-            if not model_name or not model_name.replace("-", "").replace("_", "").replace(":", "").isalnum():
+            # Validate model name with proper regex to prevent injection
+            import re
+            if not model_name or not re.match(r'^[a-zA-Z0-9_-]+(?::[a-zA-Z0-9_.-]+)?$', model_name):
                 logger.error(f"Invalid model name: {model_name}")
                 return False
             
@@ -160,7 +163,7 @@ class OllamaEmbeddingProvider:
                 f"{self.api_url}/pull",
                 json={"name": model_name},
                 stream=True,
-                timeout=(30, None)  # 30s connect timeout, no read timeout for download
+                timeout=(30, 1800)  # 30s connect timeout, 30min read timeout for download
             )
             
             if show_progress:
@@ -220,7 +223,6 @@ class OllamaEmbeddingProvider:
     def generate_embeddings_batch(
         self, 
         texts: List[str], 
-        batch_size: int = 32,
         normalize: bool = True,
         max_workers: int = 4
     ) -> List[List[float]]:
@@ -229,7 +231,6 @@ class OllamaEmbeddingProvider:
         
         Args:
             texts: List of texts to embed
-            batch_size: Batch size for parallel processing
             normalize: Whether to normalize embeddings
             max_workers: Maximum number of parallel workers
             

@@ -15,6 +15,9 @@ from src.pdf_processing.ollama_provider import OllamaEmbeddingProvider
 
 logger = get_logger(__name__)
 
+# Constants
+OLLAMA_DEFAULT_MAX_LENGTH = 8192  # Default max sequence length for Ollama models
+
 
 class EmbeddingGenerator:
     """Generates vector embeddings for content chunks."""
@@ -131,7 +134,7 @@ class EmbeddingGenerator:
 
             try:
                 if self.use_ollama:
-                    # Generate embeddings using Ollama
+                    # Generate embeddings using Ollama (no batch_size param)
                     batch_embeddings = self.ollama_provider.generate_embeddings_batch(
                         batch_texts,
                         normalize=True
@@ -224,7 +227,7 @@ class EmbeddingGenerator:
         # Truncate if too long using model's actual max sequence length
         if self.use_ollama:
             # Ollama models typically handle longer contexts
-            max_length = 8192  # Most Ollama embedding models support this
+            max_length = OLLAMA_DEFAULT_MAX_LENGTH
             if len(prepared_text) > max_length:
                 prepared_text = prepared_text[:max_length]
         else:

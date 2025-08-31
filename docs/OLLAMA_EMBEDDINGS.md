@@ -216,7 +216,8 @@ class OllamaEmbeddingProvider:
     def check_ollama_installed(self) -> bool
     def pull_model(self, model_name: str) -> bool
     def generate_embedding(self, text: str) -> List[float]
-    def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]
+    def generate_embeddings_batch(self, texts: List[str], normalize: bool = True, 
+                                  max_workers: int = 4) -> List[List[float]]
 ```
 
 ### EmbeddingGenerator

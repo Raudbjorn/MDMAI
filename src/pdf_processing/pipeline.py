@@ -37,7 +37,7 @@ class PDFProcessingPipeline:
         self.adaptive_system = AdaptiveLearningSystem()
         
         # Prompt for embedding model choice if not already configured
-        if prompt_for_ollama and not hasattr(self, '_embedding_generator_prompted'):
+        if prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
             self.embedding_generator = EmbeddingGenerator.prompt_and_create()
             PDFProcessingPipeline._embedding_generator_prompted = True
         else:

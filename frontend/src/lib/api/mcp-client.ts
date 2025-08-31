@@ -68,7 +68,12 @@ export class MCPClient {
 			const securePayload = prepareForTransmission(provider, apiKey);
 			
 			// Initialize session via HTTPS (ensure HTTPS in production)
-			if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+			if (
+				typeof window !== 'undefined' &&
+				window.location.protocol !== 'https:' &&
+				window.location.hostname !== 'localhost' &&
+				window.location.hostname !== '127.0.0.1'
+			) {
 				console.warn('API keys should only be transmitted over HTTPS in production!');
 			}
 			
