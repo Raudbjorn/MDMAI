@@ -358,6 +358,32 @@ impl EncryptionManager {
         hex::encode(hasher.finalize().as_bytes())
     }
     
+    /// Generate hash from file using streaming I/O to avoid loading entire file into memory
+    /// Uses 64KB chunks for optimal performance with large files
+    pub async fn generate_hash_streaming<P: AsRef<std::path::Path>>(&self, path: P) -> Result<String, std::io::Error> {
+        const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+        
+        use tokio::fs::File;
+        use tokio::io::{AsyncReadExt, BufReader};
+        
+        let file = File::open(path.as_ref()).await?;
+        let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
+        let mut hasher = blake3::Hasher::new();
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        
+        loop {
+            let bytes_read = reader.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break; // End of file
+            }
+            
+            // Only hash the actual bytes read, not the entire buffer
+            hasher.update(&buffer[..bytes_read]);
+        }
+        
+        Ok(hex::encode(hasher.finalize().as_bytes()))
+    }
+    
     /// Verify hash
     pub fn verify_hash(&self, data: &[u8], expected_hash: &str) -> bool {
         let actual_hash = self.generate_hash(data);

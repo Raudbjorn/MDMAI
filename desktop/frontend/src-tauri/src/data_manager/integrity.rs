@@ -12,6 +12,8 @@ use super::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use sqlx::Row;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, BufReader};
 
 /// Data integrity checker for comprehensive validation
 pub struct IntegrityChecker {
@@ -423,13 +425,9 @@ impl IntegrityChecker {
                         auto_fixable: false,
                     });
                 } else if let Some(expected_hash) = &file_hash {
-                    // Verify file hash
-                    match std::fs::read(path) {
-                        Ok(file_content) => {
-                            let mut hasher = blake3::Hasher::new();
-                            hasher.update(&file_content);
-                            let actual_hash = hex::encode(hasher.finalize().as_bytes());
-                            
+                    // Verify file hash using streaming approach
+                    match Self::calculate_file_hash_streaming(path).await {
+                        Ok(actual_hash) => {
                             if actual_hash != *expected_hash {
                                 issues.push(IntegrityIssue {
                                     issue_type: IntegrityIssueType::HashMismatch,
@@ -494,13 +492,9 @@ impl IntegrityChecker {
                     auto_fixable: false,
                 });
             } else {
-                // Verify file hash
-                match std::fs::read(path) {
-                    Ok(file_content) => {
-                        let mut hasher = blake3::Hasher::new();
-                        hasher.update(&file_content);
-                        let actual_hash = hex::encode(hasher.finalize().as_bytes());
-                        
+                // Verify file hash using streaming approach
+                match Self::calculate_file_hash_streaming(path).await {
+                    Ok(actual_hash) => {
                         if actual_hash != file_hash {
                             issues.push(IntegrityIssue {
                                 issue_type: IntegrityIssueType::HashMismatch,
@@ -872,14 +866,10 @@ impl IntegrityChecker {
         };
         
         if let Some(path) = file_path {
-            let file_content = std::fs::read(&path)
+            let new_hash = Self::calculate_file_hash_streaming(&path).await
                 .map_err(|e| DataError::FileSystem {
-                    message: format!("Failed to read file for hash calculation: {}", e),
+                    message: format!("Failed to calculate file hash: {}", e),
                 })?;
-            
-            let mut hasher = blake3::Hasher::new();
-            hasher.update(&file_content);
-            let new_hash = hex::encode(hasher.finalize().as_bytes());
             
             match table_name {
                 "rulebooks" => {
@@ -918,6 +908,29 @@ impl IntegrityChecker {
         } else {
             None
         }
+    }
+    
+    /// Calculate file hash using streaming I/O to avoid loading entire file into memory
+    /// Uses 64KB chunks for optimal performance with large files
+    async fn calculate_file_hash_streaming<P: AsRef<Path>>(path: P) -> Result<String, std::io::Error> {
+        const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+        
+        let file = File::open(path.as_ref()).await?;
+        let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
+        let mut hasher = blake3::Hasher::new();
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        
+        loop {
+            let bytes_read = reader.read(&mut buffer).await?;
+            if bytes_read == 0 {
+                break; // End of file
+            }
+            
+            // Only hash the actual bytes read, not the entire buffer
+            hasher.update(&buffer[..bytes_read]);
+        }
+        
+        Ok(hex::encode(hasher.finalize().as_bytes()))
     }
 }
 

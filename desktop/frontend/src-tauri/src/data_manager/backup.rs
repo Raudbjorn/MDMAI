@@ -458,15 +458,16 @@ impl BackupManager {
                         message: format!("Failed to get file metadata: {}", e),
                     })?;
                 
-                let file_content = std::fs::read(path)
+                // Use streaming hash calculation to avoid loading entire file into memory
+                let hash = self.encryption.generate_hash_streaming(path).await
                     .map_err(|e| DataError::Backup {
-                        message: format!("Failed to read file for hashing: {}", e),
+                        message: format!("Failed to calculate file hash: {}", e),
                     })?;
                 
                 files.push(BackupFileEntry {
                     path: relative_path.to_string_lossy().to_string(),
                     size: metadata.len(),
-                    hash: self.encryption.generate_hash(&file_content),
+                    hash,
                     modified: metadata.modified()
                         .ok()
                         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
