@@ -265,7 +265,7 @@ export class RequestOptimizer {
     // Schedule new batch processing
     const timer = setTimeout(() => {
       this.processBatch(endpoint);
-    }, maxWaitTime) as any;
+    }, maxWaitTime);
 
     this.batchTimers.set(endpoint, timer);
   }
