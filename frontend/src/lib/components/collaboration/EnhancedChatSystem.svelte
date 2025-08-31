@@ -1169,7 +1169,7 @@
 	}
 </style>
 
-<script module lang="ts">
+<script context="module" lang="ts">
 	function getParticipantColor(userId: string): string {
 		// Generate a consistent color based on user ID
 		const colors = [
