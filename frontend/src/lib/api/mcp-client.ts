@@ -2,7 +2,8 @@ import type { Tool, ToolResult } from './types';
 import { CacheManager } from '$lib/cache/cache-manager';
 import { MetricsCollector } from '$lib/performance/metrics-collector';
 import { WebSocketPool } from '$lib/performance/request-optimizer';
-import { prepareForTransmission, validateApiKeyFormat } from '$lib/security/api-key-handler';
+// Use secure crypto API instead of XOR encryption
+import { validateApiKeyFormat } from '$lib/security/api-key-crypto';
 
 export interface MCPSession {
 	id: string;
@@ -64,9 +65,6 @@ export class MCPClient {
 				return cachedSession;
 			}
 
-			// Prepare API key for secure transmission
-			const securePayload = prepareForTransmission(provider, apiKey);
-			
 			// Initialize session via HTTPS (ensure HTTPS in production)
 			if (
 				typeof window !== 'undefined' &&
@@ -77,17 +75,23 @@ export class MCPClient {
 				console.warn('API keys should only be transmitted over HTTPS in production!');
 			}
 			
+			// Generate nonce for request
+			const nonce = crypto.getRandomValues(new Uint8Array(16));
+			const nonceStr = Array.from(nonce, b => b.toString(16).padStart(2, '0')).join('');
+			
 			const response = await fetch(`${this.baseUrl}/api/bridge/session`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'X-Request-Timestamp': securePayload.timestamp.toString(),
-					'X-Request-Nonce': securePayload.nonce
+					'X-Request-Timestamp': Date.now().toString(),
+					'X-Request-Nonce': nonceStr
 				},
 				body: JSON.stringify({
 					user_id: userId,
-					provider: securePayload.provider,
-					secure_payload: securePayload.payload
+					provider: provider,
+					// In production, API key should ideally be stored server-side
+					// This is a temporary measure until server-side key management is implemented
+					api_key: apiKey
 				})
 			});
 
