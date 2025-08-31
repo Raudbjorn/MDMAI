@@ -93,8 +93,17 @@ endif
 ifeq ($(OS),darwin)
     RUST_TARGET := $(ARCH)-apple-darwin
 else ifeq ($(OS),linux)
-    # Check for musl vs glibc
-    LIBC_TYPE := $(shell ldd --version 2>&1 | grep -q musl && echo musl || echo gnu)
+    # Check for musl vs glibc - robust detection for Alpine/musl compatibility
+    LIBC_TYPE := $(shell \
+        if [ -f /lib/ld-musl-$(ARCH).so.1 ] || [ -f /usr/lib/ld-musl-$(ARCH).so.1 ]; then \
+            echo musl; \
+        elif command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then \
+            echo musl; \
+        elif [ -f /lib64/ld-linux-x86-64.so.2 ] || [ -f /lib/ld-linux.so.2 ] || [ -f /lib64/ld-linux-aarch64.so.1 ]; then \
+            echo gnu; \
+        else \
+            echo gnu; \
+        fi)
     RUST_TARGET := $(ARCH)-unknown-linux-$(LIBC_TYPE)
 else ifeq ($(OS),windows)
     RUST_TARGET := $(ARCH)-pc-windows-msvc
@@ -361,17 +370,41 @@ watch:
 		sleep 2; \
 	done
 
-# Cross-compilation targets
+# Cross-compilation targets with configurable failure handling
+# Set FAIL_FAST=1 to stop on first failure, default continues on failures
+FAIL_FAST ?= 0
+
 .PHONY: build-all
 build-all:
 	@echo "$(BLUE)[BUILD-ALL]$(NC) Building for all supported targets..."
-	@for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+	@echo "$(BLUE)[BUILD-ALL]$(NC) Failure mode: $(if $(filter 1,$(FAIL_FAST)),fail-fast,continue-on-failure)"
+	@failed_targets=""; \
+	success_count=0; \
+	total_targets=5; \
+	for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
 		x86_64-apple-darwin aarch64-apple-darwin \
 		x86_64-pc-windows-msvc; do \
-		echo "Building for $$target..."; \
-		$(MAKE) -f Makefile.pyoxidizer RUST_TARGET=$$target build || true; \
-	done
-	@echo "$(GREEN)[BUILD-ALL]$(NC) Multi-target build complete"
+		echo "$(YELLOW)[BUILD]$(NC) Building for $$target..."; \
+		if $(MAKE) -f Makefile.pyoxidizer RUST_TARGET=$$target build; then \
+			echo "$(GREEN)[SUCCESS]$(NC) $$target build successful"; \
+			success_count=$$((success_count + 1)); \
+		else \
+			echo "$(RED)[FAILED]$(NC) $$target build failed"; \
+			failed_targets="$$failed_targets $$target"; \
+			if [ "$(FAIL_FAST)" = "1" ]; then \
+				echo "$(RED)[BUILD-ALL]$(NC) Stopping on first failure (FAIL_FAST=1)"; \
+				exit 1; \
+			fi; \
+		fi; \
+	done; \
+	echo "$(BLUE)[BUILD-ALL]$(NC) Build summary: $$success_count/$$total_targets successful"; \
+	if [ -n "$$failed_targets" ]; then \
+		echo "$(RED)[FAILED TARGETS]$(NC)$$failed_targets"; \
+		echo "$(YELLOW)[BUILD-ALL]$(NC) Use 'make FAIL_FAST=1 build-all' to stop on first failure"; \
+		exit 1; \
+	else \
+		echo "$(GREEN)[BUILD-ALL]$(NC) All targets built successfully"; \
+	fi
 
 # Docker build helper
 .PHONY: docker-build
