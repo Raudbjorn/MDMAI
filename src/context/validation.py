@@ -876,8 +876,9 @@ class ContextValidator:
         self._custom_rules[rule_category].append(rule_function)
         logger.info(f"Added custom validation rule for {rule_category}")
 
+    @staticmethod
     @lru_cache(maxsize=128)
-    def _suggest_schema_fix(self, validation_error: jsonschema.ValidationError) -> str:
+    def _suggest_schema_fix(validation_error: jsonschema.ValidationError) -> str:
         """Suggest a fix for schema validation error using pattern matching."""
         match validation_error.validator:
             case "required":
