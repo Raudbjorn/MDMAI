@@ -4,14 +4,12 @@ import asyncio
 import os
 import resource
 import shutil
-import signal
-import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, validator
 
@@ -370,8 +368,8 @@ class ProcessSandbox:
                 f"--cpus={self.config.resource_limits.cpu_percent/100}",
                 f"--pids-limit={self.config.resource_limits.max_processes}",
                 "--network=none" if not self.config.network_policy.allow_network else "",
-                f"--workdir=/sandbox",
-                f"-v", f"{sandbox_dir}:/sandbox",
+                "--workdir=/sandbox",
+                "-v", f"{sandbox_dir}:/sandbox",
                 "python:3.11-slim",
             ])
         
@@ -422,7 +420,6 @@ class ProcessSandbox:
             # Drop privileges if configured
             if self.config.drop_privileges and os.getuid() == 0:
                 import pwd
-                import grp
                 
                 # Get nobody user
                 nobody = pwd.getpwnam("nobody")

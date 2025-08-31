@@ -3,7 +3,6 @@
 import asyncio
 import time
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
@@ -13,7 +12,7 @@ from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.content_chunker import ContentChunk, ContentChunker
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
 from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
-from src.performance.parallel_processor import ParallelProcessor, ResourceLimits, TaskStatus
+from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
 from src.utils.file_size_handler import FileSizeCategory, FileSizeHandler
 from src.utils.security import InputSanitizer, InputValidationError, validate_path
 
@@ -141,7 +140,7 @@ class PDFProcessingPipeline:
                         self.chunker.max_chunk_size = recommendations["chunk_size"]
 
             logger.info(
-                f"Starting PDF processing",
+                "Starting PDF processing",
                 pdf=pdf_path,
                 rulebook=rulebook_name,
                 system=system,
@@ -162,10 +161,10 @@ class PDFProcessingPipeline:
 
             # Check for duplicate
             if self._is_duplicate(pdf_content["file_hash"]):
-                logger.warning(f"Duplicate PDF detected", hash=pdf_content["file_hash"])
+                logger.warning("Duplicate PDF detected", hash=pdf_content["file_hash"])
                 return {
                     "status": "duplicate",
-                    "message": f"This PDF has already been processed",
+                    "message": "This PDF has already been processed",
                     "file_hash": pdf_content["file_hash"],
                 }
 
@@ -229,7 +228,7 @@ class PDFProcessingPipeline:
                 "processing_time_seconds": round(processing_time, 2),
             }
 
-            logger.info(f"PDF processing complete", **stats)
+            logger.info("PDF processing complete", **stats)
 
             return stats
 
@@ -250,7 +249,7 @@ class PDFProcessingPipeline:
                 "pdf_path": pdf_path,
             }
         except Exception as e:
-            logger.error(f"Unexpected error during PDF processing", error=str(e), exc_info=True)
+            logger.error("Unexpected error during PDF processing", error=str(e), exc_info=True)
             return {
                 "status": "error",
                 "error": str(e),
@@ -480,13 +479,13 @@ class PDFProcessingPipeline:
                         stored_count += 1
                     except Exception as e:
                         logger.error(
-                            f"Failed to store chunk",
+                            "Failed to store chunk",
                             chunk_id=doc_id,
                             error=str(e),
                         )
         except Exception as e:
             logger.error(
-                f"Failed to store batch of chunks",
+                "Failed to store batch of chunks",
                 count=len(chunks),
                 error=str(e),
             )
@@ -519,7 +518,7 @@ class PDFProcessingPipeline:
                 },
             )
         except Exception as e:
-            logger.error(f"Failed to store source metadata", error=str(e))
+            logger.error("Failed to store source metadata", error=str(e))
 
     def get_processing_stats(self) -> Dict[str, Any]:
         """
@@ -554,7 +553,7 @@ class PDFProcessingPipeline:
             Reprocessing results
         """
         try:
-            logger.info(f"Reprocessing with corrections", source_id=source_id)
+            logger.info("Reprocessing with corrections", source_id=source_id)
 
             # Get source metadata
             source_doc = self.db.get_document(
@@ -583,7 +582,7 @@ class PDFProcessingPipeline:
             }
 
         except Exception as e:
-            logger.error(f"Reprocessing failed", error=str(e))
+            logger.error("Reprocessing failed", error=str(e))
             return {
                 "status": "error",
                 "error": str(e),

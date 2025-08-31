@@ -2,8 +2,7 @@
 
 import asyncio
 import json
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import Optional
 
 from structlog import get_logger
 
@@ -283,7 +282,7 @@ class AIProviderExample:
         
         # Get usage statistics
         usage_stats = self.provider_manager.usage_tracker.get_usage_stats()
-        print(f"\nUsage statistics:")
+        print("\nUsage statistics:")
         print(f"  Total requests: {usage_stats['total_requests']}")
         print(f"  Success rate: {usage_stats['success_rate']:.1%}")
         print(f"  Average cost: ${usage_stats['avg_cost_per_request']:.6f}")

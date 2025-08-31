@@ -1,7 +1,6 @@
 """Session management for the MCP Bridge Service."""
 
 import asyncio
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -11,7 +10,6 @@ from .mcp_process_manager import MCPProcessManager
 from .models import (
     BridgeConfig,
     MCPSession,
-    PendingRequest,
     SessionState,
     TransportType,
 )
@@ -197,7 +195,7 @@ class BridgeSessionManager:
             
             return result
             
-        except Exception as e:
+        except Exception:
             # Update session state on error
             session.state = SessionState.ERROR
             raise

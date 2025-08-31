@@ -8,7 +8,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .models import QualityLevel, Source, SourceMetadata, SourceQuality, SourceType
+from .models import Source, SourceMetadata, SourceQuality, SourceType
 
 logger = logging.getLogger(__name__)
 

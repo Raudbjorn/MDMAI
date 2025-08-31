@@ -1,13 +1,13 @@
 """ML-based query completion and suggestion system."""
 
-import difflib
+import json
 import pickle
 import re
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config.logging_config import get_logger
 
@@ -185,7 +185,7 @@ class QueryCompletionEngine:
         # Learning parameters
         self.min_frequency_threshold = 2
         self.learning_rate = 0.1
-        self.context_window = context_window
+        self.context_window = 5  # Default context window size
 
         # Load existing model if available
         if self.model_dir:

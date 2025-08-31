@@ -5,7 +5,7 @@ import random
 import re
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional
 
 from structlog import get_logger
 

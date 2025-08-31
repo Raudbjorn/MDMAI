@@ -2,17 +2,18 @@
 
 import json
 import statistics
-import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
-from config.settings import settings
 
 logger = get_logger(__name__)
+
+# Constants
+DEFAULT_CACHED_QUERY_LATENCY = 0.01  # 10ms default for cached queries
 
 
 class SearchMetrics:
@@ -123,7 +124,7 @@ class SearchAnalytics:
         self.daily_metrics = defaultdict(SearchMetrics)
 
         # Performance thresholds
-        self.latency_threshold = latency_threshold  # seconds
+        self.latency_threshold = 2.0  # seconds (default threshold)
         self.relevance_threshold = 0.5
 
         # Load persisted data if available

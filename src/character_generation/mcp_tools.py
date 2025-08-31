@@ -1,5 +1,6 @@
 """MCP tools for character and NPC generation."""
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -345,8 +346,9 @@ def register_character_tools(mcp_server):
             for result in results.get("documents", []):
                 doc = result.get("document", {})
                 if isinstance(doc, str):
-                    import json
-                doc = parse_json_document(doc)
+                    doc = json.loads(doc)
+                else:
+                    doc = doc
 
                 level = doc.get("stats", {}).get("level", 1)
                 if level_min and level < level_min:

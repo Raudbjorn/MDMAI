@@ -1,6 +1,5 @@
 """JWT token management for stateless authentication."""
 
-import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from enum import Enum

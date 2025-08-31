@@ -65,7 +65,7 @@ class EmbeddingGenerator:
                         raise RuntimeError(f"Could not download Ollama model: {self.model_name}")
                 
                 logger.info(
-                    f"Ollama embedding model initialized",
+                    "Ollama embedding model initialized",
                     model=self.model_name,
                     provider="ollama"
                 )
@@ -73,7 +73,7 @@ class EmbeddingGenerator:
                 self._initialize_sentence_transformer()
 
         except Exception as e:
-            logger.error(f"Failed to initialize embedding model", error=str(e))
+            logger.error("Failed to initialize embedding model", error=str(e))
             raise
     
     def _initialize_sentence_transformer(self):
@@ -88,7 +88,7 @@ class EmbeddingGenerator:
         self.model.eval()
 
         logger.info(
-            f"Sentence Transformer model initialized",
+            "Sentence Transformer model initialized",
             model=self.model_name,
             device=self.device,
             embedding_dim=self.model.get_sentence_embedding_dimension(),
@@ -153,7 +153,7 @@ class EmbeddingGenerator:
                         embeddings.append(embedding.tolist())
 
             except Exception as e:
-                logger.error(f"Failed to generate embeddings for batch", error=str(e))
+                logger.error("Failed to generate embeddings for batch", error=str(e))
                 # Re-raise the exception instead of silently adding zero embeddings
                 # Zero embeddings corrupt search quality
                 raise RuntimeError(f"Embedding generation failed for batch: {e}") from e
@@ -190,7 +190,7 @@ class EmbeddingGenerator:
                 return embedding.tolist()
 
         except Exception as e:
-            logger.error(f"Failed to generate embedding", error=str(e))
+            logger.error("Failed to generate embedding", error=str(e))
             # Raise exception instead of returning zero embeddings
             # Zero embeddings would corrupt search quality
             raise ValueError(f"Failed to generate embedding for text: {str(e)}")
@@ -325,7 +325,7 @@ class EmbeddingGenerator:
         """
         if len(chunks) != len(embeddings):
             logger.warning(
-                f"Chunk count mismatch",
+                "Chunk count mismatch",
                 chunks=len(chunks),
                 embeddings=len(embeddings),
             )
@@ -361,7 +361,7 @@ class EmbeddingGenerator:
             # Check dimension
             if len(embedding) != expected_dim:
                 logger.error(
-                    f"Invalid embedding dimension",
+                    "Invalid embedding dimension",
                     index=i,
                     expected=expected_dim,
                     actual=len(embedding),
@@ -370,12 +370,12 @@ class EmbeddingGenerator:
 
             # Check for NaN or Inf values
             if any(np.isnan(val) or np.isinf(val) for val in embedding):
-                logger.error(f"Invalid embedding values", index=i)
+                logger.error("Invalid embedding values", index=i)
                 return False
 
             # Check if all zeros (failed embedding)
             if all(val == 0.0 for val in embedding):
-                logger.warning(f"Zero embedding detected", index=i)
+                logger.warning("Zero embedding detected", index=i)
 
         return True
 

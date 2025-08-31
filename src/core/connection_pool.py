@@ -1,7 +1,7 @@
 """Connection pooling for database operations."""
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from config.logging_config import get_logger
 

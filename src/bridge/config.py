@@ -1,7 +1,5 @@
 """Configuration module for the MCP Bridge Service."""
 
-import os
-from pathlib import Path
 from typing import Dict, List, Optional
 
 from pydantic import BaseSettings, Field, validator

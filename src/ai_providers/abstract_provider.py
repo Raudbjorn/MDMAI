@@ -1,9 +1,8 @@
 """Abstract base class for AI providers."""
 
-import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List
 
 from structlog import get_logger
 
@@ -16,9 +15,7 @@ from .models import (
     ProviderConfig,
     ProviderHealth,
     ProviderStatus,
-    ProviderType,
     StreamingChunk,
-    UsageRecord,
 )
 
 logger = get_logger(__name__)

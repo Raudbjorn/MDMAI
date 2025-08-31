@@ -2,8 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
@@ -553,7 +552,7 @@ class InputValidator:
 
                 if not is_allowed:
                     return ValidationResult(
-                        False, None, [f"Path not within allowed directories"]
+                        False, None, ["Path not within allowed directories"]
                     )
 
             # Check existence

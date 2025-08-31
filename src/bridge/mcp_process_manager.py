@@ -3,12 +3,10 @@
 import asyncio
 import json
 import os
-import signal
 import sys
 from asyncio import subprocess
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import psutil
 from structlog import get_logger
@@ -16,14 +14,10 @@ from structlog import get_logger
 from .models import (
     BridgeConfig,
     MCPError,
-    MCPErrorCode,
     MCPNotification,
     MCPRequest,
-    MCPResponse,
-    MCPSession,
     PendingRequest,
     ProcessStats,
-    SessionState,
 )
 
 logger = get_logger(__name__)
@@ -221,7 +215,7 @@ class MCPProcess:
             self.num_errors += 1
             self.pending_requests.pop(request_id, None)
             raise TimeoutError(f"Request {method} timed out after {pending.timeout}s")
-        except Exception as e:
+        except Exception:
             self.num_errors += 1
             self.pending_requests.pop(request_id, None)
             raise
@@ -335,7 +329,7 @@ class MCPProcess:
                     # Handle the message
                     await self._handle_message(message)
                     
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # Log non-JSON output (might be debug logs)
                     logger.debug(
                         "Non-JSON output from MCP",

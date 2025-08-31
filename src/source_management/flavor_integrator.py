@@ -4,7 +4,7 @@ import logging
 import random
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .models import FlavorSource, Source, SourceType
 

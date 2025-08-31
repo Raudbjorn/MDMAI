@@ -1,11 +1,11 @@
 """Security models and data structures."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class AuthProvider(Enum):
@@ -202,13 +202,11 @@ class WebSession(BaseModel):
             return True
         
         # Check idle timeout
-        idle_limit = self.last_activity_at + datetime.timedelta(minutes=self.idle_timeout_minutes)
+        idle_limit = self.last_activity_at + timedelta(minutes=self.idle_timeout_minutes)
         if now > idle_limit:
             return True
         
         return False
-
-        self.last_activity_at = datetime.now(timezone.utc)
 
 
 class ApiKey(BaseModel):

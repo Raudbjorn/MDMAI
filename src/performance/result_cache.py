@@ -4,11 +4,11 @@ import functools
 import hashlib
 import inspect
 import json
-from typing import Any, Callable, Dict, Optional, Set, Union
+from typing import Any, Callable, Dict, Optional, Set
 
 from config.logging_config import get_logger
 
-from .cache_system import CacheSystem, cache_key_generator
+from .cache_system import CacheSystem
 
 logger = get_logger(__name__)
 

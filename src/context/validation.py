@@ -5,11 +5,10 @@ import json
 import logging
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 from uuid import uuid4
 
 import jsonschema
-from pydantic import ValidationError
 
 from .models import (
     Context,
@@ -18,7 +17,6 @@ from .models import (
     CollaborativeContext,
     ContextType,
     ContextState,
-    ProviderContext,
 )
 
 logger = logging.getLogger(__name__)
