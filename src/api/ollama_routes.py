@@ -191,7 +191,7 @@ class OllamaRoutes:
                 if model_type == ModelType.EMBEDDING:
                     # Check if it's a known embedding model
                     base_name = model_name.split(":")[0]
-                    if base_name in OllamaEmbeddingProvider.EMBEDDING_MODELS:
+                    if hasattr(OllamaEmbeddingProvider, "EMBEDDING_MODELS") and base_name in OllamaEmbeddingProvider.EMBEDDING_MODELS:
                         model_info = OllamaEmbeddingProvider.EMBEDDING_MODELS[base_name]
                         dimension = model_info.get("dimension")
                         description = model_info.get("description")
