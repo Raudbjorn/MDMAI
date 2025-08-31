@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { sessionStore } from '$lib/stores/session.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { BookOpen, Users, Brain, Shield, Search, Plus, Settings, Upload } from 'lucide-svelte';
+	import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui';
+	import { BookOpen, Users, Brain, Search, Plus, Settings, Upload } from 'lucide-svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
 
@@ -10,63 +9,57 @@
 	let searchResults = $state<any[]>([]);
 	let isSearching = $state(false);
 	
-	// Derived state for recent messages
-	let recentMessages = $derived(sessionStore.messages.slice(-5));
-
-	async function handleSearch() {
-		if (!searchQuery.trim()) return;
-		
-		isSearching = true;
-		try {
-			const result = await sessionStore.callTool('search_rules', {
-				query: searchQuery,
-				limit: 10
-			});
-			searchResults = result.data || [];
-			if (searchResults.length === 0) {
-				toast.info('No results found');
-			}
-		} catch (error) {
-			toast.error('Search failed: ' + (error as Error).message);
-		} finally {
-			isSearching = false;
-		}
-	}
-
-	async function quickAction(action: string) {
-		try {
-			switch (action) {
-				case 'upload_pdf':
-					goto('/upload');
-					break;
-				case 'roll_dice':
-					const diceResult = await sessionStore.callTool('roll_dice', { 
-						dice_notation: '1d20' 
-					});
-					toast.success(`Rolled 1d20: ${diceResult.data.result}`);
-					break;
-				case 'generate_npc':
-					toast.info('Generating NPC...');
-					const npc = await sessionStore.callTool('generate_npc', {
-						level: 5,
-						type: 'merchant'
-					});
-					toast.success(`Generated NPC: ${npc.data.name}`);
-					break;
-				default:
-					toast.info(`Action ${action} not yet implemented`);
-			}
-		} catch (error) {
-			toast.error(`Action failed: ${(error as Error).message}`);
-		}
-	}
-
+	const recentMessages = $derived(sessionStore.messages.slice(-5));
 	const stats = $derived({
 		campaigns: sessionStore.user?.campaigns.length || 0,
 		isConnected: sessionStore.isConnected,
 		currentCampaign: sessionStore.currentCampaign?.name || 'None',
 		session: sessionStore.currentGameSession?.active ? 'Active' : 'Inactive'
 	});
+
+	const quickActions = [
+		{ id: 'upload_pdf', title: 'Upload PDF', desc: 'Process game documents', icon: Upload, href: '/upload' },
+		{ id: 'new_session', title: 'New Session', desc: 'Start a new game session', icon: Plus },
+		{ id: 'roll_dice', title: 'Quick Roll', desc: 'Roll dice quickly', icon: Brain },
+		{ id: 'generate_npc', title: 'Generate NPC', desc: 'Create a new NPC', icon: Users },
+		{ id: 'view_notes', title: 'Session Notes', desc: 'View recent notes', icon: BookOpen }
+	];
+
+	const handleSearch = async () => {
+		if (!searchQuery.trim()) return;
+		
+		isSearching = true;
+		try {
+			const result = await sessionStore.callTool('search_rules', { query: searchQuery, limit: 10 });
+			searchResults = result.data || [];
+			if (!searchResults.length) toast.info('No results found');
+		} catch (error) {
+			toast.error(`Search failed: ${(error as Error).message}`);
+		} finally {
+			isSearching = false;
+		}
+	};
+
+	const quickAction = async (action: string) => {
+		try {
+			const actions = {
+				upload_pdf: () => goto('/upload'),
+				roll_dice: async () => {
+					const result = await sessionStore.callTool('roll_dice', { dice_notation: '1d20' });
+					toast.success(`Rolled 1d20: ${result.data.result}`);
+				},
+				generate_npc: async () => {
+					toast.info('Generating NPC...');
+					const npc = await sessionStore.callTool('generate_npc', { level: 5, type: 'merchant' });
+					toast.success(`Generated NPC: ${npc.data.name}`);
+				},
+				default: () => toast.info(`Action ${action} not yet implemented`)
+			};
+			await (actions[action as keyof typeof actions] || actions.default)();
+		} catch (error) {
+			toast.error(`Action failed: ${(error as Error).message}`);
+		}
+	};
 </script>
 
 <svelte:head>
@@ -156,55 +149,17 @@
 
 		<!-- Quick Actions -->
 		<div class="mb-6 grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('upload_pdf')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Upload PDF</CardTitle>
-					<Upload class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Process game documents</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('new_session')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">New Session</CardTitle>
-					<Plus class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Start a new game session</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('roll_dice')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Quick Roll</CardTitle>
-					<Brain class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Roll dice quickly</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('generate_npc')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Generate NPC</CardTitle>
-					<Users class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">Create a new NPC</p>
-				</CardContent>
-			</Card>
-
-			<Card class="cursor-pointer hover:bg-muted/50" onclick={() => quickAction('view_notes')}>
-				<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle class="text-sm font-medium">Session Notes</CardTitle>
-					<BookOpen class="h-4 w-4 text-muted-foreground" />
-				</CardHeader>
-				<CardContent>
-					<p class="text-xs text-muted-foreground">View recent notes</p>
-				</CardContent>
-			</Card>
+			{#each quickActions as { id, title, desc, icon: Icon, href }}
+				<Card class="cursor-pointer hover:bg-muted/50" onclick={href ? () => goto(href) : () => quickAction(id)}>
+					<CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+						<CardTitle class="text-sm font-medium">{title}</CardTitle>
+						<Icon class="h-4 w-4 text-muted-foreground" />
+					</CardHeader>
+					<CardContent>
+						<p class="text-xs text-muted-foreground">{desc}</p>
+					</CardContent>
+				</Card>
+			{/each}
 		</div>
 
 		<!-- Main Content Areas -->

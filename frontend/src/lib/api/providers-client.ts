@@ -9,7 +9,7 @@ import type {
 	ProviderHealth,
 	AIProviderStats,
 	ProviderConfigRequest,
-	ProviderConfigResponse,
+	APIResponse,
 	ProviderStatsRequest,
 	ProviderStatsResponse,
 	ProviderHealthResponse,

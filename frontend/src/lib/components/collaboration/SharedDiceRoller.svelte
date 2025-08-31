@@ -2,31 +2,18 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { collaborationStore } from '$lib/stores/collaboration.svelte';
 	import type { DiceRoll } from '$lib/types/collaboration';
-	
-	interface DicePreset {
-		name: string;
-		expression: string;
-		icon: string;
-		color: string;
-	}
-	
+
 	interface Props {
 		roomId: string;
 		maxHistory?: number;
 		showAnimation?: boolean;
 		compactMode?: boolean;
 	}
-	
-	let {
-		roomId,
-		maxHistory = 20,
-		showAnimation = true,
-		compactMode = false
-	}: Props = $props();
-	
-	// State
+
+	let { roomId, maxHistory = 20, showAnimation = true, compactMode = false }: Props = $props();
+
 	let customExpression = $state('');
-	let selectedPreset = $state<DicePreset | null>(null);
+	let selectedPreset = $state<number | null>(null);
 	let rollHistory = $state<DiceRoll[]>([]);
 	let isRolling = $state(false);
 	let animatedResult = $state<number | null>(null);
@@ -34,13 +21,9 @@
 	let advantage = $state<'normal' | 'advantage' | 'disadvantage'>('normal');
 	let modifier = $state(0);
 	let criticalRange = $state(20);
-	let rerollOnes = $state(false);
-	
-	// Animation state for individual dice
 	let animatingDice = $state<{ value: number; final: number; id: string }[]>([]);
-	
-	// Dice presets
-	const presets: DicePreset[] = [
+
+	const presets = [
 		{ name: 'd4', expression: '1d4', icon: '△', color: '#f59e0b' },
 		{ name: 'd6', expression: '1d6', icon: '□', color: '#10b981' },
 		{ name: 'd8', expression: '1d8', icon: '◇', color: '#3b82f6' },
@@ -49,33 +32,16 @@
 		{ name: 'd20', expression: '1d20', icon: '⬡', color: '#ef4444' },
 		{ name: 'd100', expression: '1d100', icon: '%', color: '#6b7280' }
 	];
-	
-	// Common roll purposes
-	const purposes = [
-		'Attack Roll',
-		'Damage',
-		'Saving Throw',
-		'Ability Check',
-		'Initiative',
-		'Death Save',
-		'Concentration',
-		'Custom'
-	];
-	
+
+	const purposes = ['Attack Roll', 'Damage', 'Saving Throw', 'Ability Check', 'Initiative', 'Death Save', 'Concentration', 'Custom'];
 	let selectedPurpose = $state('Custom');
 	let unsubscribe: (() => void) | null = null;
 	
-	onMount(() => {
-		// Subscribe to dice roll events
-		unsubscribe = collaborationStore.onMessage('dice_roll', (msg) => {
-			handleDiceRoll(msg.data as DiceRoll);
-		});
-		
-		// Load initial roll history from room
+	$effect(() => {
+		unsubscribe = collaborationStore.onMessage('dice_roll', handleDiceRoll);
 		const room = collaborationStore.currentRoom;
-		if (room) {
-			rollHistory = room.state.dice_rolls.slice(-maxHistory);
-		}
+		if (room) rollHistory = room.state.dice_rolls.slice(-maxHistory);
+		return () => unsubscribe?.();
 	});
 	
 	onDestroy(() => {

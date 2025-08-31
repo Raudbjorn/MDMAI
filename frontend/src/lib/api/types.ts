@@ -1,5 +1,12 @@
 // Core types for TTRPG Assistant
 
+// Utility types
+export type Result<T, E = string> = { ok: true; value: T } | { ok: false; error: E };
+export type Optional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+export type Timestamp = string;
+export type ID = string;
+
+// API types
 export interface Tool {
 	name: string;
 	description: string;
@@ -13,14 +20,14 @@ export interface ToolResult {
 }
 
 export interface Campaign {
-	id: string;
+	id: ID;
 	name: string;
 	system: string;
 	description: string;
-	created_at: string;
-	updated_at: string;
-	gm_id: string;
-	players: string[];
+	created_at: Timestamp;
+	updated_at: Timestamp;
+	gm_id: ID;
+	players: ID[];
 	active: boolean;
 }
 
