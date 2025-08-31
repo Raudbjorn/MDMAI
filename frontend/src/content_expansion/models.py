@@ -14,27 +14,27 @@ from pathlib import Path
 
 class TTRPGGenre(Enum):
     """Enumeration of TTRPG genres for classification."""
-    FANTASY = auto()
-    SCI_FI = auto()
-    CYBERPUNK = auto()
-    COSMIC_HORROR = auto()
-    POST_APOCALYPTIC = auto()
-    STEAMPUNK = auto()
-    URBAN_FANTASY = auto()
-    SPACE_OPERA = auto()
-    SUPERHERO = auto()
-    HISTORICAL = auto()
-    WESTERN = auto()
-    NOIR = auto()
-    PULP = auto()
-    MODERN = auto()
-    MILITARY = auto()
-    HORROR = auto()
-    MYSTERY = auto()
-    MYTHOLOGICAL = auto()
-    ANIME = auto()
-    GENERIC = auto()
-    UNKNOWN = auto()
+    FANTASY = "FANTASY"
+    SCI_FI = "SCI_FI"
+    CYBERPUNK = "CYBERPUNK"
+    COSMIC_HORROR = "COSMIC_HORROR"
+    POST_APOCALYPTIC = "POST_APOCALYPTIC"
+    STEAMPUNK = "STEAMPUNK"
+    URBAN_FANTASY = "URBAN_FANTASY"
+    SPACE_OPERA = "SPACE_OPERA"
+    SUPERHERO = "SUPERHERO"
+    HISTORICAL = "HISTORICAL"
+    WESTERN = "WESTERN"
+    NOIR = "NOIR"
+    PULP = "PULP"
+    MODERN = "MODERN"
+    MILITARY = "MILITARY"
+    HORROR = "HORROR"
+    MYSTERY = "MYSTERY"
+    MYTHOLOGICAL = "MYTHOLOGICAL"
+    ANIME = "ANIME"
+    GENERIC = "GENERIC"
+    UNKNOWN = "UNKNOWN"
 
 
 class ContentType(Enum):
