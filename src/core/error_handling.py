@@ -510,7 +510,7 @@ class CircuitBreaker:
             
             return result
             
-        except self.expected_exception:
+        except self.expected_exception as e:
             async with self._lock:
                 self._failure_count += 1
                 self._last_failure_time = datetime.utcnow()
