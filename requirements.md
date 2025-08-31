@@ -238,3 +238,79 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - The system SHALL use structured logging with correlation IDs for debugging
 - The system SHALL implement retry logic with exponential backoff for external services
 - The system SHALL use type hints and static type checking with mypy
+
+## Desktop Application Requirements (Phase 23)
+
+### Functional Requirements
+
+#### REQ-021: Desktop Application Core
+- The system SHALL provide a standalone desktop application for Windows, macOS, and Linux
+- The desktop app SHALL embed the Python MCP server as a subprocess
+- The desktop app SHALL reuse the existing SvelteKit frontend in a WebView
+- The desktop app SHALL operate fully offline without internet connectivity
+- The desktop app SHALL provide native file system access with appropriate sandboxing
+
+#### REQ-022: Installation and Distribution
+- The system SHALL provide platform-specific installers (MSI/NSIS for Windows, DMG for macOS, AppImage/deb/rpm for Linux)
+- The installer SHALL bundle all required dependencies including Python runtime
+- The application SHALL support auto-updates with user consent
+- The installation package SHALL be under 70MB total size
+- The system SHALL support portable/no-install mode for USB deployment
+
+#### REQ-023: Process Management
+- The desktop app SHALL manage the Python MCP server lifecycle (start, stop, restart)
+- The system SHALL handle process crashes gracefully with automatic restart
+- The app SHALL monitor resource usage and provide alerts for high consumption
+- The system SHALL support running multiple isolated sessions
+- The app SHALL clean up all resources on exit
+
+#### REQ-024: Native Integration
+- The system SHALL integrate with the OS system tray for background operation
+- The app SHALL register file associations for .ttrpg project files
+- The system SHALL support drag-and-drop for PDF import
+- The app SHALL provide native file dialogs for better UX
+- The system SHALL integrate with OS notifications
+
+#### REQ-025: Data Management
+- The desktop app SHALL store all data locally in the user's data directory
+- The system SHALL provide data export/import functionality
+- The app SHALL support automatic backups with configurable retention
+- The system SHALL migrate data from web version if requested
+- The app SHALL encrypt sensitive data using OS keychain services
+
+#### REQ-026: Performance Requirements
+- The desktop app SHALL start in under 2 seconds on modern hardware
+- The app SHALL use less than 150MB RAM when idle
+- The system SHALL maintain sub-5ms IPC latency between frontend and backend
+- The app SHALL support PDF processing of 100+ page documents locally
+- The system SHALL handle 10,000+ indexed documents efficiently
+
+### Non-Functional Requirements
+
+#### NFR-007: Desktop Security
+- The app SHALL run the Python process with minimal required permissions
+- The system SHALL validate all IPC messages between components
+- The app SHALL implement CSP headers in the WebView
+- The system SHALL use OS-native credential storage for API keys
+- The app SHALL log security events for audit purposes
+
+#### NFR-008: Desktop User Experience
+- The app SHALL provide a native look and feel on each platform
+- The system SHALL support keyboard shortcuts for common operations
+- The app SHALL remember window size and position between sessions
+- The system SHALL provide smooth animations and transitions
+- The app SHALL support both light and dark themes with OS sync
+
+#### NFR-009: Desktop Reliability
+- The app SHALL handle network disconnections gracefully
+- The system SHALL recover from subprocess crashes automatically
+- The app SHALL preserve user data during unexpected shutdowns
+- The system SHALL validate data integrity on startup
+- The app SHALL provide diagnostic tools for troubleshooting
+
+#### NFR-010: Desktop Maintainability
+- The app SHALL share 95% of frontend code with web version
+- The system SHALL use single codebase for all desktop platforms
+- The app SHALL provide debug logging with configurable levels
+- The system SHALL support remote diagnostics with user consent
+- The app SHALL track usage metrics locally (with opt-out)

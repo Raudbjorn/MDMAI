@@ -1,0 +1,27 @@
+[package]
+name = "ttrpg-assistant"
+version = "1.0.0"
+description = "TTRPG Assistant Desktop Application"
+authors = ["TTRPG Assistant Team"]
+license = "MIT"
+repository = "https://github.com/Raudbjorn/MDMAI"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["shell-sidecar", "process-all", "fs-all", "dialog-all", "http-all", "notification-all", "clipboard-all", "window-all", "system-tray"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.10"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[[bin]]
+name = "ttrpg-assistant"
+path = "src/main.rs"
