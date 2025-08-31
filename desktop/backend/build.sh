@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Build Script for TTRPG Assistant MCP Server Backend
 # POSIX-compliant version with comprehensive error handling and platform support
