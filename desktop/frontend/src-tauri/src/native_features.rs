@@ -317,7 +317,7 @@ impl SystemTrayManager {
                             HealthStatus::Unhealthy => "Running (Unhealthy)",
                             HealthStatus::Unknown => "Running",
                         };
-                        (format!("MCP Server: {}", health_text).leak(), false, true, true)
+                        (format!("MCP Server: {}", health_text), false, true, true)
                     },
                     ProcessState::Stopping => ("MCP Server: Stopping...", false, false, false),
                     ProcessState::Crashed => ("MCP Server: Crashed", true, false, false),
