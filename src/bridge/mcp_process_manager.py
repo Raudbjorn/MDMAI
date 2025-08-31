@@ -496,8 +496,12 @@ class MCPProcess:
             except asyncio.TimeoutError:
                 self.process.kill()
                 await self.process.wait()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(
+                    "Error during process cleanup",
+                    session_id=self.session_id,
+                    error=str(e),
+                )
             self.process = None
     
     def get_stats(self) -> ProcessStats:

@@ -181,11 +181,86 @@ Each game system has a unique personality:
 - Maintain clear separation between rulebook and flavor sources
 - Version all campaign data for rollback capability
 
+## GUI Development Guidelines
+
+### Shared Components Between Webapp and Desktop
+
+When adding new UI features that need to work in both the webapp and desktop app:
+
+1. **Create shared components in `/frontend/src/lib/components/`**
+   - Use environment detection: `if (browser && window.__TAURI__)` for desktop-specific code
+   - Abstract API calls through a client layer that can switch between direct HTTP and Tauri IPC
+
+2. **Use Svelte 5 Runes for State Management**
+   ```typescript
+   // Use $state for reactive state
+   let state = $state<StateType>({...});
+   
+   // Use $derived for computed values
+   computedValue = $derived(() => this.state.value * 2);
+   
+   // Use $effect for side effects
+   $effect(() => { /* reaction to state changes */ });
+   ```
+
+3. **Follow Error-as-Values Pattern**
+   ```typescript
+   type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+   ```
+
+4. **Component Structure**
+   - Keep components focused and single-purpose
+   - Create separate components for complex UI elements
+   - Use TypeScript for all component props and events
+   - Make components accessible with proper ARIA labels
+
+5. **Model Selection Pattern (Ollama Example)**
+   - List only what's already installed (don't manage installations in-app)
+   - Provide clear fallback options (e.g., Sentence Transformers)
+   - Show service status clearly
+   - Integrate selection at point of use (e.g., PDF upload)
+
+### Adding Provider Support
+
+When adding new AI provider support (like Ollama):
+
+1. **Update Types** (`/frontend/src/lib/types/providers.ts`)
+   - Add to `ProviderType` enum
+   - Create specific types file if needed
+
+2. **Create API Client** (`/frontend/src/lib/api/[provider]-client.ts`)
+   - Implement standard interface methods
+   - Handle both webapp and desktop environments
+
+3. **Create Store** (`/frontend/src/lib/stores/[provider].ts`)
+   - Use Svelte 5 runes
+   - Include caching and error handling
+   - Persist user preferences to localStorage
+
+4. **Create UI Components**
+   - Selector component for choosing models/options
+   - Status indicator for service availability
+   - Integration with existing workflows
+
+### Testing Guidelines
+
+1. **Backend Tests** (`/tests/`)
+   - Test API endpoints with mocked services
+   - Test model selection and fallbacks
+   - Test error conditions
+
+2. **Frontend Tests** (`/frontend/src/lib/components/**/*.test.ts`)
+   - Use Vitest and Testing Library
+   - Mock API calls
+   - Test user interactions
+   - Test error states and loading states
+
 ## Common Commands
 ```bash
 # Backend Setup
 pip install -r requirements.txt  # Install Python dependencies
 python src/main.py  # Run the MCP server
+python run_api.py  # Run the FastAPI server
 
 # Frontend Setup
 cd frontend
@@ -194,8 +269,15 @@ npm run dev  # Start SvelteKit dev server
 npm run build  # Build for production
 npm run preview  # Preview production build
 
+# Desktop App
+cd desktop/frontend
+npm install
+npm run tauri:dev  # Run desktop app in dev mode
+npm run tauri:build  # Build desktop app
+
 # Testing
 pytest tests/  # Run Python tests
+pytest tests/test_ollama_model_selection.py  # Run specific test
 cd frontend && npm test  # Run frontend tests
 
 # Code Quality
