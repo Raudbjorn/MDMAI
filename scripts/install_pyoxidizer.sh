@@ -1,12 +1,9 @@
 #!/bin/bash
-"""
-PyOxidizer Installation Script for MDMAI Project
-Installs PyOxidizer on Linux, macOS, and Windows (WSL/Git Bash)
-
-This script automates the installation of PyOxidizer, which is required
-to build standalone executables of the MDMAI MCP Server.
-"""
-
+# PyOxidizer Installation Script for MDMAI Project
+# Installs PyOxidizer on Linux, macOS, and Windows (WSL/Git Bash)
+#
+# This script automates the installation of PyOxidizer, which is required
+# to build standalone executables of the MDMAI MCP Server.
 set -e  # Exit on any error
 
 # Colors for output

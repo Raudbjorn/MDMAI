@@ -19,8 +19,22 @@ PyOxidizer Version: 0.24.0+
 PYOXIDIZER_VERSION = "0.24.0"
 AUTHOR = "MDMAI Project"
 APP_NAME = "mdmai-mcp-server"
-APP_VERSION = "0.1.0"
 
+def get_app_version():
+    """Read the version from pyproject.toml."""
+    import re
+    try:
+        with open("pyproject.toml", "r", encoding="utf-8") as f:
+            content = f.read()
+        # Look for a line like: version = "0.1.0"
+        match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except Exception as e:
+        print(f"Warning: Could not read version from pyproject.toml: {e}")
+    return "0.1.0"  # fallback default
+
+APP_VERSION = get_app_version()
 # Build configuration
 DEBUG_BUILD = VARS.get("debug", False)
 OPTIMIZE_LEVEL = 2 if not DEBUG_BUILD else 0
@@ -285,7 +299,7 @@ def make_msi():
     )
     
     msi.help_url = "https://github.com/mdmai-project/MDMAI"
-    msi.upgrade_code = "12345678-1234-1234-1234-123456789012"  # Generate unique GUID
+    msi.upgrade_code = "e2b7c1a2-4f3b-4c8e-9b2a-7e6d2f1c5a9b"  # Unique GUID for MSI upgrade code
     
     msi.add_program_files_manifest(exe)
     
