@@ -42,7 +42,9 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     TARGET_TRIPLE="x86_64-unknown-linux-gnu"
     EXT=""
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-    TARGET_TRIPLE="x86_64-apple-darwin"
+    ARCH=$(uname -m)
+    if [[ "$ARCH" == "arm64" ]]; then ARCH="aarch64"; fi
+    TARGET_TRIPLE="${ARCH}-apple-darwin"
     EXT=""
 elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]] || [[ "$OSTYPE" == "win32" ]]; then
     TARGET_TRIPLE="x86_64-pc-windows-msvc"
