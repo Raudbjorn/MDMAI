@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import sys
-from asyncio import subprocess
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -49,7 +48,7 @@ class MCPProcess:
         self._lock = asyncio.Lock()
         self._running = False
         self._initialized = False
-        self._auto_restart = True  # Enable automatic restart on failure
+        self._auto_restart = True
     
     async def start(self) -> bool:
         """Start the MCP server subprocess."""

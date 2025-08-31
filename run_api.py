@@ -13,17 +13,9 @@ if __name__ == "__main__":
     import uvicorn
     
     print("Starting MDMAI API Server...")
-    print("=" * 60)
-    print("API Documentation will be available at:")
-    print("  - Swagger UI: http://localhost:8000/docs")
-    print("  - ReDoc: http://localhost:8000/redoc")
-    print("  - Health check: http://localhost:8000/health")
-    print("\nOllama endpoints:")
-    print("  - GET  /api/ollama/models  - List installed models")
-    print("  - GET  /api/ollama/status  - Check Ollama status")
-    print("  - POST /api/ollama/select  - Select embedding model")
-    print("  - GET  /api/ollama/current - Get current model info")
-    print("=" * 60)
+    print("Docs: http://localhost:8000/docs")
+    print("Health: http://localhost:8000/health")
+    print("Ollama endpoints: /api/ollama/models, /api/ollama/status")
     
     uvicorn.run(
         "src.api.main:app",

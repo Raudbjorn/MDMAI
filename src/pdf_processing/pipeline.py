@@ -36,17 +36,8 @@ class PDFProcessingPipeline:
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
         
-        # Initialize embedding generator with specified model if provided
-        if model_name:
-            # Use the specified model directly
-            self.embedding_generator = EmbeddingGenerator(model_name=model_name)
-        elif prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
-            # Prompt for model selection if not specified
-            self.embedding_generator = EmbeddingGenerator.prompt_and_create()
-            PDFProcessingPipeline._embedding_generator_prompted = True
-        else:
-            # Use default configuration
-            self.embedding_generator = EmbeddingGenerator()
+        # Initialize embedding generator
+        self.embedding_generator = self._init_embedding_generator(model_name, prompt_for_ollama)
             
         self.db = get_db_manager()
         self.enable_parallel = enable_parallel
@@ -93,57 +84,12 @@ class PDFProcessingPipeline:
 
         try:
             # Validate inputs
-            # Validate and sanitize inputs
-            try:
-                pdf_path_obj = validate_path(pdf_path, must_exist=True)
-                if pdf_path_obj.suffix.lower() != ".pdf":
-                    raise ValueError(f"File must be a PDF: {pdf_path}")
-            except Exception as e:
-                logger.error(f"Path validation failed: {e}")
-                raise ValueError(f"Invalid PDF path: {e}") from e
+            pdf_path_obj = self._validate_inputs(pdf_path, rulebook_name, system, source_type)
 
-            # Sanitize string inputs
-            sanitizer = InputSanitizer()
-            try:
-                rulebook_name = sanitizer.validate_system_name(rulebook_name)
-                system = sanitizer.validate_system_name(system)
-            except InputValidationError as e:
-                logger.error(f"Input validation failed: {e}")
-                raise ValueError(f"Invalid input: {e}") from e
-
-            if not rulebook_name or not system:
-                raise ValueError("rulebook_name and system are required")
-
-            if source_type not in ["rulebook", "flavor"]:
-                raise ValueError("source_type must be 'rulebook' or 'flavor'")
-
-            # Check file size if not skipped
-            if not skip_size_check and not user_confirmed:
-                file_info = FileSizeHandler.get_file_info(pdf_path_obj)
-                category = FileSizeCategory(file_info["category"])
-
-                # Return confirmation request for large files
-                if file_info["requires_confirmation"]:
-                    logger.info(f"Large file detected, confirmation required: {file_info['name']}")
-                    return {
-                        "success": False,
-                        "requires_confirmation": True,
-                        "file_info": file_info,
-                        "confirmation_message": FileSizeHandler.generate_confirmation_message(
-                            file_info
-                        ),
-                        "message": f"File '{file_info['name']}' is {file_info['size_formatted']}. Confirmation required to proceed.",
-                    }
-
-                # Adjust processing parameters for large files
-                if category in [FileSizeCategory.LARGE, FileSizeCategory.VERY_LARGE]:
-                    recommendations = FileSizeHandler.get_processing_recommendations(file_info)
-                    logger.info(
-                        f"Adjusting processing parameters for large file: {recommendations}"
-                    )
-                    # Apply recommendations to chunker and other components
-                    if hasattr(self.chunker, "max_chunk_size"):
-                        self.chunker.max_chunk_size = recommendations["chunk_size"]
+            # Handle file size validation
+            size_result = self._handle_file_size(pdf_path_obj, skip_size_check, user_confirmed)
+            if size_result:
+                return size_result
 
             logger.info(
                 "Starting PDF processing",
@@ -285,6 +231,32 @@ class PDFProcessingPipeline:
                 return True
 
         return False
+    
+    def _handle_file_size(self, pdf_path_obj, skip_size_check: bool, user_confirmed: bool):
+        """Handle file size validation and adjustment."""
+        if skip_size_check or user_confirmed:
+            return None
+            
+        file_info = FileSizeHandler.get_file_info(pdf_path_obj)
+        category = FileSizeCategory(file_info["category"])
+
+        if file_info["requires_confirmation"]:
+            logger.info(f"Large file detected: {file_info['name']}")
+            return {
+                "success": False,
+                "requires_confirmation": True,
+                "file_info": file_info,
+                "confirmation_message": FileSizeHandler.generate_confirmation_message(file_info),
+                "message": f"File '{file_info['name']}' is {file_info['size_formatted']}. Confirmation required.",
+            }
+
+        if category in [FileSizeCategory.LARGE, FileSizeCategory.VERY_LARGE]:
+            recommendations = FileSizeHandler.get_processing_recommendations(file_info)
+            logger.info(f"Adjusting parameters for large file: {recommendations}")
+            if hasattr(self.chunker, "max_chunk_size"):
+                self.chunker.max_chunk_size = recommendations["chunk_size"]
+                
+        return None
 
     async def process_multiple_pdfs(
         self,
@@ -593,3 +565,39 @@ class PDFProcessingPipeline:
                 "status": "error",
                 "error": str(e),
             }
+    
+    def _init_embedding_generator(self, model_name: Optional[str], prompt_for_ollama: bool) -> EmbeddingGenerator:
+        """Initialize embedding generator with model selection."""
+        if model_name:
+            return EmbeddingGenerator(model_name=model_name)
+        elif prompt_for_ollama and not hasattr(PDFProcessingPipeline, '_embedding_generator_prompted'):
+            PDFProcessingPipeline._embedding_generator_prompted = True
+            return EmbeddingGenerator.prompt_and_create()
+        else:
+            return EmbeddingGenerator()
+    
+    def _validate_inputs(self, pdf_path: str, rulebook_name: str, system: str, source_type: str):
+        """Validate and sanitize input parameters."""
+        try:
+            pdf_path_obj = validate_path(pdf_path, must_exist=True)
+            if pdf_path_obj.suffix.lower() != ".pdf":
+                raise ValueError(f"File must be a PDF: {pdf_path}")
+        except Exception as e:
+            logger.error(f"Path validation failed: {e}")
+            raise ValueError(f"Invalid PDF path: {e}") from e
+
+        sanitizer = InputSanitizer()
+        try:
+            rulebook_name = sanitizer.validate_system_name(rulebook_name)
+            system = sanitizer.validate_system_name(system)
+        except InputValidationError as e:
+            logger.error(f"Input validation failed: {e}")
+            raise ValueError(f"Invalid input: {e}") from e
+
+        if not rulebook_name or not system:
+            raise ValueError("rulebook_name and system are required")
+
+        if source_type not in ["rulebook", "flavor"]:
+            raise ValueError("source_type must be 'rulebook' or 'flavor'")
+            
+        return pdf_path_obj
