@@ -179,7 +179,7 @@ graph TD
 ### Distribution Strategy
 
 #### Windows
-```toml
+```json
 [package]
 productName = "MDMAI Assistant"
 version = "1.0.0"
@@ -190,7 +190,7 @@ nsis = { enabled = true } # NSIS installer
 ```
 
 #### macOS
-```toml
+```json
 [tauri.bundle.macOS]
 frameworks = []
 minimumSystemVersion = "10.15"
@@ -199,7 +199,7 @@ app = { enabled = true }
 ```
 
 #### Linux
-```toml
+```json
 [tauri.bundle.linux]
 deb = { enabled = true }
 appimage = { enabled = true }

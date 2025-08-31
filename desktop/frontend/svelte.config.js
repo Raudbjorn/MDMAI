@@ -18,18 +18,20 @@ const config = {
 
         // CSP configuration for desktop security
         csp: {
-            mode: 'auto',
+            mode: 'hash',  // Use hash-based CSP for inline scripts
             directives: {
                 'default-src': ['self', 'tauri:'],
-                'script-src': ['self', 'unsafe-inline', 'tauri:'],
-                'style-src': ['self', 'unsafe-inline'],
-                'connect-src': ['self', 'tauri:', 'ipc:', 'https:', 'ws:', 'wss:'],
+                'script-src': ['self', 'tauri:'],  // Removed unsafe-inline
+                'style-src': ['self'],  // Removed unsafe-inline, hashes will be added automatically
+                'connect-src': ['self', 'tauri:', 'ipc:', 'asset:'],  // Removed broad https/ws/wss
                 'img-src': ['self', 'data:', 'blob:', 'tauri:', 'asset:'],
                 'font-src': ['self', 'data:'],
                 'media-src': ['self', 'tauri:', 'asset:'],
                 'frame-src': ['none'],
                 'object-src': ['none'],
-                'base-uri': ['self']
+                'base-uri': ['self'],
+                'form-action': ['none'],  // Prevent form submissions
+                'upgrade-insecure-requests': true  // Force HTTPS where possible
             }
         },
 

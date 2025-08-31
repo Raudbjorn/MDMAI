@@ -1,5 +1,7 @@
 # Tauri Desktop Implementation Guide for MDMAI
 
+> **Note**: This guide provides architectural patterns and example code for implementing a Tauri desktop application with Python backend integration. The actual implementation in this PR may differ in specific details. For the exact implementation, refer to the source files in `desktop/frontend/src-tauri/`.
+
 ## Quick Start
 
 ### Prerequisites
@@ -229,46 +231,46 @@ fn main() {
 }
 ```
 
-**src-tauri/src/mcp_manager.rs**
+**src-tauri/src/mcp_bridge.rs** (Actual Implementation)
 ```rust
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread;
-use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tauri::api::process::{Command, CommandEvent, CommandChild};
+use log::{info, error, debug, warn};
 
-pub struct MCPManager {
-    process: Child,
-    stdin: Box<dyn Write + Send>,
-    response_receiver: Receiver<Value>,
-    pending_requests: Arc<Mutex<HashMap<String, Sender<Value>>>>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JsonRpcRequest {
+    jsonrpc: String,
+    id: u64,
+    method: String,
+    params: Value,
 }
 
-impl MCPManager {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        // Find Python executable
-        let python_cmd = if cfg!(windows) {
-            "python.exe"
-        } else {
-            "python3"
-        };
-        
-        // Get the app's resource directory
-        let resource_dir = tauri::api::path::resource_dir()
-            .unwrap_or_else(|| std::env::current_dir().unwrap());
-        
-        let python_dist = resource_dir.join("python-dist");
-        
-        // Spawn Python MCP server using Tauri sidecar
-        // Note: In production, use Command::new_sidecar("mcp-server")
-        // This example shows the development approach
-        let mut child = tauri::api::process::Command::new_sidecar("mcp-server")
-            .expect("failed to create sidecar command")
+pub struct MCPBridge {
+    child: Arc<Mutex<Option<CommandChild>>>,
+    request_id: Arc<RwLock<u64>>,
+    pending: Arc<RwLock<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>>,
+}
+
+impl MCPBridge {
+    pub fn new() -> Self {
+        MCPBridge {
+            child: Arc::new(Mutex::new(None)),
+            request_id: Arc::new(RwLock::new(0)),
+            pending: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+    
+    pub async fn start(&self) -> Result<(), String> {
+        // Start Python MCP server using Tauri sidecar
+        let (mut rx, child) = Command::new_sidecar("mcp-server")
+            .map_err(|e| format!("Failed to create sidecar: {}", e))?
             .env("MCP_STDIO_MODE", "true")
             .spawn()
-            .expect("Failed to spawn sidecar");
+            .map_err(|e| format!("Failed to start MCP server: {}", e))?;
         
         let stdin = Box::new(child.stdin.take().unwrap());
         let stdout = child.stdout.take().unwrap();
