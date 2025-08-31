@@ -9,6 +9,9 @@ mod native_features;
 mod error_handling;
 mod data_manager;
 mod data_manager_commands;
+mod security;
+mod security_commands;
+mod secure_mcp_bridge;
 
 use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 use tokio::sync::Mutex;
@@ -16,6 +19,8 @@ use tauri::{Manager, Emitter, DragDropEvent};
 use process_manager::ProcessManagerState;
 use native_features::{NativeFeaturesState, DragDropEvent as CustomDragDropEvent};
 use data_manager_commands::DataManagerStateWrapper;
+use security::{SecurityManager, SecurityConfig};
+use security_commands::SecurityManagerState;
 
 /// Convert paths to string vector
 fn paths_to_strings(paths: &[std::path::PathBuf]) -> Vec<String> {
@@ -64,6 +69,7 @@ fn main() {
         .manage(ProcessManagerState::new())
         .manage(NativeFeaturesState::new())
         .manage(DataManagerStateWrapper::new())
+        .manage(SecurityManagerState::new())
         .invoke_handler(tauri::generate_handler![
             mcp_bridge::start_mcp_backend,
             mcp_bridge::stop_mcp_backend,
@@ -112,6 +118,30 @@ fn main() {
             data_manager_commands::get_database_stats,
             data_manager_commands::perform_database_maintenance,
             data_manager_commands::shutdown_data_manager,
+            // Security Commands
+            security_commands::initialize_security_manager,
+            security_commands::create_security_session,
+            security_commands::validate_session_permission,
+            security_commands::validate_input,
+            security_commands::sanitize_string,
+            security_commands::validate_file_path,
+            security_commands::store_credential,
+            security_commands::retrieve_credential,
+            security_commands::delete_credential,
+            security_commands::check_permission,
+            security_commands::get_security_stats,
+            security_commands::get_security_alerts,
+            security_commands::generate_secure_random,
+            security_commands::hash_data,
+            security_commands::create_sandboxed_process,
+            security_commands::terminate_sandboxed_process,
+            security_commands::get_process_status,
+            security_commands::log_security_event,
+            security_commands::cleanup_expired_items,
+            // Secure MCP Bridge Commands
+            secure_mcp_bridge::secure_mcp_call,
+            secure_mcp_bridge::validate_mcp_method,
+            secure_mcp_bridge::get_secure_mcp_stats,
         ])
         .setup(|app| {
             // Initialize native features

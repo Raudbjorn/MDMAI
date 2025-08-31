@@ -44,6 +44,15 @@ tokio-stream = "0.1"
 bytes = "1.5"
 thiserror = "1.0"
 tempfile = "3.8"
+# Security Dependencies
+regex = "1.10"
+url = "2.5"
+base64 = "0.22"
+hmac = "0.12"
+pbkdf2 = "0.12"
+flate2 = "1.0"
+# Additional system-level dependencies
+libc = "0.2"
 
 [features]
 default = ["custom-protocol"]

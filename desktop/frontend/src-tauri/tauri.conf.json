@@ -16,9 +16,18 @@
       "menuOnLeftClick": false
     },
     "security": {
-      "csp": "default-src 'self' tauri: asset:; script-src 'self' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: tauri: asset:; img-src 'self' data: blob: tauri: asset:; font-src 'self' data:; media-src 'self' tauri: asset:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';",
+      "csp": "default-src 'self' tauri: asset:; script-src 'self' tauri: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' tauri: asset:; connect-src 'self' ipc: tauri: asset: http://127.0.0.1:* https://api.openai.com https://api.anthropic.com; img-src 'self' data: blob: tauri: asset: https:; font-src 'self' data: tauri: asset:; media-src 'self' tauri: asset:; worker-src 'self' tauri: asset:; child-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests; block-all-mixed-content; require-trusted-types-for 'script'; trusted-types default dompurify;",
       "dangerousDisableAssetCspModification": false,
-      "freezePrototype": true
+      "freezePrototype": true,
+      "pattern": {
+        "use": "brownfield",
+        "options": {
+          "dangerous_remote_domain_ipc_access": false,
+          "dangerous_disable_asset_csp_modification": {
+            "./**/*": false
+          }
+        }
+      }
     },
     "windows": [
       {
