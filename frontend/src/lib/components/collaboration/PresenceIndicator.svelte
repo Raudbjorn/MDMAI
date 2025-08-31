@@ -89,7 +89,7 @@
 	}
 	
 	// Mouse tracking for cursor display
-	let cursorsContainer = $state<HTMLElement | undefined>();
+	let cursorsContainer: HTMLElement | undefined;
 	
 	onMount(() => {
 		if (showCursors && cursorsContainer) {
