@@ -208,3 +208,17 @@ __marimo__/
 
 # Claude-specific files
 .claude/
+
+# Desktop Application (Tauri + SvelteKit)
+desktop/frontend/node_modules/
+desktop/frontend/.svelte-kit/
+desktop/frontend/build/
+desktop/frontend/dist/
+desktop/frontend/src-tauri/target/
+desktop/frontend/src-tauri/Cargo.lock
+
+# Generated binaries for development
+desktop/frontend/src-tauri/binaries/mcp-server-*
+
+# Temporary test files
+desktop/test_*.py

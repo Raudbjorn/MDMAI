@@ -4,7 +4,8 @@
  */
 
 import { invoke } from '@tauri-apps/api/tauri';
-import { writable, type Writable } from 'svelte/store';
+import { writable, type Writable, derived } from 'svelte/store';
+import { processStats, type ProcessState } from './process-manager-client';
 
 // Result type for error handling (error-as-values pattern)
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -21,6 +22,15 @@ export class MCPStdioBridge {
     // Stores
     public status: Writable<ConnectionStatus> = writable('disconnected');
     public lastError: Writable<string | null> = writable(null);
+    
+    // Derived store that combines connection status with process state
+    public detailedStatus = derived(
+        [this.status, processStats],
+        ([$status, $stats]) => {
+            if (!$stats) return { connection: $status, process: 'unknown' as ProcessState };
+            return { connection: $status, process: $stats.state };
+        }
+    );
     
     /**
      * Connect to the MCP server via stdio
