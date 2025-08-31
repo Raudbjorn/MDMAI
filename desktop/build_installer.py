@@ -225,22 +225,70 @@ class DependencyChecker:
 
     @staticmethod
     def _print_installation_help(missing_tools: List[str]) -> None:
-        """Print installation instructions for missing tools."""
+        """Print comprehensive installation instructions for missing tools."""
         print("\n❌ Missing requirements:")
         for tool_error in missing_tools:
             print(f"  - {tool_error}")
 
         print("\nInstallation instructions:")
-        tool_urls = {
-            "python": "https://www.python.org/downloads/",
-            "node": "https://nodejs.org/",
-            "cargo": "https://rustup.rs/",
-            "tauri": "npm install -g @tauri-apps/cli",
+        
+        # Enhanced installation instructions with platform-specific guidance
+        installation_guides = {
+            "python": {
+                "url": "https://www.python.org/downloads/",
+                "instructions": [
+                    "Download and install Python 3.11+ from python.org",
+                    "Ensure 'python' and 'pip' are in your system PATH",
+                    "Verify: python --version && pip --version"
+                ]
+            },
+            "node": {
+                "url": "https://nodejs.org/",
+                "instructions": [
+                    "Download Node.js LTS (18.x+) from nodejs.org",
+                    "This includes npm automatically",
+                    "Verify: node --version && npm --version"
+                ]
+            },
+            "cargo": {
+                "url": "https://rustup.rs/",
+                "instructions": [
+                    "Install Rust using rustup: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
+                    "On Windows: Download rustup-init.exe from rustup.rs",
+                    "Restart terminal or run: source $HOME/.cargo/env",
+                    "Verify: rustc --version && cargo --version"
+                ]
+            },
+            "tauri": {
+                "url": "https://tauri.app/v1/guides/getting-started/prerequisites",
+                "instructions": [
+                    "Prerequisites: Install Rust and Node.js first",
+                    "Install Tauri CLI: npm install -g @tauri-apps/cli",
+                    "Alternative: cargo install tauri-cli",
+                    "Verify: tauri --version",
+                    "",
+                    "Platform-specific requirements:",
+                    "  • Linux: sudo apt install webkit2gtk-4.0-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev",
+                    "  • macOS: Xcode Command Line Tools (xcode-select --install)",
+                    "  • Windows: Microsoft Visual Studio C++ Build Tools",
+                    "",
+                    "Troubleshooting:",
+                    "  - Permission errors: Use sudo/admin privileges or configure npm prefix",
+                    "  - PATH issues: Restart terminal after installation",
+                    "  - Rust not found: Ensure ~/.cargo/bin is in PATH"
+                ]
+            }
         }
 
-        for tool, url in tool_urls.items():
-            if any(tool in error for error in missing_tools):
-                print(f"  - {tool.capitalize()}: {url}")
+        for tool_name, config in installation_guides.items():
+            if any(tool_name in error for error in missing_tools):
+                print(f"\n{tool_name.upper()} Installation:")
+                print(f"  📖 Guide: {config['url']}")
+                for instruction in config['instructions']:
+                    if instruction:
+                        print(f"  • {instruction}")
+                    else:
+                        print()  # Empty line for spacing
 
 
 class CommandRunner:

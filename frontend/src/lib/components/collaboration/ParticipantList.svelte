@@ -214,8 +214,8 @@
 					</select>
 				</div>
 				
-				<div class="space-y-2">
-					<div class="block text-sm font-medium mb-2">Permissions</div>
+				<fieldset class="space-y-2">
+					<legend class="block text-sm font-medium mb-2">Permissions</legend>
 					
 					<label class="flex items-center gap-2">
 						<input type="checkbox" />
@@ -236,7 +236,7 @@
 						<input type="checkbox" />
 						<span class="text-sm">Can manage session</span>
 					</label>
-				</div>
+				</fieldset>
 				
 				<div class="flex justify-end gap-2">
 					<Button 
