@@ -577,17 +577,13 @@ impl InputValidator {
     }
 
     async fn is_command_allowed(&self, command: &str) -> bool {
-        // Check against allowlist of safe commands
-        let allowed_commands = [
-            "python", "python3", "node", "echo", "cat", "ls", "pwd",
-        ];
-
+        // Check against allowlist of safe commands from config
         let command_name = Path::new(command)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(command);
 
-        allowed_commands.contains(&command_name)
+        self.config.allowed_commands.contains(&command_name.to_string())
     }
 
     fn contains_injection_patterns(&self, input: &str) -> bool {
