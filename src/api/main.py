@@ -98,10 +98,12 @@ class MDMAIApp:
         
         # Configure CORS - use environment variable or defaults for development
         allowed_origins = self._get_cors_origins()
+        # Only allow credentials with specific origins, not wildcards
+        allow_credentials = "*" not in allowed_origins
         self.app.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
-            allow_credentials=True,
+            allow_credentials=allow_credentials,
             allow_methods=["*"],
             allow_headers=["*"],
         )
