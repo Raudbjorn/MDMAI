@@ -56,6 +56,10 @@ print_status "Created virtual environment: venv/"
 # 3. Activate and upgrade pip
 print_info "Activating virtual environment and upgrading pip..."
 source venv/bin/activate
+if [ -z "$VIRTUAL_ENV" ]; then
+    print_error "Failed to activate virtual environment"
+    exit 1
+fi
 pip install --upgrade pip setuptools wheel
 print_status "Upgraded pip and setuptools"
 
