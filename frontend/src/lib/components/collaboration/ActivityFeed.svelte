@@ -62,8 +62,7 @@
 		}
 	});
 
-	let sseClient = $state<EnhancedSSEClient | null>(null);
-	let feedContainer = $state<HTMLElement | undefined>();
+	let feedContainer: HTMLElement | undefined;
 	
 	// Activity type configurations
 	const activityConfig: Record<ActivityItem['type'], { icon: string; color: string; label: string }> = {
