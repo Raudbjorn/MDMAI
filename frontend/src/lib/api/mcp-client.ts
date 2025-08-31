@@ -2,6 +2,7 @@ import type { Tool, ToolResult } from './types';
 import { CacheManager } from '$lib/cache/cache-manager';
 import { MetricsCollector } from '$lib/performance/metrics-collector';
 import { WebSocketPool } from '$lib/performance/request-optimizer';
+import { prepareForTransmission, validateApiKeyFormat } from '$lib/security/api-key-handler';
 
 export interface MCPSession {
 	id: string;
@@ -39,6 +40,11 @@ export class MCPClient {
 		const start = performance.now();
 		
 		try {
+			// Validate API key format before sending
+			if (!validateApiKeyFormat(apiKey, provider)) {
+				throw new Error(`Invalid API key format for provider: ${provider}`);
+			}
+			
 			// Check cache for existing session
 			const cacheKey = `session:${userId}:${provider}`;
 			const cachedSession = await this.cacheManager.get<MCPSession>(cacheKey);
@@ -58,16 +64,25 @@ export class MCPClient {
 				return cachedSession;
 			}
 
-			// Initialize session via HTTP
+			// Prepare API key for secure transmission
+			const securePayload = prepareForTransmission(provider, apiKey);
+			
+			// Initialize session via HTTPS (ensure HTTPS in production)
+			if (typeof window !== 'undefined' && window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost')) {
+				console.warn('API keys should only be transmitted over HTTPS in production!');
+			}
+			
 			const response = await fetch(`${this.baseUrl}/api/bridge/session`, {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json'
+					'Content-Type': 'application/json',
+					'X-Request-Timestamp': securePayload.timestamp.toString(),
+					'X-Request-Nonce': securePayload.nonce
 				},
 				body: JSON.stringify({
 					user_id: userId,
-					provider,
-					api_key: apiKey
+					provider: securePayload.provider,
+					secure_payload: securePayload.payload
 				})
 			});
 

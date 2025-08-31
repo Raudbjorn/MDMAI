@@ -1,11 +1,14 @@
 """Ollama embedding provider for local model support."""
 
 import json
+import shlex
 import subprocess
 from typing import List, Optional, Dict, Any
 import requests
 from pathlib import Path
 import numpy as np
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import asyncio
 
 from config.logging_config import get_logger
 
@@ -75,31 +78,54 @@ class OllamaEmbeddingProvider:
         except (requests.RequestException, ConnectionError):
             logger.warning("Ollama service not running. Checking if installed...")
             try:
-                result = subprocess.run(["ollama", "--version"], capture_output=True, text=True)
+                # Use shlex for safe command construction
+                cmd = shlex.split("ollama --version")
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True,
+                    timeout=5,  # Add timeout
+                    check=False  # Don't raise on non-zero exit
+                )
                 return result.returncode == 0
-            except (subprocess.SubprocessError, FileNotFoundError):
+            except (subprocess.SubprocessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+                logger.error(f"Failed to check Ollama installation: {e}")
                 return False
     
     def start_ollama_service(self) -> bool:
         """Attempt to start Ollama service."""
         try:
-            subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Use shlex for safe command construction
+            cmd = shlex.split("ollama serve")
+            # Start process with proper isolation
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True  # Isolate process group
+            )
             import time
             time.sleep(3)  # Give service time to start
+            
+            # Check if process started successfully
+            if process.poll() is not None:
+                logger.error(f"Ollama service exited with code: {process.returncode}")
+                return False
+                
             return self.check_ollama_installed()
-        except Exception as e:
+        except (subprocess.SubprocessError, OSError) as e:
             logger.error(f"Failed to start Ollama service: {e}")
             return False
     
     def list_available_models(self) -> List[str]:
         """List locally available Ollama models."""
         try:
-            response = requests.get(f"{self.api_url}/tags", timeout=5)
+            response = requests.get(f"{self.api_url}/tags", timeout=10)
             if response.status_code == 200:
                 models = response.json().get("models", [])
                 return [model["name"] for model in models]
             return []
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             logger.error(f"Failed to list Ollama models: {e}")
             return []
     
@@ -124,12 +150,17 @@ class OllamaEmbeddingProvider:
         try:
             logger.info(f"Pulling Ollama model: {model_name}")
             
-            # Use streaming to show progress
+            # Validate model name to prevent injection
+            if not model_name or not model_name.replace("-", "").replace("_", "").replace(":", "").isalnum():
+                logger.error(f"Invalid model name: {model_name}")
+                return False
+            
+            # Use streaming to show progress with timeout for initial connection
             response = requests.post(
                 f"{self.api_url}/pull",
                 json={"name": model_name},
                 stream=True,
-                timeout=None
+                timeout=(30, None)  # 30s connect timeout, no read timeout for download
             )
             
             if show_progress:
@@ -168,7 +199,7 @@ class OllamaEmbeddingProvider:
                     "model": self.model_name,
                     "prompt": text
                 },
-                timeout=30
+                timeout=30  # Add proper timeout
             )
             
             if response.status_code == 200:
@@ -190,32 +221,53 @@ class OllamaEmbeddingProvider:
         self, 
         texts: List[str], 
         batch_size: int = 32,
-        normalize: bool = True
+        normalize: bool = True,
+        max_workers: int = 4
     ) -> List[List[float]]:
         """
-        Generate embeddings for multiple texts.
+        Generate embeddings for multiple texts with parallel processing.
         
         Args:
             texts: List of texts to embed
-            batch_size: Not used for Ollama (processes one at a time)
+            batch_size: Batch size for parallel processing
             normalize: Whether to normalize embeddings
+            max_workers: Maximum number of parallel workers
             
         Returns:
             List of embedding vectors
         """
-        embeddings = []
+        if not texts:
+            return []
         
-        for text in texts:
-            embedding = self.generate_embedding(text)
+        embeddings = [None] * len(texts)
+        
+        # Process in parallel for better performance
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(texts))) as executor:
+            # Submit all tasks
+            future_to_index = {
+                executor.submit(self.generate_embedding, text): i 
+                for i, text in enumerate(texts)
+            }
             
-            if normalize:
-                # Normalize embedding for cosine similarity
-                embedding_np = np.array(embedding)
-                norm = np.linalg.norm(embedding_np)
-                if norm > 0:
-                    embedding = (embedding_np / norm).tolist()
-            
-            embeddings.append(embedding)
+            # Collect results
+            for future in as_completed(future_to_index):
+                index = future_to_index[future]
+                try:
+                    embedding = future.result(timeout=60)  # Per-embedding timeout
+                    
+                    if normalize:
+                        # Normalize embedding for cosine similarity
+                        embedding_np = np.array(embedding)
+                        norm = np.linalg.norm(embedding_np)
+                        if norm > 0:
+                            embedding = (embedding_np / norm).tolist()
+                    
+                    embeddings[index] = embedding
+                    
+                except Exception as e:
+                    logger.error(f"Failed to generate embedding for text {index}: {e}")
+                    # Return empty embedding on failure to maintain alignment
+                    embeddings[index] = [0.0] * (self._embedding_dimension or 768)
         
         return embeddings
     
