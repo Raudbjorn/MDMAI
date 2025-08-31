@@ -11,11 +11,9 @@ from typing import Any, Dict, List, Optional
 from fastmcp import FastMCP
 from returns.result import Failure, Result, Success
 
-from src.campaign.campaign_manager_returns import CampaignManager
 from src.core.result_pattern import (
     AppError,
     ErrorKind,
-    result_to_response,
     validation_error,
 )
 

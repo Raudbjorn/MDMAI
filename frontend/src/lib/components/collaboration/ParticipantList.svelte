@@ -198,9 +198,9 @@
 				<div class="font-medium">{selectedParticipant.username}</div>
 				
 				<div class="space-y-2">
-					<label for="role-select" class="block text-sm font-medium mb-2">Role</label>
+					<label for="participant-role" class="block text-sm font-medium mb-2">Role</label>
 					<select 
-						id="role-select"
+						id="participant-role"
 						class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
 						value={selectedParticipant.role}
 						onchange={(e) => changeRole(selectedParticipant!, e.currentTarget.value as ParticipantRole)}
@@ -214,8 +214,8 @@
 					</select>
 				</div>
 				
-				<div class="space-y-2">
-					<div class="block text-sm font-medium mb-2">Permissions</div>
+				<fieldset class="space-y-2">
+					<legend class="block text-sm font-medium mb-2">Permissions</legend>
 					
 					<label class="flex items-center gap-2">
 						<input type="checkbox" />
@@ -236,7 +236,7 @@
 						<input type="checkbox" />
 						<span class="text-sm">Can manage session</span>
 					</label>
-				</div>
+				</fieldset>
 				
 				<div class="flex justify-end gap-2">
 					<Button 

@@ -2,8 +2,8 @@
 
 import json
 import re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 from config.logging_config import get_logger
 from src.campaign.models import Campaign

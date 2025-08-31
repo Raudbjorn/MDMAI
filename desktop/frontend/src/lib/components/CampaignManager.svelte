@@ -1,7 +1,18 @@
 <script lang="ts">
     import { getMCPClient } from '$lib/mcp-robust-client';
     
-    let campaigns = $state<any[]>([]);
+    interface Campaign {
+        id: string;
+        name: string;
+        description?: string;
+        [key: string]: any;
+    }
+    
+    interface ListCampaignsResponse {
+        campaigns: Campaign[];
+    }
+    
+    let campaigns = $state<Campaign[]>([]);
     let loading = $state(false);
     
     async function loadCampaigns() {
@@ -9,8 +20,9 @@
         const client = getMCPClient();
         const result = await client.callWithRetry('list_campaigns', {});
         
-        if (result.ok) {
-            campaigns = result.data.campaigns || [];
+        if (result.ok && result.data) {
+            const campaignData = result.data as ListCampaignsResponse;
+            campaigns = campaignData.campaigns || [];
         }
         loading = false;
     }

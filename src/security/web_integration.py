@@ -1,11 +1,10 @@
 """Web UI security integration with FastAPI."""
 
-from datetime import datetime
 from typing import Any, Dict, Optional
 
 from fastapi import (
     FastAPI, HTTPException, Depends, Security, status,
-    Request, Response, Cookie, Header
+    Request, Cookie
 )
 from fastapi.security import (
     HTTPBearer, HTTPAuthorizationCredentials,
@@ -16,11 +15,11 @@ from pydantic import BaseModel
 
 from config.logging_config import get_logger
 from src.security.enhanced_security_manager import (
-    EnhancedSecurityManager, EnhancedSecurityConfig
+    EnhancedSecurityManager
 )
 from src.security.auth_providers import OAuthProvider
 from src.security.models import (
-    EnhancedUser, TokenPair, SessionStatus, SecurityRole
+    EnhancedUser, SecurityRole
 )
 from src.security.security_audit import SecurityEventType
 

@@ -11,8 +11,6 @@ from config.settings import settings
 from src.core.database import ChromaDBManager
 from src.search.cache_manager import SearchCacheManager
 from src.search.error_handler import (
-    DatabaseError,
-    ErrorRecovery,
     QueryProcessingError,
     SearchValidator,
     handle_search_errors,

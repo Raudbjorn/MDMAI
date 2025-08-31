@@ -1,8 +1,6 @@
 """Enhanced session management with Redis support."""
 
 import asyncio
-import json
-import pickle
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -10,7 +8,7 @@ import redis.asyncio as redis
 from pydantic import BaseModel, Field
 
 from config.logging_config import get_logger
-from src.security.models import WebSession, SessionStatus, EnhancedUser
+from src.security.models import WebSession, SessionStatus
 
 logger = get_logger(__name__)
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { collaborationStore } from '$lib/stores/collaboration.svelte';
+	import type { CollaborativeRoom } from '$lib/types/collaboration';
 	import {
 		CollaborativeCanvas,
 		PresenceIndicator,
@@ -14,36 +15,53 @@
 	const demoUsername = `Player${Math.floor(Math.random() * 1000)}`;
 	
 	let isConnected = $state(false);
-	let currentRoom: any = $state(null);
+	let currentRoom = $state<CollaborativeRoom | null>(null);
 	let showCanvas = $state(true);
 	let showPresence = $state(true);
 	let showActivity = $state(true);
 	let showChat = $state(true);
 	
-	onMount(async () => {
+	onMount(() => {
 		// Connect to collaboration service
-		await collaborationStore.connect(demoUserId);
-		
-		// Create or join demo room
-		currentRoom = await collaborationStore.createRoom(
-			'Demo Session',
-			'demo-campaign',
-			{
-				max_participants: 20,
-				allow_spectators: true,
-				enable_voice: false,
-				enable_video: false,
-				auto_save: true,
-				save_interval: 30
+		const init = async () => {
+			try {
+				await collaborationStore.connect(demoUserId);
+				
+				// Create or join demo room
+				currentRoom = await collaborationStore.createRoom(
+					'Demo Session',
+					'demo-campaign',
+					{
+						max_participants: 20,
+						allow_spectators: true,
+						enable_voice: false,
+						enable_video: false,
+						auto_save: true,
+						save_interval: 30
+					}
+				);
+				
+				isConnected = true;
+				
+				// Simulate some activity for demo
+				setTimeout(() => {
+					try {
+						collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
+					} catch (error) {
+						console.error('Failed to send welcome message:', error);
+					}
+				}, 1000);
+			} catch (error) {
+				console.error('Failed to initialize collaboration:', error);
+				isConnected = false;
 			}
-		);
+		};
 		
-		isConnected = true;
-		
-		// Simulate some activity for demo
-		setTimeout(() => {
-			collaborationStore.sendChatMessage('Welcome to the real-time demo!', 'system');
-		}, 1000);
+		// Call init with proper error handling
+		init().catch((error) => {
+			console.error('Unhandled error during initialization:', error);
+			isConnected = false;
+		});
 		
 		return () => {
 			collaborationStore.leaveRoom();
@@ -165,7 +183,7 @@
 					{#if showChat}
 						<div class="feature-section chat-section">
 							<h3>Chat</h3>
-							<ChatPanel maxHeight={300} />
+							<ChatPanel />
 						</div>
 					{/if}
 					

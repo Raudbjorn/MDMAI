@@ -30,7 +30,7 @@ async function handleResponse<T>(response: Response): Promise<Result<T>> {
 		const error = await response.text().catch(() => 'Unknown error');
 		return {
 			ok: false,
-			error: new Error(`${response.status}: ${error}`)
+			error: `${response.status}: ${error}`
 		};
 	}
 
@@ -40,7 +40,7 @@ async function handleResponse<T>(response: Response): Promise<Result<T>> {
 	} catch (error) {
 		return {
 			ok: false,
-			error: error instanceof Error ? error : new Error('Failed to parse response')
+			error: error instanceof Error ? error.message : 'Failed to parse response'
 		};
 	}
 }
@@ -53,7 +53,7 @@ async function handleVoidResponse(response: Response): Promise<Result<void>> {
 		const error = await response.text().catch(() => 'Unknown error');
 		return {
 			ok: false,
-			error: new Error(`${response.status}: ${error}`)
+			error: `${response.status}: ${error}`
 		};
 	}
 
@@ -91,7 +91,10 @@ export class ProviderApiClient {
 		configs: ProviderConfig[], 
 		budgets?: CostBudget[]
 	): Promise<Result<ProviderConfigResponse>> {
-		const request: ProviderConfigRequest = { configs, budgets };
+		const request: ProviderConfigRequest = { 
+			data: { configs, budgets },
+			timestamp: new Date()
+		};
 		
 		const response = await fetch(`${this.baseUrl}/providers/configure`, {
 			method: 'POST',

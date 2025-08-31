@@ -467,7 +467,7 @@ class HealthMonitor:
         if hasattr(error, "response"):
             try:
                 details["response"] = str(error.response)[:200]
-            except:
+            except (AttributeError, Exception):
                 pass
         
         return details

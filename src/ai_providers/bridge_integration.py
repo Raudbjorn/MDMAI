@@ -1,11 +1,10 @@
 """Integration layer between AI providers and MCP Bridge infrastructure."""
 
-import asyncio
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from structlog import get_logger
 
 from ..bridge.models import MCPRequest, MCPResponse

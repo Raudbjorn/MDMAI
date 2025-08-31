@@ -217,9 +217,87 @@ node_modules/
 .vercel/
 .netlify/
 *.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Desktop app build artifacts
-desktop/frontend/node_modules/
-desktop/frontend/.svelte-kit/
+# Build output directories
+build/
+dist/
+out/
+
+# SvelteKit build outputs (generated in source directories)
+frontend/build/
+frontend/.svelte-kit/
+frontend/.vite/
+frontend/storybook-static/
+
+# Desktop Application (generated in source directories) 
 desktop/frontend/build/
-desktop/frontend/dist/
+desktop/frontend/.svelte-kit/
+desktop/frontend/.vite/
+desktop/frontend/src-tauri/target/
+# Note: Cargo.lock is committed for binary applications to ensure reproducible builds
+
+# Generated binaries for development (in source directories)
+desktop/frontend/src-tauri/binaries/mcp-server-*
+**/binaries/mcp-server-*
+
+# Rust build artifacts
+target/
+# Note: Cargo.lock is committed to version control for binary applications
+# to ensure reproducible builds across environments
+# Cargo.lock should only be ignored for library crates
+**/*.rs.bk
+
+# PyOxidizer build artifacts
+build_pyoxidizer/
+oxidizer_build/
+pyoxidizer_artifacts/
+
+# Testing artifacts
+.nyc_output/
+coverage/
+htmlcov/
+test-results/
+playwright-report/
+test-report/
+.coverage
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.DS_Store
+Thumbs.db
+
+# Development databases and logs
+*.db
+*.sqlite
+*.sqlite3
+data/
+logs/*.log
+logs/*.txt
+*.log
+
+# IDE and editor files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary test files
+desktop/test_*.py
+**/test_*.temp
+**/temp_*

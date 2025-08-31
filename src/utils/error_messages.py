@@ -7,7 +7,7 @@ error messages for MCP tool responses.
 
 import json
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 
 class ErrorMessageCategory(Enum):
@@ -464,9 +464,7 @@ def create_user_friendly_error(
     
     # Import error classes for isinstance checks
     from ..core.error_handling import (
-        BaseError, ValidationError, NetworkError,
-        DatabaseError, AuthenticationError, ServiceError,
-        ResourceError, ConfigurationError
+        BaseError
     )
     
     # Use isinstance checks for proper error categorization

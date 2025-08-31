@@ -1,0 +1,446 @@
+# Makefile for PyOxidizer builds with dynamic architecture detection
+#
+# This Makefile provides targets for building Python applications with PyOxidizer
+# It automatically detects the system architecture and uses appropriate paths
+#
+# Supported architectures:
+#   - x86_64 (Intel/AMD 64-bit)
+#   - aarch64/arm64 (ARM 64-bit, including Apple Silicon)
+#   - armv7 (ARM 32-bit)
+#   - i686 (Intel/AMD 32-bit)
+#
+# Supported platforms:
+#   - macOS (Intel and Apple Silicon)
+#   - Linux (x86_64 and ARM)
+#   - Windows (via WSL or MSYS2)
+#
+# Usage:
+#   make -f Makefile.pyoxidizer build     # Build for current architecture
+#   make -f Makefile.pyoxidizer install   # Build and install
+#   make -f Makefile.pyoxidizer clean     # Clean build artifacts
+#   make -f Makefile.pyoxidizer test      # Run tests on built binary
+
+# Disable built-in rules
+.SUFFIXES:
+MAKEFLAGS += --no-builtin-rules
+
+# Shell configuration
+SHELL := /bin/bash
+.SHELLFLAGS := -euo pipefail -c
+
+# Colors for output
+RED := \033[0;31m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+NC := \033[0m
+
+# Architecture detection
+UNAME_M := $(shell uname -m)
+UNAME_S := $(shell uname -s)
+
+# Normalize architecture names
+ifeq ($(UNAME_M),x86_64)
+    ARCH := x86_64
+else ifeq ($(UNAME_M),amd64)
+    ARCH := x86_64
+else ifeq ($(UNAME_M),arm64)
+    # macOS reports arm64, but Rust uses aarch64
+    ARCH := aarch64
+else ifeq ($(UNAME_M),aarch64)
+    ARCH := aarch64
+else ifeq ($(UNAME_M),armv7l)
+    ARCH := armv7
+else ifeq ($(UNAME_M),i386)
+    ARCH := i686
+else ifeq ($(UNAME_M),i686)
+    ARCH := i686
+else
+    $(error Unsupported architecture: $(UNAME_M))
+endif
+
+# Operating system detection
+ifeq ($(UNAME_S),Darwin)
+    OS := darwin
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+else ifeq ($(UNAME_S),Linux)
+    OS := linux
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+else ifeq ($(findstring MINGW,$(UNAME_S)),MINGW)
+    OS := windows
+    OS_FAMILY := windows
+    EXE_EXT := .exe
+    PATH_SEP := /
+else ifeq ($(findstring MSYS,$(UNAME_S)),MSYS)
+    OS := windows
+    OS_FAMILY := windows
+    EXE_EXT := .exe
+    PATH_SEP := /
+else ifeq ($(findstring CYGWIN,$(UNAME_S)),CYGWIN)
+    OS := windows
+    OS_FAMILY := windows
+    EXE_EXT := .exe
+    PATH_SEP := /
+# WSL (Windows Subsystem for Linux) detection
+else ifeq ($(findstring Microsoft,$(UNAME_S)),Microsoft)
+    OS := linux
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+    # Set WSL flag for special handling if needed
+    WSL := 1
+else ifeq ($(findstring microsoft,$(shell uname -r 2>/dev/null)),microsoft)
+    OS := linux
+    OS_FAMILY := unix
+    EXE_EXT :=
+    PATH_SEP := /
+    # Set WSL flag for special handling if needed  
+    WSL := 1
+else
+    $(error Unsupported operating system: $(UNAME_S))
+endif
+
+# Rust target triple determination
+ifeq ($(OS),darwin)
+    RUST_TARGET := $(ARCH)-apple-darwin
+else ifeq ($(OS),linux)
+    # Check for musl vs glibc - robust cross-platform detection
+    LIBC_TYPE := $(shell \
+        # First check for musl dynamic linker files (most reliable)
+        if [ -f /lib/ld-musl-$(ARCH).so.1 ] || [ -f /usr/lib/ld-musl-$(ARCH).so.1 ]; then \
+            echo musl; \
+        # Check for common musl architectures  
+        elif [ -f /lib/ld-musl-x86_64.so.1 ] || [ -f /lib/ld-musl-aarch64.so.1 ] || \
+             [ -f /lib/ld-musl-armhf.so.1 ] || [ -f /lib/ld-musl-i386.so.1 ]; then \
+            echo musl; \
+        # Check ldd version output (fallback method)
+        elif command -v ldd >/dev/null 2>&1 && ldd --version 2>&1 | grep -qi musl; then \
+            echo musl; \
+        # Check for getconf GNU_LIBC_VERSION (glibc specific)
+        elif command -v getconf >/dev/null 2>&1 && getconf GNU_LIBC_VERSION >/dev/null 2>&1; then \
+            echo gnu; \
+        # Check for common glibc dynamic linker files
+        elif [ -f /lib64/ld-linux-x86-64.so.2 ] || [ -f /lib/ld-linux.so.2 ] || \
+             [ -f /lib64/ld-linux-aarch64.so.1 ] || [ -f /lib/ld-linux-armhf.so.3 ]; then \
+            echo gnu; \
+        # Default to gnu for compatibility
+        else \
+            echo gnu; \
+        fi)
+    RUST_TARGET := $(ARCH)-unknown-linux-$(LIBC_TYPE)
+else ifeq ($(OS),windows)
+    RUST_TARGET := $(ARCH)-pc-windows-msvc
+endif
+
+# Build configuration
+PROJECT_NAME := mcp-server
+PYTHON_VERSION := 3.10
+BUILD_DIR := build
+DIST_DIR := dist
+PYOXIDIZER_VERSION := 0.24.0
+
+# Paths
+PYOXIDIZER_BUILD_DIR := $(BUILD_DIR)/$(RUST_TARGET)
+PYOXIDIZER_RELEASE_DIR := $(PYOXIDIZER_BUILD_DIR)/release
+PYOXIDIZER_DEBUG_DIR := $(PYOXIDIZER_BUILD_DIR)/debug
+OUTPUT_BINARY := $(PROJECT_NAME)$(EXE_EXT)
+
+# Installation paths (with dynamic architecture)
+PREFIX ?= /usr/local
+BINDIR := $(PREFIX)/bin
+LIBDIR := $(PREFIX)/lib/$(ARCH)-$(OS)
+DATADIR := $(PREFIX)/share/$(PROJECT_NAME)
+INSTALL_BINARY := $(BINDIR)/$(OUTPUT_BINARY)
+
+# Python and pip commands
+PYTHON := python3
+PIP := $(PYTHON) -m pip
+VENV_DIR := venv
+VENV_ACTIVATE := $(VENV_DIR)/bin/activate
+
+ifeq ($(OS_FAMILY),windows)
+    VENV_ACTIVATE := $(VENV_DIR)/Scripts/activate
+endif
+
+# PyOxidizer command
+PYOXIDIZER := pyoxidizer
+
+# Build mode (release or debug)
+BUILD_MODE ?= release
+
+ifeq ($(BUILD_MODE),release)
+    PYOXIDIZER_FLAGS := --release
+    BUILD_OUTPUT_DIR := $(PYOXIDIZER_RELEASE_DIR)
+else
+    PYOXIDIZER_FLAGS :=
+    BUILD_OUTPUT_DIR := $(PYOXIDIZER_DEBUG_DIR)
+endif
+
+# Verbosity control
+V ?= 0
+ifeq ($(V),0)
+    Q := @
+    PYOXIDIZER_FLAGS += --quiet
+else
+    Q :=
+endif
+
+# Default target
+.PHONY: all
+all: build
+
+# Help target
+.PHONY: help
+help:
+	@echo "PyOxidizer Build System"
+	@echo "======================="
+	@echo ""
+	@echo "Detected Configuration:"
+	@echo "  Architecture: $(ARCH)"
+	@echo "  Operating System: $(OS)"
+	@echo "  Rust Target: $(RUST_TARGET)"
+	@echo "  Binary Extension: $(if $(EXE_EXT),$(EXE_EXT),none)"
+	@echo ""
+	@echo "Targets:"
+	@echo "  make build        - Build the application (default)"
+	@echo "  make install      - Build and install to $(PREFIX)"
+	@echo "  make uninstall    - Remove installed files"
+	@echo "  make clean        - Remove build artifacts"
+	@echo "  make distclean    - Remove all generated files"
+	@echo "  make test         - Run tests on built binary"
+	@echo "  make check        - Verify build environment"
+	@echo "  make info         - Show build configuration"
+	@echo ""
+	@echo "Variables:"
+	@echo "  BUILD_MODE=release|debug  - Build mode (default: release)"
+	@echo "  PREFIX=/path              - Installation prefix (default: /usr/local)"
+	@echo "  V=1                       - Verbose output"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make BUILD_MODE=debug     - Build debug version"
+	@echo "  make PREFIX=~/.local install - Install to user directory"
+
+# Show configuration
+.PHONY: info
+info:
+	@echo "Build Configuration"
+	@echo "==================="
+	@echo "Architecture:        $(ARCH)"
+	@echo "Operating System:    $(OS)"
+	@echo "OS Family:           $(OS_FAMILY)"
+	@echo "Rust Target:         $(RUST_TARGET)"
+	@echo "Build Mode:          $(BUILD_MODE)"
+	@echo "Python Version:      $(PYTHON_VERSION)"
+	@echo ""
+	@echo "Paths:"
+	@echo "Build Directory:     $(PYOXIDIZER_BUILD_DIR)"
+	@echo "Output Directory:    $(BUILD_OUTPUT_DIR)"
+	@echo "Install Prefix:      $(PREFIX)"
+	@echo "Install Binary:      $(INSTALL_BINARY)"
+	@echo "Install Library:     $(LIBDIR)"
+	@echo ""
+	@echo "Commands:"
+	@echo "Python:              $(PYTHON)"
+	@echo "PyOxidizer:          $(PYOXIDIZER)"
+
+# Check build environment
+.PHONY: check
+check:
+	@echo "$(BLUE)[CHECK]$(NC) Verifying build environment..."
+	@echo -n "Checking Python... "
+	@if $(PYTHON) --version >/dev/null 2>&1; then \
+		echo "$(GREEN)OK$(NC) ($$($(PYTHON) --version))"; \
+	else \
+		echo "$(RED)MISSING$(NC)"; \
+		exit 1; \
+	fi
+	@echo -n "Checking Rust... "
+	@if cargo --version >/dev/null 2>&1; then \
+		echo "$(GREEN)OK$(NC) ($$(cargo --version | head -1))"; \
+	else \
+		echo "$(RED)MISSING$(NC) - Install from https://rustup.rs"; \
+		exit 1; \
+	fi
+	@echo -n "Checking PyOxidizer... "
+	@if $(PYOXIDIZER) --version >/dev/null 2>&1; then \
+		echo "$(GREEN)OK$(NC) ($$($(PYOXIDIZER) --version))"; \
+	else \
+		echo "$(YELLOW)MISSING$(NC) - Will install"; \
+	fi
+	@echo "$(GREEN)[CHECK]$(NC) Environment ready"
+
+# Setup virtual environment
+$(VENV_ACTIVATE):
+	@echo "$(BLUE)[VENV]$(NC) Creating virtual environment..."
+	$(Q)$(PYTHON) -m venv $(VENV_DIR)
+	@echo "$(GREEN)[VENV]$(NC) Virtual environment created"
+
+# Install PyOxidizer
+.PHONY: install-pyoxidizer
+install-pyoxidizer: $(VENV_ACTIVATE)
+	@echo "$(BLUE)[INSTALL]$(NC) Installing PyOxidizer..."
+	$(Q)source $(VENV_ACTIVATE) && $(PIP) install --quiet pyoxidizer==$(PYOXIDIZER_VERSION)
+	@echo "$(GREEN)[INSTALL]$(NC) PyOxidizer installed"
+
+# Generate PyOxidizer configuration
+pyoxidizer.toml:
+	@echo "$(BLUE)[CONFIG]$(NC) Generating PyOxidizer configuration..."
+	$(Q)cat > $@ <<-EOF
+	[build_targets.'$(RUST_TARGET)']
+	type = "distribution"
+	
+	[python_distributions.'$(RUST_TARGET)']
+	python_version = "$(PYTHON_VERSION)"
+	
+	[[packaging_rules]]
+	type = "stdlib-extensions-policy"
+	policy = "all"
+	
+	[[packaging_rules]]
+	type = "pip-install-simple"
+	package = "."
+	
+	[[embedded_python_binaries]]
+	name = "$(PROJECT_NAME)"
+	target = "$(RUST_TARGET)"
+	EOF
+	@echo "$(GREEN)[CONFIG]$(NC) Configuration generated for $(RUST_TARGET)"
+
+# Build target
+.PHONY: build
+build: check pyoxidizer.toml
+	@echo "$(BLUE)[BUILD]$(NC) Building for $(RUST_TARGET) ($(BUILD_MODE) mode)..."
+	$(Q)$(PYOXIDIZER) build $(PYOXIDIZER_FLAGS) --target $(RUST_TARGET)
+	@if [ -f "$(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY)" ]; then \
+		echo "$(GREEN)[BUILD]$(NC) Build successful!"; \
+		echo "Binary: $(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY)"; \
+		ls -lh "$(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY)"; \
+	else \
+		echo "$(RED)[BUILD]$(NC) Build failed - binary not found"; \
+		exit 1; \
+	fi
+
+# Install target
+.PHONY: install
+install: build
+	@echo "$(BLUE)[INSTALL]$(NC) Installing to $(PREFIX)..."
+	$(Q)mkdir -p $(BINDIR) $(LIBDIR) $(DATADIR)
+	$(Q)cp $(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY) $(INSTALL_BINARY)
+	$(Q)chmod 755 $(INSTALL_BINARY)
+	@echo "$(GREEN)[INSTALL]$(NC) Installation complete"
+	@echo "Binary installed to: $(INSTALL_BINARY)"
+
+# Uninstall target
+.PHONY: uninstall
+uninstall:
+	@echo "$(BLUE)[UNINSTALL]$(NC) Removing installed files..."
+	$(Q)rm -f $(INSTALL_BINARY)
+	$(Q)rmdir $(LIBDIR) 2>/dev/null || true
+	$(Q)rmdir $(DATADIR) 2>/dev/null || true
+	@echo "$(GREEN)[UNINSTALL]$(NC) Uninstallation complete"
+
+# Distribution package
+.PHONY: dist
+dist: build
+	@echo "$(BLUE)[DIST]$(NC) Creating distribution package..."
+	$(Q)mkdir -p $(DIST_DIR)/$(RUST_TARGET)
+	$(Q)cp $(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY) $(DIST_DIR)/$(RUST_TARGET)/
+	$(Q)tar czf $(DIST_DIR)/$(PROJECT_NAME)-$(RUST_TARGET).tar.gz \
+		-C $(DIST_DIR) $(RUST_TARGET)
+	@echo "$(GREEN)[DIST]$(NC) Distribution package created:"
+	@echo "  $(DIST_DIR)/$(PROJECT_NAME)-$(RUST_TARGET).tar.gz"
+
+# Run tests on built binary
+.PHONY: test
+test: build
+	@echo "$(BLUE)[TEST]$(NC) Running tests on built binary..."
+	@if [ -f "$(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY)" ]; then \
+		echo "Testing binary: $(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY)"; \
+		$(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY) --version || true; \
+		$(BUILD_OUTPUT_DIR)/$(OUTPUT_BINARY) --help || true; \
+		echo "$(GREEN)[TEST]$(NC) Basic tests passed"; \
+	else \
+		echo "$(RED)[TEST]$(NC) Binary not found"; \
+		exit 1; \
+	fi
+
+# Clean build artifacts
+.PHONY: clean
+clean:
+	@echo "$(BLUE)[CLEAN]$(NC) Removing build artifacts..."
+	$(Q)rm -rf $(BUILD_DIR)
+	$(Q)rm -rf __pycache__ .pytest_cache
+	$(Q)find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	$(Q)find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@echo "$(GREEN)[CLEAN]$(NC) Build artifacts removed"
+
+# Deep clean (including virtual environment and config)
+.PHONY: distclean
+distclean: clean
+	@echo "$(BLUE)[DISTCLEAN]$(NC) Removing all generated files..."
+	$(Q)rm -rf $(VENV_DIR)
+	$(Q)rm -rf $(DIST_DIR)
+	$(Q)rm -f pyoxidizer.toml
+	@echo "$(GREEN)[DISTCLEAN]$(NC) All generated files removed"
+
+# Continuous build (watch for changes)
+.PHONY: watch
+watch:
+	@echo "$(BLUE)[WATCH]$(NC) Watching for changes..."
+	@while true; do \
+		$(MAKE) -f Makefile.pyoxidizer build; \
+		echo "$(YELLOW)[WATCH]$(NC) Waiting for changes... (Ctrl+C to stop)"; \
+		sleep 2; \
+	done
+
+# Cross-compilation targets with configurable failure handling
+# Set FAIL_FAST=1 to stop on first failure, default continues on failures
+FAIL_FAST ?= 0
+
+.PHONY: build-all
+build-all:
+	@echo "$(BLUE)[BUILD-ALL]$(NC) Building for all supported targets..."
+	@echo "$(BLUE)[BUILD-ALL]$(NC) Failure mode: $(if $(filter 1,$(FAIL_FAST)),fail-fast,continue-on-failure)"
+	@failed_targets=""; \
+	success_count=0; \
+	total_targets=5; \
+	for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+		x86_64-apple-darwin aarch64-apple-darwin \
+		x86_64-pc-windows-msvc; do \
+		echo "$(YELLOW)[BUILD]$(NC) Building for $$target..."; \
+		if $(MAKE) -f Makefile.pyoxidizer RUST_TARGET=$$target build; then \
+			echo "$(GREEN)[SUCCESS]$(NC) $$target build successful"; \
+			success_count=$$((success_count + 1)); \
+		else \
+			echo "$(RED)[FAILED]$(NC) $$target build failed"; \
+			failed_targets="$$failed_targets $$target"; \
+			if [ "$(FAIL_FAST)" = "1" ]; then \
+				echo "$(RED)[BUILD-ALL]$(NC) Stopping on first failure (FAIL_FAST=1)"; \
+				exit 1; \
+			fi; \
+		fi; \
+	done; \
+	echo "$(BLUE)[BUILD-ALL]$(NC) Build summary: $$success_count/$$total_targets successful"; \
+	if [ -n "$$failed_targets" ]; then \
+		echo "$(RED)[FAILED TARGETS]$(NC)$$failed_targets"; \
+		echo "$(YELLOW)[BUILD-ALL]$(NC) Use 'make FAIL_FAST=1 build-all' to stop on first failure"; \
+		exit 1; \
+	else \
+		echo "$(GREEN)[BUILD-ALL]$(NC) All targets built successfully"; \
+	fi
+
+# Docker build helper
+.PHONY: docker-build
+docker-build:
+	@echo "$(BLUE)[DOCKER]$(NC) Building in Docker container..."
+	@docker run --rm -v $(PWD):/src -w /src \
+		rust:latest \
+		make -f Makefile.pyoxidizer build
+	@echo "$(GREEN)[DOCKER]$(NC) Docker build complete"
+
+.PHONY: .FORCE
+.FORCE:

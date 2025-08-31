@@ -1,10 +1,8 @@
 """Advanced context synchronization and real-time collaboration system."""
 
 import asyncio
-import json
 import logging
 import time
-import weakref
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Set
@@ -15,7 +13,6 @@ from pydantic import BaseModel
 
 from .models import (
     Context,
-    ContextEvent,
     ConflictResolutionStrategy,
     CollaborativeContext,
 )

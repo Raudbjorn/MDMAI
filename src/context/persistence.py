@@ -1,25 +1,19 @@
 """PostgreSQL-based context persistence layer with advanced optimizations."""
 
-import asyncio
 import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import asyncpg
-import psycopg2
-from psycopg2.extras import Json, RealDictCursor
 from psycopg2.pool import ThreadedConnectionPool
 
 from .models import (
     Context,
-    ContextEvent,
     ContextQuery,
     ContextState,
     ContextType,
-    ContextVersion,
     CompressionType,
 )
 from .serialization import ContextSerializer, ContextCompressor
@@ -516,8 +510,8 @@ class ContextPersistenceLayer:
                     
                     # Always update modification time and version
                     set_clauses.extend([
-                        f"last_modified = NOW()",
-                        f"current_version = current_version + 1",
+                        "last_modified = NOW()",
+                        "current_version = current_version + 1",
                     ])
                     
                     update_query = f"""

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri_plugin_shell::{ShellExt, process::{CommandEvent, CommandChild}};
 use log::{info, error, debug, warn};
+use crate::process_manager::ProcessManager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JsonRpcRequest {
@@ -38,16 +39,22 @@ pub struct MCPBridge {
     pending: Arc<RwLock<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>>,
     is_running: Arc<RwLock<bool>>,
     child_process: Arc<Mutex<Option<CommandChild>>>,
+    process_manager: Arc<ProcessManager>,
+    app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
+    restart_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl MCPBridge {
-    pub fn new() -> Self {
+    pub fn new(process_manager: Arc<ProcessManager>) -> Self {
         MCPBridge {
             stdin_tx: Arc::new(Mutex::new(None)),
             request_id: Arc::new(RwLock::new(0)),
             pending: Arc::new(RwLock::new(HashMap::new())),
             is_running: Arc::new(RwLock::new(false)),
             child_process: Arc::new(Mutex::new(None)),
+            process_manager,
+            app_handle: Arc::new(Mutex::new(None)),
+            restart_handle: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -58,7 +65,16 @@ impl MCPBridge {
         }
 
         info!("Starting MCP server sidecar process");
+        
+        // Store app handle for event emission
+        *self.app_handle.lock().await = Some(app_handle.clone());
+        self.process_manager.set_app_handle(app_handle.clone()).await;
 
+        // Start the process
+        self.start_process_internal(app_handle.clone()).await
+    }
+    
+    async fn start_process_internal(&self, app_handle: tauri::AppHandle) -> Result<(), String> {
         // Create channel for stdin communication
         let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
         *self.stdin_tx.lock().await = Some(stdin_tx);
@@ -71,11 +87,14 @@ impl MCPBridge {
             .spawn()
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
-        let child_id = child.pid();
+        let child_pid = child.pid();
         
         // Store the child process handle
         *self.child_process.lock().await = Some(child);
         *self.is_running.write().await = true;
+        
+        // Notify process manager
+        self.process_manager.on_process_started(child_pid).await;
 
         // Handle stdin writing in separate task
         let child_process_clone = self.child_process.clone();
@@ -92,19 +111,22 @@ impl MCPBridge {
                     break;
                 }
             }
-            debug!("Stdin writer task ended for process {}", child_id);
+            debug!("Stdin writer task ended for process {}", child_pid);
         });
 
         // Start reading responses in background
         let pending = self.pending.clone();
         let is_running = self.is_running.clone();
         let child_process_cleanup = self.child_process.clone();
+        let process_manager = self.process_manager.clone();
+        
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 match event {
                     CommandEvent::Stdout(line) => {
                         let line_str = String::from_utf8_lossy(&line);
                         debug!("MCP stdout: {}", line_str);
+                        
                         // Parse JSON-RPC response
                         if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&line_str) {
                             if let Some(sender) = pending.write().await.remove(&response.id) {
@@ -126,8 +148,20 @@ impl MCPBridge {
                     CommandEvent::Terminated(payload) => {
                         error!("MCP process terminated with code: {:?}", payload.code);
                         *is_running.write().await = false;
+                        
+                        // Notify process manager
+                        process_manager.on_process_stopped(payload.code).await;
+                        
                         // Clean up the child process handle
                         *child_process_cleanup.lock().await = None;
+                        
+                        // Check if we should restart
+                        if process_manager.should_restart().await {
+                            // We'll handle restart separately
+                            info!("MCP server should be restarted - marking for restart");
+                            // The restart will be handled by the process manager or external logic
+                        }
+                        
                         break;
                     }
                     _ => {}
@@ -137,13 +171,22 @@ impl MCPBridge {
 
         // Initialize connection
         self.initialize().await?;
+        
+        // Reset restart count on successful start
+        self.process_manager.reset_restart_count().await;
 
         Ok(())
     }
+    
 
     pub async fn stop(&self) -> Result<(), String> {
         if *self.is_running.read().await {
             info!("Stopping MCP server process");
+            
+            // Cancel any pending restart
+            if let Some(handle) = self.restart_handle.lock().await.take() {
+                handle.abort();
+            }
             
             // Try to send shutdown command gracefully
             let shutdown_result = self.call("shutdown", Value::Null).await;
@@ -153,7 +196,7 @@ impl MCPBridge {
             
             // Force kill the process if it's still running
             let mut child_guard = self.child_process.lock().await;
-            if let Some(mut child) = child_guard.take() {
+            if let Some(child) = child_guard.take() {
                 // Check if graceful shutdown failed
                 if shutdown_result.is_err() {
                     warn!("Graceful shutdown failed, forcefully terminating process");
@@ -171,11 +214,31 @@ impl MCPBridge {
             // Clear state
             *self.is_running.write().await = false;
             *self.stdin_tx.lock().await = None;
+            
+            // Notify process manager
+            self.process_manager.on_process_stopped(Some(0)).await;
         }
 
         self.pending.write().await.clear();
 
         Ok(())
+    }
+    
+    pub async fn restart(&self) -> Result<(), String> {
+        info!("Restarting MCP server");
+        
+        // Stop the current process
+        self.stop().await?;
+        
+        // Wait a moment
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        
+        // Start again
+        if let Some(app_handle) = self.app_handle.lock().await.as_ref() {
+            self.start(app_handle).await
+        } else {
+            Err("App handle not available for restart".to_string())
+        }
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
@@ -240,7 +303,21 @@ impl MCPBridge {
     }
     
     pub async fn is_healthy(&self) -> bool {
-        *self.is_running.read().await
+        if !*self.is_running.read().await {
+            return false;
+        }
+        
+        // Perform actual health check by calling a simple method
+        match self.call("server_info", Value::Null).await {
+            Ok(_) => {
+                self.process_manager.on_health_check_result(true, None).await;
+                true
+            }
+            Err(e) => {
+                self.process_manager.on_health_check_result(false, Some(e)).await;
+                false
+            }
+        }
     }
 }
 
@@ -248,17 +325,24 @@ impl MCPBridge {
 #[tauri::command]
 pub async fn start_mcp_backend(
     state: tauri::State<'_, Arc<Mutex<Option<MCPBridge>>>>,
+    process_state: tauri::State<'_, crate::process_manager::ProcessManagerState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut bridge_opt = state.lock().await;
     
     if bridge_opt.is_none() {
         info!("Creating new MCP bridge");
-        let bridge = MCPBridge::new();
+        let bridge = MCPBridge::new(process_state.0.clone());
         bridge.start(&app_handle).await?;
         *bridge_opt = Some(bridge);
-    } else {
-        debug!("MCP bridge already exists");
+    } else if let Some(bridge) = bridge_opt.as_ref() {
+        // Check if process is actually running
+        if !bridge.is_healthy().await {
+            info!("MCP bridge exists but process is not healthy, restarting");
+            bridge.restart().await?;
+        } else {
+            debug!("MCP bridge already running and healthy");
+        }
     }
     
     Ok(())
@@ -272,6 +356,17 @@ pub async fn stop_mcp_backend(
         bridge.stop().await?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn restart_mcp_backend(
+    state: tauri::State<'_, Arc<Mutex<Option<MCPBridge>>>>,
+) -> Result<(), String> {
+    if let Some(bridge) = state.lock().await.as_ref() {
+        bridge.restart().await
+    } else {
+        Err("MCP backend not initialized".to_string())
+    }
 }
 
 #[tauri::command]

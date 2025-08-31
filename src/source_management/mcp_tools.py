@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from .models import ContentCategory, QualityLevel, SourceType
 from .source_manager import SourceManager
 
 logger = logging.getLogger(__name__)

@@ -78,7 +78,7 @@
 		<div class="container mx-auto max-w-6xl">
 			<h2 class="text-3xl md:text-4xl font-bold text-center mb-12">How It Works</h2>
 			
-			<Tabs defaultValue="setup" class="max-w-4xl mx-auto">
+			<Tabs value="setup" class="max-w-4xl mx-auto">
 				<TabsList class="grid w-full grid-cols-3">
 					<TabsTrigger value="setup">Setup</TabsTrigger>
 					<TabsTrigger value="play">Play</TabsTrigger>

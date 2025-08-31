@@ -1,13 +1,13 @@
 """ML-based query completion and suggestion system."""
 
-import difflib
+import json
 import pickle
 import re
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from config.logging_config import get_logger
 
@@ -143,12 +143,13 @@ class QueryPatternMatcher:
 class QueryCompletionEngine:
     """ML-based query completion engine with learning capabilities."""
 
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: Optional[str] = None, context_window: int = 5):
         """
         Initialize query completion engine.
 
         Args:
             model_dir: Optional directory for saving/loading models
+            context_window: Size of the context window for session context
         """
         self.model_dir = Path(model_dir) if model_dir else None
         self.lock = Lock()
@@ -564,14 +565,15 @@ class QueryCompletionEngine:
 class QueryCompletionService:
     """High-level service for query completion functionality."""
 
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: Optional[str] = None, context_window: int = 5):
         """
         Initialize query completion service.
 
         Args:
             model_dir: Optional directory for model persistence
+            context_window: Size of the context window for session context
         """
-        self.engine = QueryCompletionEngine(model_dir)
+        self.engine = QueryCompletionEngine(model_dir, context_window)
 
         # Pre-load common TTRPG queries for better initial suggestions
         self._load_default_queries()

@@ -4,7 +4,7 @@ import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 
 import chromadb
 from chromadb.config import Settings

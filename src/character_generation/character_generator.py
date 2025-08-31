@@ -2,8 +2,7 @@
 
 import logging
 import random
-from dataclasses import field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 from .models import Backstory, Character, CharacterClass, CharacterRace, CharacterStats, Equipment
 from .validators import CharacterValidator, ValidationError
@@ -488,7 +487,7 @@ class CharacterGenerator:
                     CharacterClass.PALADIN,
                     CharacterClass.BARBARIAN,
                 ]
-                else f"Level 5 Feature"
+                else "Level 5 Feature"
             )
 
         return features

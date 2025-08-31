@@ -3,12 +3,10 @@
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from .flavor_integrator import FlavorIntegrator
 from .models import (
-    ContentCategory,
     FlavorSource,
     ProcessingStatus,
     Source,

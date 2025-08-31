@@ -5,7 +5,7 @@ Implements REQ-008: Session Management
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..search.error_handler import DatabaseError, handle_search_errors
 from .models import SessionNoteCategory
