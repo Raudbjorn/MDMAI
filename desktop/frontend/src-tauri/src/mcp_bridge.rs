@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::api::process::{Command, CommandEvent, CommandChild};
+use tauri::api::process::{Command, CommandEvent};
 use log::{info, error, debug, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,41 +33,58 @@ struct JsonRpcError {
 }
 
 pub struct MCPBridge {
-    child: Arc<Mutex<Option<CommandChild>>>,
+    stdin_tx: Arc<Mutex<Option<tokio::sync::mpsc::Sender<String>>>>,
     request_id: Arc<RwLock<u64>>,
     pending: Arc<RwLock<HashMap<u64, tokio::sync::oneshot::Sender<Result<Value, String>>>>>,
+    is_running: Arc<RwLock<bool>>,
 }
 
 impl MCPBridge {
     pub fn new() -> Self {
         MCPBridge {
-            child: Arc::new(Mutex::new(None)),
+            stdin_tx: Arc::new(Mutex::new(None)),
             request_id: Arc::new(RwLock::new(0)),
             pending: Arc::new(RwLock::new(HashMap::new())),
+            is_running: Arc::new(RwLock::new(false)),
         }
     }
 
     pub async fn start(&self) -> Result<(), String> {
         // Check if already running
-        if self.child.lock().await.is_some() {
+        if *self.is_running.read().await {
             return Ok(());
         }
 
         info!("Starting MCP server sidecar process");
 
+        // Create channel for stdin communication
+        let (stdin_tx, mut stdin_rx) = tokio::sync::mpsc::channel::<String>(100);
+        *self.stdin_tx.lock().await = Some(stdin_tx);
+
         // Start Python MCP server using Tauri sidecar
-        // The sidecar name should match the binary name without path
         let (mut rx, mut child) = Command::new_sidecar("mcp-server")
             .map_err(|e| format!("Failed to create mcp-server sidecar command: {}", e))?
             .env("MCP_STDIO_MODE", "true")
             .spawn()
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
-        // Store process handle
-        *self.child.lock().await = Some(child);
+        *self.is_running.write().await = true;
+
+        // Handle stdin writing in separate task
+        let child_id = child.pid();
+        tokio::spawn(async move {
+            while let Some(request) = stdin_rx.recv().await {
+                if let Err(e) = child.write(request.as_bytes()) {
+                    error!("Failed to write to stdin: {}", e);
+                    break;
+                }
+            }
+            debug!("Stdin writer task ended for process {}", child_id);
+        });
 
         // Start reading responses in background
         let pending = self.pending.clone();
+        let is_running = self.is_running.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
                 match event {
@@ -93,6 +109,7 @@ impl MCPBridge {
                     }
                     CommandEvent::Terminated(payload) => {
                         error!("MCP process terminated with code: {:?}", payload.code);
+                        *is_running.write().await = false;
                         break;
                     }
                     _ => {}
@@ -107,7 +124,7 @@ impl MCPBridge {
     }
 
     pub async fn stop(&self) -> Result<(), String> {
-        if let Some(child) = self.child.lock().await.take() {
+        if *self.is_running.read().await {
             info!("Stopping MCP server process");
             
             // Send shutdown command if possible
@@ -116,8 +133,9 @@ impl MCPBridge {
             // Give process time to shutdown gracefully
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
             
-            // Force kill if still running
-            let _ = child.kill();
+            // Clear state
+            *self.is_running.write().await = false;
+            *self.stdin_tx.lock().await = None;
         }
 
         self.pending.write().await.clear();
@@ -127,49 +145,52 @@ impl MCPBridge {
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
         // Check if process is running
-        let child_guard = self.child.lock().await;
-        if let Some(child) = child_guard.as_ref() {
-            // Get next request ID
-            let request_id = {
-                let mut id = self.request_id.write().await;
-                *id += 1;
-                *id
-            };
+        if !*self.is_running.read().await {
+            return Err("MCP server not running".to_string());
+        }
 
-            // Create JSON-RPC request
-            let request = JsonRpcRequest {
-                jsonrpc: "2.0".to_string(),
-                id: request_id,
-                method: method.to_string(),
-                params,
-            };
+        // Get next request ID
+        let request_id = {
+            let mut id = self.request_id.write().await;
+            *id += 1;
+            *id
+        };
 
-            // Create response channel
-            let (tx, rx) = tokio::sync::oneshot::channel();
-            self.pending.write().await.insert(request_id, tx);
+        // Create JSON-RPC request
+        let request = JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: request_id,
+            method: method.to_string(),
+            params,
+        };
 
-            // Send request to Python process via stdin
-            let request_str = serde_json::to_string(&request)
-                .map_err(|e| format!("Failed to serialize request: {}", e))?;
-            
-            // Write to stdin using the child process handle
-            child.write(format!("{}\n", request_str).as_bytes())
+        // Create response channel
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pending.write().await.insert(request_id, tx);
+
+        // Send request to Python process via stdin channel
+        let request_str = serde_json::to_string(&request)
+            .map_err(|e| format!("Failed to serialize request: {}", e))?;
+        
+        // Send via channel
+        if let Some(stdin_tx) = self.stdin_tx.lock().await.as_ref() {
+            stdin_tx.send(format!("{}\n", request_str)).await
                 .map_err(|e| {
-                    self.pending.write().await.remove(&request_id);
-                    format!("Failed to write to stdin: {}", e)
-                })?
-
-            // Wait for response with timeout
-            match tokio::time::timeout(tokio::time::Duration::from_secs(30), rx).await {
-                Ok(Ok(result)) => result,
-                Ok(Err(_)) => Err("Response channel closed".to_string()),
-                Err(_) => {
-                    self.pending.write().await.remove(&request_id);
-                    Err("Request timeout".to_string())
-                }
-            }
+                    format!("Failed to send to stdin channel: {}", e)
+                })?;
         } else {
-            Err("MCP server not running".to_string())
+            self.pending.write().await.remove(&request_id);
+            return Err("Stdin channel not available".to_string());
+        }
+
+        // Wait for response with timeout
+        match tokio::time::timeout(tokio::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err("Response channel closed".to_string()),
+            Err(_) => {
+                self.pending.write().await.remove(&request_id);
+                Err("Request timeout".to_string())
+            }
         }
     }
 
@@ -184,7 +205,7 @@ impl MCPBridge {
     }
     
     pub async fn is_healthy(&self) -> bool {
-        self.child.lock().await.is_some()
+        *self.is_running.read().await
     }
 }
 
