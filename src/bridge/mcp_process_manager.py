@@ -329,7 +329,7 @@ class MCPProcess:
                     # Handle the message
                     await self._handle_message(message)
                     
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # Log non-JSON output (might be debug logs)
                     logger.debug(
                         "Non-JSON output from MCP",
