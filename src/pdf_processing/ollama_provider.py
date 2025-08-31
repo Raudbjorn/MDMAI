@@ -14,6 +14,9 @@ from config.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+# Constants
+DEFAULT_EMBEDDING_DIMENSION = 768  # Default dimension for unknown models
+
 
 class OllamaEmbeddingProvider:
     """Provider for Ollama-based local embeddings."""
@@ -152,9 +155,9 @@ class OllamaEmbeddingProvider:
         try:
             logger.info(f"Pulling Ollama model: {model_name}")
             
-            # Validate model name with proper regex to prevent injection
+            # Validate model name with proper regex to prevent injection and path traversal
             import re
-            if not model_name or not re.match(r'^[a-zA-Z0-9_-]+(?::[a-zA-Z0-9_.-]+)?$', model_name):
+            if not model_name or not re.match(r'^[a-zA-Z0-9_-]+(?::[a-zA-Z0-9_-]+)?$', model_name):
                 logger.error(f"Invalid model name: {model_name}")
                 return False
             
@@ -172,11 +175,10 @@ class OllamaEmbeddingProvider:
                         data = json.loads(line)
                         status = data.get("status", "")
                         if "pulling" in status.lower():
-                            print(f"\r{status}", end="", flush=True)
+                            logger.info(f"Model download progress: {status}")
                         elif "error" in status.lower():
                             logger.error(f"Error pulling model: {status}")
                             return False
-                print()  # New line after progress
             
             # Verify model was pulled
             return self.is_model_available(model_name)
@@ -268,7 +270,7 @@ class OllamaEmbeddingProvider:
                 except Exception as e:
                     logger.error(f"Failed to generate embedding for text {index}: {e}")
                     # Return empty embedding on failure to maintain alignment
-                    embeddings[index] = [0.0] * (self._embedding_dimension or 768)
+                    embeddings[index] = [0.0] * (self._embedding_dimension or DEFAULT_EMBEDDING_DIMENSION)
         
         return embeddings
     

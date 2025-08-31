@@ -51,12 +51,11 @@ class EmbeddingGenerator:
                 
                 # Check if Ollama is available
                 if not self.ollama_provider.check_ollama_installed():
-                    logger.warning("Ollama not available, attempting to start service...")
-                    if not self.ollama_provider.start_ollama_service():
-                        logger.warning("Failed to start Ollama, falling back to Sentence Transformers")
-                        self.use_ollama = False
-                        self._initialize_sentence_transformer()
-                        return
+                    logger.error("Ollama service is not available. Please start the Ollama service manually before proceeding.")
+                    logger.warning("Falling back to Sentence Transformers")
+                    self.use_ollama = False
+                    self._initialize_sentence_transformer()
+                    return
                 
                 # Check if model needs to be downloaded
                 if not self.ollama_provider.is_model_available(self.model_name):

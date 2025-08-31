@@ -83,15 +83,13 @@ export class MCPClient {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${apiKey}`,
 					'X-Request-Timestamp': Date.now().toString(),
 					'X-Request-Nonce': nonceStr
 				},
 				body: JSON.stringify({
 					user_id: userId,
-					provider: provider,
-					// In production, API key should ideally be stored server-side
-					// This is a temporary measure until server-side key management is implemented
-					api_key: apiKey
+					provider: provider
 				})
 			});
 

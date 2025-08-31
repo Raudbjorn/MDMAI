@@ -30,8 +30,8 @@ class SecureApiKeyHandler {
         if (!browser) return null;
         
         try {
-            // Try to get existing key from IndexedDB
-            const storedKey = localStorage.getItem(this.KEY_NAME);
+            // Try to get existing key from sessionStorage for better security
+            const storedKey = sessionStorage.getItem(this.KEY_NAME);
             if (storedKey) {
                 const keyData = JSON.parse(storedKey);
                 return await crypto.subtle.importKey(
@@ -46,7 +46,7 @@ class SecureApiKeyHandler {
             // Generate new key
             const key = await this.generateKey();
             const exportedKey = await crypto.subtle.exportKey('jwk', key);
-            localStorage.setItem(this.KEY_NAME, JSON.stringify(exportedKey));
+            sessionStorage.setItem(this.KEY_NAME, JSON.stringify(exportedKey));
             return key;
         } catch (error) {
             console.error('Failed to get/create encryption key:', error);
@@ -166,8 +166,8 @@ class SecureApiKeyHandler {
             }
         });
         
-        // Clear the encryption key
-        localStorage.removeItem(this.KEY_NAME);
+        // Clear the encryption key from sessionStorage
+        sessionStorage.removeItem(this.KEY_NAME);
     }
     
     /**
