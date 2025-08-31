@@ -186,7 +186,7 @@ def main():
         test_single_pdf(args.single)
     elif args.all:
         # Test with first PDF in sample directory if it exists
-        sample_dir = Path("/home/svnbjrn/code/phase12/sample_pdfs")
+        sample_dir = Path(__file__).parent.parent.parent.parent / "sample_pdfs"  # Example relative path
         if sample_dir.exists():
             pdfs = list(sample_dir.glob("*.pdf"))
             if pdfs:
