@@ -1,178 +1,23 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "TTRPG Assistant",
+  "version": "1.0.0",
+  "identifier": "com.ttrpg.assistant",
   "build": {
     "beforeBuildCommand": "npm run build",
     "beforeDevCommand": "npm run dev",
-    "devPath": "http://localhost:5173",
-    "distDir": "../build"
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../build"
   },
-  "package": {
-    "productName": "TTRPG Assistant",
-    "version": "1.0.0",
-    "authors": ["TTRPG Assistant Team"],
-    "defaultPermission": "world"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "window": {
-        "all": false,
-        "create": false,
-        "center": true,
-        "requestUserAttention": true,
-        "setResizable": true,
-        "setTitle": true,
-        "maximize": true,
-        "unmaximize": true,
-        "minimize": true,
-        "unminimize": true,
-        "show": true,
-        "hide": true,
-        "close": true,
-        "setDecorations": true,
-        "setAlwaysOnTop": true,
-        "setSize": true,
-        "setMinSize": true,
-        "setMaxSize": true,
-        "setPosition": true,
-        "setFullscreen": true,
-        "setFocus": true,
-        "setIcon": true,
-        "setSkipTaskbar": true,
-        "setCursorGrab": true,
-        "setCursorVisible": true,
-        "setCursorIcon": true,
-        "setCursorPosition": true,
-        "startDragging": true,
-        "print": true
-      },
-      "shell": {
-        "all": false,
-        "execute": true,
-        "sidecar": true,
-        "scope": [
-          {
-            "name": "binaries/mcp-server",
-            "sidecar": true,
-            "args": []
-          }
-        ]
-      },
-      "process": {
-        "all": false,
-        "exit": true,
-        "relaunch": true
-      },
-      "http": {
-        "all": false,
-        "request": true,
-        "scope": ["http://localhost:*", "ws://localhost:*"]
-      },
-      "fs": {
-        "all": false,
-        "readFile": true,
-        "writeFile": true,
-        "readDir": true,
-        "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
-        "scope": ["$APPDATA", "$APPDATA/**", "$RESOURCE/**"]
-      },
-      "dialog": {
-        "all": false,
-        "open": true,
-        "save": true,
-        "message": true
-      },
-      "notification": {
-        "all": true
-      },
-      "clipboard": {
-        "all": false,
-        "readText": true,
-        "writeText": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": ["msi", "nsis", "deb", "appimage", "dmg"],
-      "identifier": "com.ttrpg.assistant",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "resources": [],
-      "externalBin": [
-        "../../../backend/dist/mcp-server"
-      ],
-      "copyright": "© 2024 TTRPG Assistant",
-      "category": "Game",
-      "shortDescription": "A comprehensive assistant for Tabletop RPG game masters",
-      "longDescription": "TTRPG Assistant provides quick access to rules, campaign management, and AI-powered content generation for tabletop role-playing games.",
-      "deb": {
-        "depends": []
-      },
-      "macOS": {
-        "frameworks": [],
-        "minimumSystemVersion": "10.15",
-        "exceptionDomain": "",
-        "signingIdentity": null,
-        "providerShortName": null,
-        "entitlements": null
-      },
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": "",
-        "wix": {
-          "language": "en-US",
-          "template": null,
-          "fragmentPaths": [],
-          "componentGroupRefs": [],
-          "componentRefs": [],
-          "featureGroupRefs": [],
-          "featureRefs": [],
-          "mergeRefs": [],
-          "skipWebviewInstall": false,
-          "license": "wix/license.rtf",
-          "bannerPath": "wix/banner.bmp",
-          "dialogImagePath": "wix/dialog.bmp"
-        },
-        "nsis": {
-          "license": "installer/license.txt",
-          "headerImage": "installer/header.bmp",
-          "sidebarImage": "installer/welcome.bmp",
-          "installerIcon": "installer/icon.ico",
-          "installMode": "perUser",
-          "languages": ["English"],
-          "displayLanguageSelector": false
-        }
-      }
-    },
+  "app": {
     "security": {
       "csp": "default-src 'self' tauri: asset:; script-src 'self' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: tauri: asset:; img-src 'self' data: blob: tauri: asset:; font-src 'self' data:; media-src 'self' tauri: asset:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none';",
       "dangerousDisableAssetCspModification": false,
-      "freezePrototype": true,
-      "dangerousRemoteDomainIpcAccess": []
-    },
-    "systemTray": {
-      "iconPath": "icons/tray/icon.ico",
-      "iconAsTemplate": true,
-      "menuOnLeftClick": false
-    },
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "${UPDATE_URL:-https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json}"
-      ],
-      "dialog": true,
-      "pubkey": ""
+      "freezePrototype": true
     },
     "windows": [
       {
+        "label": "main",
         "title": "TTRPG Assistant",
         "width": 1200,
         "height": 800,
@@ -183,7 +28,7 @@
         "transparent": false,
         "resizable": true,
         "skipTaskbar": false,
-        "fileDropEnabled": true,
+        "dragDropEnabled": true,
         "theme": null,
         "titleBarStyle": "Overlay",
         "userAgent": "TTRPG Assistant Desktop",
@@ -197,5 +42,18 @@
         "additionalBrowserArgs": "--enable-features=OverlayScrollbar"
       }
     ]
+  },
+  "bundle": {
+    "active": false
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "${UPDATE_URL:-https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json}"
+      ],
+      "dialog": true,
+      "pubkey": ""
+    }
   }
 }

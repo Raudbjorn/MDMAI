@@ -107,4 +107,3 @@
         </div>
     {/if}
 {/if}
-</script>

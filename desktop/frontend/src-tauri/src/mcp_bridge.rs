@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri::api::process::{Command, CommandEvent};
+use tauri_plugin_shell::{ShellExt, process::{CommandEvent}};
 use log::{info, error, debug, warn};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ impl MCPBridge {
         }
     }
 
-    pub async fn start(&self) -> Result<(), String> {
+    pub async fn start(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {
         // Check if already running
         if *self.is_running.read().await {
             return Ok(());
@@ -62,7 +62,8 @@ impl MCPBridge {
         *self.stdin_tx.lock().await = Some(stdin_tx);
 
         // Start Python MCP server using Tauri sidecar
-        let (mut rx, mut child) = Command::new_sidecar("mcp-server")
+        let (mut rx, mut child) = app_handle.shell()
+            .sidecar("mcp-server")
             .map_err(|e| format!("Failed to create mcp-server sidecar command: {}", e))?
             .env("MCP_STDIO_MODE", "true")
             .spawn()
@@ -89,9 +90,10 @@ impl MCPBridge {
             while let Some(event) = rx.recv().await {
                 match event {
                     CommandEvent::Stdout(line) => {
-                        debug!("MCP stdout: {}", line);
+                        let line_str = String::from_utf8_lossy(&line);
+                        debug!("MCP stdout: {}", line_str);
                         // Parse JSON-RPC response
-                        if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&line) {
+                        if let Ok(response) = serde_json::from_str::<JsonRpcResponse>(&line_str) {
                             if let Some(sender) = pending.write().await.remove(&response.id) {
                                 if let Some(result) = response.result {
                                     let _ = sender.send(Ok(result));
@@ -102,7 +104,8 @@ impl MCPBridge {
                         }
                     }
                     CommandEvent::Stderr(line) => {
-                        warn!("MCP stderr: {}", line);
+                        let line_str = String::from_utf8_lossy(&line);
+                        warn!("MCP stderr: {}", line_str);
                     }
                     CommandEvent::Error(e) => {
                         error!("MCP process error: {}", e);
@@ -213,13 +216,14 @@ impl MCPBridge {
 #[tauri::command]
 pub async fn start_mcp_backend(
     state: tauri::State<'_, Arc<Mutex<Option<MCPBridge>>>>,
+    app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut bridge_opt = state.lock().await;
     
     if bridge_opt.is_none() {
         info!("Creating new MCP bridge");
         let bridge = MCPBridge::new();
-        bridge.start().await?;
+        bridge.start(&app_handle).await?;
         *bridge_opt = Some(bridge);
     } else {
         debug!("MCP bridge already exists");

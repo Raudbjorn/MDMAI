@@ -37,11 +37,11 @@ export default defineConfig({
     optimizeDeps: {
         include: [
             '@tauri-apps/api',
-            '@tauri-apps/api/tauri',
+            '@tauri-apps/api/core',
             '@tauri-apps/api/window',
-            '@tauri-apps/api/dialog',
-            '@tauri-apps/api/fs',
-            '@tauri-apps/api/notification'
+            '@tauri-apps/plugin-dialog',
+            '@tauri-apps/plugin-fs',
+            '@tauri-apps/plugin-notification'
         ],
         exclude: ['@tauri-apps/cli']
     },
