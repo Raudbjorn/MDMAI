@@ -2,14 +2,100 @@
 """
 Build script for TTRPG Assistant Desktop Application
 Handles building both Python backend and Tauri frontend, then packages everything
+
+Supports dynamic architecture detection for:
+  - Intel Macs (x86_64)
+  - Apple Silicon Macs (aarch64/arm64)
+  - Linux x86_64
+  - Linux aarch64
+  - Windows x86_64
 """
 
 import subprocess
 import shutil
 import sys
 import os
+import platform
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
+
+
+def detect_architecture() -> str:
+    """
+    Detect the system architecture and normalize it for use with build tools.
+    
+    Returns:
+        Normalized architecture string (x86_64, aarch64, armv7, i686)
+    """
+    machine = platform.machine().lower()
+    
+    # Map various architecture names to normalized form
+    arch_map = {
+        'x86_64': 'x86_64',
+        'amd64': 'x86_64',
+        'arm64': 'aarch64',  # macOS reports arm64, but Rust uses aarch64
+        'aarch64': 'aarch64',
+        'armv7l': 'armv7',
+        'armv7': 'armv7',
+        'i386': 'i686',
+        'i686': 'i686',
+    }
+    
+    normalized_arch = arch_map.get(machine)
+    if not normalized_arch:
+        print(f"⚠️  Unknown architecture: {machine}, defaulting to x86_64")
+        return 'x86_64'
+    
+    return normalized_arch
+
+
+def detect_platform() -> Tuple[str, str]:
+    """
+    Detect the operating system and architecture.
+    
+    Returns:
+        Tuple of (os_name, architecture)
+    """
+    system = platform.system().lower()
+    arch = detect_architecture()
+    
+    os_map = {
+        'darwin': 'darwin',
+        'linux': 'linux',
+        'windows': 'windows',
+    }
+    
+    os_name = os_map.get(system, system)
+    return os_name, arch
+
+
+def get_rust_target() -> str:
+    """
+    Get the Rust target triple for the current platform.
+    
+    Returns:
+        Rust target triple string
+    """
+    os_name, arch = detect_platform()
+    
+    # Build target triple based on OS and architecture
+    if os_name == 'darwin':
+        return f"{arch}-apple-darwin"
+    elif os_name == 'linux':
+        # Check if using musl or glibc
+        try:
+            result = subprocess.run(['ldd', '--version'], 
+                                  capture_output=True, text=True)
+            if 'musl' in result.stdout:
+                return f"{arch}-unknown-linux-musl"
+        except:
+            pass
+        return f"{arch}-unknown-linux-gnu"
+    elif os_name == 'windows':
+        return f"{arch}-pc-windows-msvc"
+    else:
+        # Fallback
+        return f"{arch}-unknown-{os_name}"
 
 
 def run_command(cmd: List[str], cwd: Optional[Path] = None, env: Optional[dict] = None) -> int:
@@ -142,14 +228,31 @@ def prepare_tauri_resources(root: Path) -> int:
     tauri_binaries = root / "frontend" / "src-tauri" / "binaries"
     tauri_binaries.mkdir(parents=True, exist_ok=True)
     
-    # Find the backend executable
+    # Get current platform target
+    target_triple = get_rust_target()
+    os_name, arch = detect_platform()
+    
+    # Find the backend executable with dynamic architecture paths
     possible_paths = [
+        # PyInstaller outputs
         root / "backend" / "dist" / "mcp-server.exe",
         root / "backend" / "dist" / "mcp-server",
-        root / "backend" / "build" / "x86_64-pc-windows-msvc" / "release" / "mcp-server.exe",
-        root / "backend" / "build" / "x86_64-apple-darwin" / "release" / "mcp-server",
-        root / "backend" / "build" / "x86_64-unknown-linux-gnu" / "release" / "mcp-server",
+        # PyOxidizer outputs with dynamic architecture
+        root / "backend" / "build" / target_triple / "release" / "mcp-server.exe",
+        root / "backend" / "build" / target_triple / "release" / "mcp-server",
+        # Architecture-specific dist folders
+        root / "backend" / "dist" / target_triple / "mcp-server.exe",
+        root / "backend" / "dist" / target_triple / "mcp-server",
     ]
+    
+    # Also check for all known architectures
+    for known_arch in ['x86_64', 'aarch64', 'armv7', 'i686']:
+        for known_os in ['apple-darwin', 'unknown-linux-gnu', 'unknown-linux-musl', 'pc-windows-msvc']:
+            known_target = f"{known_arch}-{known_os}"
+            possible_paths.extend([
+                root / "backend" / "build" / known_target / "release" / "mcp-server",
+                root / "backend" / "build" / known_target / "release" / "mcp-server.exe",
+            ])
     
     for path in possible_paths:
         if path.exists():
@@ -174,17 +277,9 @@ main()
         wrapper.chmod(0o755)
         return 0
     
-    # Determine target triple for Tauri
-    target_triple = None
-    if sys.platform == "win32":
-        target_triple = "x86_64-pc-windows-msvc"
-        ext = ".exe"
-    elif sys.platform == "darwin":
-        target_triple = "x86_64-apple-darwin"
-        ext = ""
-    else:
-        target_triple = "x86_64-unknown-linux-gnu"
-        ext = ""
+    # Determine target triple for Tauri using dynamic detection
+    target_triple = get_rust_target()
+    ext = ".exe" if sys.platform == "win32" else ""
     
     # Copy to Tauri binaries with correct naming
     target = tauri_binaries / f"mcp-server-{target_triple}{ext}"
@@ -266,9 +361,15 @@ def main():
     # Find project root
     root = Path(__file__).parent.resolve()
     
+    # Detect platform and architecture
+    os_name, arch = detect_platform()
+    target_triple = get_rust_target()
+    
     print("🎮 TTRPG Assistant Desktop Build Script")
     print(f"📁 Project root: {root}")
     print(f"🖥️  Platform: {sys.platform}")
+    print(f"🏗️  Architecture: {arch}")
+    print(f"🎯 Rust Target: {target_triple}")
     print(f"🔧 Build mode: {'Debug' if args.debug else 'Release'}")
     print()
     
