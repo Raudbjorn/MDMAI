@@ -422,8 +422,6 @@ def register_character_tools(mcp_server):
             for result in results.get("documents", []):
                 doc = result.get("document", {})
                 if isinstance(doc, str):
-                    import json
-
                     doc = json.loads(doc)
 
                 npcs.append(

@@ -356,6 +356,3 @@ class SecurityMetrics(BaseModel):
     period_start: datetime
     period_end: datetime
     
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return self.model_dump(mode="json")

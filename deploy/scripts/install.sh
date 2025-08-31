@@ -43,7 +43,7 @@ print_error() {
 }
 
 check_root() {
-    if [[ $EUID -eq 0 ]]; then
+    if [ "$EUID" -eq 0 ]; then
         print_success "Running with root privileges"
     else
         print_error "This script must be run as root"
@@ -53,7 +53,7 @@ check_root() {
 }
 
 detect_os() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if [ "$OSTYPE" = "linux-gnu" ] || [ "${OSTYPE#linux-gnu}" != "$OSTYPE" ]; then
         if [ -f /etc/debian_version ]; then
             OS_TYPE="debian"
             PKG_MANAGER="apt-get"
@@ -67,7 +67,7 @@ detect_os() {
             OS_TYPE="linux"
             PKG_MANAGER="unknown"
         fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
+    elif [ "$OSTYPE" = "darwin" ] || [ "${OSTYPE#darwin}" != "$OSTYPE" ]; then
         OS_TYPE="macos"
         PKG_MANAGER="brew"
     else
@@ -512,7 +512,7 @@ main() {
     print_header "TTRPG Assistant MCP Server Installation"
     
     # Parse command line arguments
-    while [[ $# -gt 0 ]]; do
+    while [ $# -gt 0 ]; do
         case $1 in
             --install-dir)
                 INSTALL_DIR="$2"

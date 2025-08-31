@@ -31,7 +31,7 @@ print_info() {
 }
 
 # Check if we're in the right directory
-if [[ ! -f "requirements.txt" ]]; then
+if [ ! -f "requirements.txt" ]; then
     print_error "requirements.txt not found. Please run this script from the MDMAI project root."
     exit 1
 fi

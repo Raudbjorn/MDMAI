@@ -14,7 +14,7 @@
 	const demoUsername = `Player${Math.floor(Math.random() * 1000)}`;
 	
 	let isConnected = $state(false);
-	let currentRoom: any = $state(null);
+	let currentRoom = $state<any>(null);
 	let showCanvas = $state(true);
 	let showPresence = $state(true);
 	let showActivity = $state(true);

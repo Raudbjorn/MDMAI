@@ -26,7 +26,7 @@ VERBOSE=false
 PARALLEL=false
 
 # Parse arguments
-while [[ $# -gt 0 ]]; do
+while [ $# -gt 0 ]; do
     case $1 in
         --full)
             QUICK_MODE=false
