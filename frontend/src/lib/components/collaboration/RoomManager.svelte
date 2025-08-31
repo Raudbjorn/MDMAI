@@ -15,6 +15,7 @@
 	
 	let createRoomDialog = $state(false);
 	let joinRoomDialog = $state(false);
+	let createInviteDialog = $state(false);
 	let roomName = $state('');
 	let inviteCode = $state('');
 	let roomSettings = $state<Partial<RoomSettings>>({

@@ -8,7 +8,7 @@ import { RequestOptimizer } from '$lib/performance/request-optimizer';
 import type { CacheConfig } from '$lib/cache/types';
 
 export interface ApiRequestConfig extends RequestInit {
-  cache?: Partial<CacheConfig>;
+  cacheConfig?: Partial<CacheConfig>;
   batch?: boolean;
   debounce?: number;
   retry?: {
@@ -117,7 +117,7 @@ export class OptimizedApiClient {
     return this.cacheManager.withCache(
       cacheKey,
       () => this.directRequest<T>(url, config),
-      config.cache
+      config.cacheConfig
     );
   }
 

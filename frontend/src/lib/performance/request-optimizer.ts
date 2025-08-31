@@ -17,7 +17,7 @@ export interface DebounceConfig {
 
 export class RequestOptimizer {
   private batchQueues = new Map<string, any[]>();
-  private batchTimers = new Map<string, NodeJS.Timeout>();
+  private batchTimers = new Map<string, number>();
   private batchConfigs = new Map<string, BatchConfig>();
   private debouncedFunctions = new Map<string, any>();
   private pendingRequests = new Map<string, Promise<any>>();
@@ -66,8 +66,8 @@ export class RequestOptimizer {
     fn: T,
     config: DebounceConfig
   ): (...args: Parameters<T>) => Promise<ReturnType<T>> {
-    let timeoutId: NodeJS.Timeout | null = null;
-    let maxTimeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: number | null = null;
+    let maxTimeoutId: number | null = null;
     let lastCallTime = 0;
     let lastArgs: Parameters<T> | null = null;
     let result: ReturnType<T> | null = null;
