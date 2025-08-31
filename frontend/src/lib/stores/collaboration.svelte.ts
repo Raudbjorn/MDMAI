@@ -749,8 +749,8 @@ class CollaborationStore {
 		}
 	}
 
-	// Utility methods
-	private sendMessage(message: CollaborationMessage) {
+	// Utility methods - made public for components to use
+	sendMessage(message: CollaborationMessage) {
 		if (this.ws?.readyState === WebSocket.OPEN) {
 			this.ws.send(JSON.stringify(message));
 		} else {

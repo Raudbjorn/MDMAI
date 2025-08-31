@@ -40,7 +40,7 @@ export function debounce<T extends (...args: any[]) => any>(
 	const leading = options?.leading !== false;
 	const trailing = options?.trailing !== false;
 	const hasMaxWait = typeof options?.maxWait === 'number';
-	const maxWait = hasMaxWait ? Math.max(options!.maxWait, wait) : 0;
+	const maxWait = hasMaxWait ? Math.max(options?.maxWait ?? wait, wait) : 0;
 
 	let timeoutId: ReturnType<typeof setTimeout> | null = null;
 	let maxTimeoutId: ReturnType<typeof setTimeout> | null = null;

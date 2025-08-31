@@ -748,9 +748,11 @@
 	<div 
 		class="canvas-container" 
 		onkeydown={handleKeyDown}
+		onkeyup={(e) => e.preventDefault()}
 		role="application"
 		aria-label="Collaborative drawing canvas"
-		tabindex="0"
+		aria-describedby="canvas-instructions"
+		tabindex={0}
 	>
 		<canvas
 			bind:this={canvas}

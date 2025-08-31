@@ -18,7 +18,7 @@ setup(
     url="https://github.com/Raudbjorn/MDMAI",
     packages=find_packages(where=".", include=["src*"]),
     package_dir={"": "."},
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=[
         # Core MCP dependencies
         "mcp>=1.0.0",
@@ -100,7 +100,6 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",

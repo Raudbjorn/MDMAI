@@ -206,7 +206,9 @@
 			return;
 		}
 		
-		entry.current_hp = Math.max(0, Math.min(entry.max_hp, entry.current_hp + change));
+		const currentHp = entry.current_hp ?? 0;
+		const maxHp = entry.max_hp ?? 0;
+		entry.current_hp = Math.max(0, Math.min(maxHp, currentHp + change));
 		
 		await collaborationStore.updateInitiative(initiatives);
 	}
@@ -318,7 +320,8 @@
 	}
 	
 	// Utility functions
-	function getHPColor(current: number, max: number): string {
+	function getHPColor(current: number | undefined, max: number | undefined): string {
+		if (!current || !max || max === 0) return '#6b7280';
 		const ratio = current / max;
 		if (ratio > 0.5) return '#10b981';
 		if (ratio > 0.25) return '#f59e0b';
@@ -452,7 +455,7 @@
 				class:current={index === currentTurn}
 				class:has-acted={entry.has_acted}
 				class:player={entry.is_player}
-				class:unconscious={entry.current_hp === 0}
+				class:unconscious={(entry.current_hp ?? 0) === 0 && (entry.max_hp ?? 0) > 0}
 				class:drag-over={dragOverIndex === index}
 				draggable={canManageInitiative}
 				ondragstart={(e) => handleDragStart(e, entry)}
@@ -473,12 +476,12 @@
 						<span class="entry-initiative">{entry.initiative}</span>
 					</div>
 					
-					{#if showHealthBars && entry.max_hp > 0}
+					{#if showHealthBars && (entry.max_hp ?? 0) > 0}
 						<div class="hp-container">
 							<div class="hp-bar">
 								<div 
 									class="hp-fill"
-									style="width: {(entry.current_hp / entry.max_hp) * 100}%; background: {getHPColor(entry.current_hp, entry.max_hp)}"
+									style="width: {((entry.current_hp ?? 0) / (entry.max_hp ?? 1)) * 100}%; background: {getHPColor(entry.current_hp, entry.max_hp)}"
 								></div>
 							</div>
 							<div class="hp-controls">
@@ -489,7 +492,7 @@
 									-
 								</button>
 								<span class="hp-text">
-									{entry.current_hp}/{entry.max_hp}
+									{entry.current_hp ?? 0}/{entry.max_hp ?? 0}
 								</span>
 								<button 
 									class="hp-btn"
