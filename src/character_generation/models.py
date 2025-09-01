@@ -1413,11 +1413,13 @@ class ExtendedCharacter(Character):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExtendedCharacter":
         """Create from dictionary including genre data."""
-        genre_data_dict = data.pop("genre_data", {})
+        # Extract genre_data before passing to parent
+        data_copy = data.copy()
+        genre_data_dict = data_copy.pop("genre_data", {})
 
-        # The parent from_dict is a classmethod, so it will correctly
-        # return an instance of `cls` (ExtendedCharacter).
-        instance = super(ExtendedCharacter, cls).from_dict(data)
+        # Call parent from_dict to get base character data
+        # Since we're using cls, it will create an ExtendedCharacter instance
+        instance = super().from_dict(data_copy)
 
         if genre_data_dict:
             instance.genre_data = GenreSpecificData.from_dict(genre_data_dict)

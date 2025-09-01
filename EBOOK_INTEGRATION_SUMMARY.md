@@ -164,7 +164,7 @@ pip install mobi      # For better MOBI support
 ## File Structure
 
 ```
-/home/svnbjrn/code/phase12/MDMAI/
+./MDMAI/
 ├── src/
 │   ├── pdf_processing/
 │   │   ├── pipeline.py              # Updated with document support

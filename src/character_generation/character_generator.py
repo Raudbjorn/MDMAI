@@ -49,6 +49,23 @@ class CharacterGenerator:
         CharacterRace.HALF_ELF: {"charisma": 2, "any_two": 1},
         CharacterRace.HALF_ORC: {"strength": 2, "constitution": 1},
     }
+    
+    # Class-specific goals
+    _CLASS_GOALS = {
+        CharacterClass.FIGHTER: "Master legendary combat techniques",
+        CharacterClass.WIZARD: "Uncover lost magical secrets",
+        CharacterClass.CLERIC: "Spread the faith and heal the world",
+        CharacterClass.ROGUE: "Pull off the heist of the century",
+        CharacterClass.RANGER: "Protect the natural world",
+        CharacterClass.PALADIN: "Uphold justice and righteousness",
+        CharacterClass.BARBARIAN: "Prove strength to ancestors",
+        CharacterClass.SORCERER: "Control wild magical power",
+        CharacterClass.WARLOCK: "Fulfill pact obligations",
+        CharacterClass.DRUID: "Maintain natural balance",
+        CharacterClass.MONK: "Achieve inner peace",
+        CharacterClass.BARD: "Become legendary performer",
+        CharacterClass.ARTIFICER: "Create revolutionary inventions",
+    }
 
     # Class primary stats (for stat array assignment)
     CLASS_PRIMARY_STATS = {
@@ -919,24 +936,8 @@ class CharacterGenerator:
         goals = []
         
         # Add class-specific goals
-        class_goals = {
-            CharacterClass.FIGHTER: "Master legendary combat techniques",
-            CharacterClass.WIZARD: "Uncover lost magical secrets",
-            CharacterClass.CLERIC: "Spread the faith and heal the world",
-            CharacterClass.ROGUE: "Pull off the heist of the century",
-            CharacterClass.RANGER: "Protect the natural world",
-            CharacterClass.PALADIN: "Uphold justice and righteousness",
-            CharacterClass.BARBARIAN: "Prove strength to ancestors",
-            CharacterClass.SORCERER: "Control wild magical power",
-            CharacterClass.WARLOCK: "Fulfill pact obligations",
-            CharacterClass.DRUID: "Maintain natural balance",
-            CharacterClass.MONK: "Achieve inner peace",
-            CharacterClass.BARD: "Become legendary performer",
-            CharacterClass.ARTIFICER: "Create revolutionary inventions",
-        }
-        
         if character.character_class:
-            goals.append(class_goals.get(character.character_class, "Achieve greatness"))
+            goals.append(self._CLASS_GOALS.get(character.character_class, "Achieve greatness"))
         
         # Add motivation-based goal
         motivations = [CharacterMotivation.ADVENTURE, CharacterMotivation.KNOWLEDGE, CharacterMotivation.POWER]

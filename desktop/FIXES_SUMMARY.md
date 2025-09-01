@@ -1,6 +1,6 @@
 # Critical Build Script Fixes Summary
 
-This document summarizes the critical fixes applied to `/home/svnbjrn/code/phase_next1/MDMAI/desktop/build_installer.py` to address installer generation issues.
+This document summarizes the critical fixes applied to `./desktop/build_installer.py` to address installer generation issues.
 
 ## 🚨 Issues Fixed
 
@@ -78,7 +78,7 @@ This document summarizes the critical fixes applied to `/home/svnbjrn/code/phase
 All fixes have been thoroughly tested with the included test script (`test_build_fixes.py`):
 
 ```bash
-cd /home/svnbjrn/code/phase_next1/MDMAI/desktop
+cd ./desktop
 python test_build_fixes.py
 ```
 

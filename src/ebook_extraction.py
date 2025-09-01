@@ -107,6 +107,27 @@ class ExtractedContent:
 class ContentPatternMatcher:
     """Pattern matching for extracting TTRPG content from text."""
     
+    # Invalid traits to filter out
+    _INVALID_TRAITS = {
+        'very', 'quite', 'rather', 'somewhat', 'really', 'truly',
+        'more', 'less', 'most', 'least', 'much', 'many', 'few',
+        'good', 'bad', 'nice', 'okay', 'fine', 'great'
+    }
+    
+    # Invalid occupations to filter out
+    _INVALID_OCCUPATIONS = {
+        'person', 'man', 'woman', 'child', 'boy', 'girl',
+        'one', 'someone', 'somebody', 'anyone', 'anybody',
+        'thing', 'stuff', 'matter', 'issue', 'problem'
+    }
+    
+    # Invalid locations to filter out
+    _INVALID_LOCATIONS = {
+        'place', 'area', 'spot', 'location', 'site',
+        'here', 'there', 'where', 'somewhere', 'anywhere',
+        'thing', 'stuff', 'matter', 'way', 'direction'
+    }
+    
     def __init__(self):
         """Initialize pattern matcher with compiled regex patterns."""
         # Character trait patterns
@@ -270,44 +291,26 @@ class ContentPatternMatcher:
     
     def _is_valid_trait(self, trait: str) -> bool:
         """Check if extracted trait is valid."""
-        # Filter out common non-trait words
-        invalid_traits = {
-            'very', 'quite', 'rather', 'somewhat', 'really', 'truly',
-            'more', 'less', 'most', 'least', 'much', 'many', 'few',
-            'good', 'bad', 'nice', 'okay', 'fine', 'great'
-        }
         return (
             len(trait) > 2 and 
-            trait.lower() not in invalid_traits and
+            trait.lower() not in self._INVALID_TRAITS and
             not trait.isdigit()
         )
     
     def _is_valid_occupation(self, occupation: str) -> bool:
         """Check if extracted occupation is valid."""
-        # Filter out common non-occupation words
-        invalid_occupations = {
-            'person', 'man', 'woman', 'child', 'boy', 'girl',
-            'one', 'someone', 'somebody', 'anyone', 'anybody',
-            'thing', 'stuff', 'matter', 'issue', 'problem'
-        }
         return (
             len(occupation) > 3 and
-            occupation.lower() not in invalid_occupations and
+            occupation.lower() not in self._INVALID_OCCUPATIONS and
             not occupation.isdigit() and
             len(occupation.split()) <= 3  # Limit to 3 words
         )
     
     def _is_valid_location(self, location: str) -> bool:
         """Check if extracted location is valid."""
-        # Filter out common non-location words
-        invalid_locations = {
-            'place', 'area', 'spot', 'location', 'site',
-            'here', 'there', 'where', 'somewhere', 'anywhere',
-            'thing', 'stuff', 'matter', 'way', 'direction'
-        }
         return (
             len(location) > 2 and
-            location.lower() not in invalid_locations and
+            location.lower() not in self._INVALID_LOCATIONS and
             not location.isdigit() and
             len(location.split()) <= 4  # Limit to 4 words
         )
@@ -486,14 +489,14 @@ def main():
     extractor = EbookExtractor()
     
     # Process EPUB files
-    epub_dir = Path("/home/svnbjrn/code/phase12/sample_epubs")
+    epub_dir = Path("./sample_epubs")
     if epub_dir.exists():
         logger.info("Processing EPUB files...")
         epub_content = extractor.process_directory(epub_dir, "*.epub")
         extractor.extracted_content.merge(epub_content)
     
     # Process MOBI files
-    mobi_dir = Path("/home/svnbjrn/code/phase12/sample_mobis")
+    mobi_dir = Path("./sample_mobis")
     if mobi_dir.exists():
         logger.info("Processing MOBI files...")
         mobi_content = extractor.process_directory(mobi_dir, "*.mobi")

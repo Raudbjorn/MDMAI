@@ -223,6 +223,34 @@ class EnrichedContentManager:
 class EnhancedCharacterGenerator(CharacterGenerator):
     """Enhanced character generator with enriched content support."""
     
+    # Genre-specific NPC roles
+    _GENRE_ROLES = {
+        TTRPGGenre.FANTASY: [
+            NPCRole.MERCHANT, NPCRole.GUARD, NPCRole.INNKEEPER,
+            NPCRole.SCHOLAR, NPCRole.PRIEST, NPCRole.ADVENTURER
+        ],
+        TTRPGGenre.SCI_FI: [
+            NPCRole.STATION_COMMANDER, NPCRole.XENOBIOLOGIST_NPC,
+            NPCRole.SPACE_TRADER, NPCRole.SMUGGLER
+        ],
+        TTRPGGenre.CYBERPUNK: [
+            NPCRole.STREET_SAMURAI, NPCRole.CORPORATE_EXEC,
+            NPCRole.INFO_BROKER, NPCRole.RIPPERDOC
+        ],
+        TTRPGGenre.COSMIC_HORROR: [
+            NPCRole.CULTIST, NPCRole.LIBRARIAN, NPCRole.PRIVATE_INVESTIGATOR,
+            NPCRole.MUSEUM_CURATOR
+        ],
+        TTRPGGenre.POST_APOCALYPTIC: [
+            NPCRole.SCRAP_DEALER, NPCRole.WASTELAND_DOCTOR,
+            NPCRole.CARAVAN_MASTER, NPCRole.TRIBAL_ELDER
+        ],
+        TTRPGGenre.WESTERN: [
+            NPCRole.SHERIFF, NPCRole.SALOON_KEEPER,
+            NPCRole.BLACKSMITH, NPCRole.BANK_TELLER
+        ],
+    }
+    
     def __init__(self, content_manager: Optional[EnrichedContentManager] = None):
         """Initialize the enhanced generator.
         
@@ -471,34 +499,7 @@ class EnhancedCharacterGenerator(CharacterGenerator):
     
     def _get_random_role_for_genre(self, genre: TTRPGGenre) -> NPCRole:
         """Get a random NPC role appropriate for the genre."""
-        genre_roles = {
-            TTRPGGenre.FANTASY: [
-                NPCRole.MERCHANT, NPCRole.GUARD, NPCRole.INNKEEPER,
-                NPCRole.SCHOLAR, NPCRole.PRIEST, NPCRole.ADVENTURER
-            ],
-            TTRPGGenre.SCI_FI: [
-                NPCRole.STATION_COMMANDER, NPCRole.XENOBIOLOGIST_NPC,
-                NPCRole.SPACE_TRADER, NPCRole.SMUGGLER
-            ],
-            TTRPGGenre.CYBERPUNK: [
-                NPCRole.STREET_SAMURAI, NPCRole.CORPORATE_EXEC,
-                NPCRole.INFO_BROKER, NPCRole.RIPPERDOC
-            ],
-            TTRPGGenre.COSMIC_HORROR: [
-                NPCRole.CULTIST, NPCRole.LIBRARIAN, NPCRole.PRIVATE_INVESTIGATOR,
-                NPCRole.MUSEUM_CURATOR
-            ],
-            TTRPGGenre.POST_APOCALYPTIC: [
-                NPCRole.SCRAP_DEALER, NPCRole.WASTELAND_DOCTOR,
-                NPCRole.CARAVAN_MASTER, NPCRole.TRIBAL_ELDER
-            ],
-            TTRPGGenre.WESTERN: [
-                NPCRole.SHERIFF, NPCRole.SALOON_KEEPER,
-                NPCRole.BLACKSMITH, NPCRole.BANK_TELLER
-            ],
-        }
-        
-        roles = genre_roles.get(genre, [NPCRole.COMMONER])
+        roles = self._GENRE_ROLES.get(genre, [NPCRole.COMMONER])
         return random.choice(roles)
     
     def _generate_knowledge_areas(self, role: NPCRole, genre: TTRPGGenre) -> List[str]:

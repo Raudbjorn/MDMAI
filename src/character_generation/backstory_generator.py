@@ -24,43 +24,60 @@ logger = logging.getLogger(__name__)
 class BackstoryGenerator:
     """Generate rich, personality-aware backstories for characters using enriched content."""
     
+    # Class-level constants for trait categories
+    _PHYSICAL_TRAIT_NAMES = [
+        'AGILE', 'ATHLETIC', 'BRAWNY', 'BURLY', 'DELICATE', 'DEXTEROUS', 
+        'ENDURING', 'ENERGETIC', 'GRACEFUL', 'HARDY', 'LITHE', 'MUSCULAR',
+        'NIMBLE', 'POWERFUL', 'QUICK', 'RESILIENT', 'ROBUST', 'RUGGED',
+        'SCARRED', 'SLENDER', 'STOCKY', 'STRONG', 'STURDY', 'SWIFT',
+        'TALL', 'TOUGH', 'TOWERING', 'WEATHERED', 'WIRY'
+    ]
+    
+    _MENTAL_TRAIT_NAMES = [
+        'ANALYTICAL', 'ASTUTE', 'BRILLIANT', 'CALCULATING', 'CLEVER',
+        'CREATIVE', 'CUNNING', 'CURIOUS', 'FOCUSED', 'GENIUS', 'IMAGINATIVE',
+        'INSIGHTFUL', 'INTELLECTUAL', 'INTELLIGENT', 'INTUITIVE', 'KNOWLEDGEABLE',
+        'LEARNED', 'LOGICAL', 'METHODICAL', 'OBSERVANT', 'PERCEPTIVE',
+        'PHILOSOPHICAL', 'QUICK_WITTED', 'RATIONAL', 'RESOURCEFUL', 'SCHOLARLY',
+        'SHARP', 'SHREWD', 'STRATEGIC', 'STUDIOUS', 'TACTICAL', 'THOUGHTFUL', 'WISE'
+    ]
+    
+    _EMOTIONAL_TRAIT_NAMES = [
+        'AMBITIOUS', 'ANXIOUS', 'BOLD', 'BRAVE', 'CALM', 'CAUTIOUS',
+        'CHEERFUL', 'COMPASSIONATE', 'CONFIDENT', 'COURAGEOUS', 'DETERMINED',
+        'DEVOTED', 'DISCIPLINED', 'EMPATHETIC', 'ENTHUSIASTIC', 'FEARLESS',
+        'FIERCE', 'GENTLE', 'GRIM', 'HOPEFUL', 'HUMBLE', 'IMPULSIVE',
+        'INDEPENDENT', 'JOYFUL', 'KIND', 'LOYAL', 'MELANCHOLIC', 'MERCIFUL',
+        'PASSIONATE', 'PATIENT', 'PROUD', 'REBELLIOUS', 'RECKLESS', 'RESOLUTE',
+        'RUTHLESS', 'SELFLESS', 'SERENE', 'SINCERE', 'SKEPTICAL', 'STEADFAST',
+        'STOIC', 'STUBBORN', 'SYMPATHETIC', 'TENACIOUS', 'VENGEFUL', 'VIGILANT',
+        'VOLATILE', 'ZEALOUS'
+    ]
+    
+    _SOCIAL_TRAIT_NAMES = [
+        'CHARISMATIC', 'CHARMING', 'DIPLOMATIC', 'ELOQUENT', 'GREGARIOUS',
+        'INTIMIDATING', 'MYSTERIOUS', 'PERSUASIVE', 'RESERVED', 'SHY',
+        'SOCIABLE', 'WITTY'
+    ]
+    
     @classmethod
     def get_random_traits(cls, count: int = 3) -> List[CharacterTrait]:
         """Get random character traits from extracted content."""
         physical_traits = [
             t for t in CharacterTrait 
-            if t.name in ['AGILE', 'ATHLETIC', 'BRAWNY', 'BURLY', 'DELICATE', 'DEXTEROUS', 
-                         'ENDURING', 'ENERGETIC', 'GRACEFUL', 'HARDY', 'LITHE', 'MUSCULAR',
-                         'NIMBLE', 'POWERFUL', 'QUICK', 'RESILIENT', 'ROBUST', 'RUGGED',
-                         'SCARRED', 'SLENDER', 'STOCKY', 'STRONG', 'STURDY', 'SWIFT',
-                         'TALL', 'TOUGH', 'TOWERING', 'WEATHERED', 'WIRY']
+            if t.name in cls._PHYSICAL_TRAIT_NAMES
         ]
         mental_traits = [
             t for t in CharacterTrait
-            if t.name in ['ANALYTICAL', 'ASTUTE', 'BRILLIANT', 'CALCULATING', 'CLEVER',
-                         'CREATIVE', 'CUNNING', 'CURIOUS', 'FOCUSED', 'GENIUS', 'IMAGINATIVE',
-                         'INSIGHTFUL', 'INTELLECTUAL', 'INTELLIGENT', 'INTUITIVE', 'KNOWLEDGEABLE',
-                         'LEARNED', 'LOGICAL', 'METHODICAL', 'OBSERVANT', 'PERCEPTIVE',
-                         'PHILOSOPHICAL', 'QUICK_WITTED', 'RATIONAL', 'RESOURCEFUL', 'SCHOLARLY',
-                         'SHARP', 'SHREWD', 'STRATEGIC', 'STUDIOUS', 'TACTICAL', 'THOUGHTFUL', 'WISE']
+            if t.name in cls._MENTAL_TRAIT_NAMES
         ]
         emotional_traits = [
             t for t in CharacterTrait
-            if t.name in ['AMBITIOUS', 'ANXIOUS', 'BOLD', 'BRAVE', 'CALM', 'CAUTIOUS',
-                         'CHEERFUL', 'COMPASSIONATE', 'CONFIDENT', 'COURAGEOUS', 'DETERMINED',
-                         'DEVOTED', 'DISCIPLINED', 'EMPATHETIC', 'ENTHUSIASTIC', 'FEARLESS',
-                         'FIERCE', 'GENTLE', 'GRIM', 'HOPEFUL', 'HUMBLE', 'IMPULSIVE',
-                         'INDEPENDENT', 'JOYFUL', 'KIND', 'LOYAL', 'MELANCHOLIC', 'MERCIFUL',
-                         'PASSIONATE', 'PATIENT', 'PROUD', 'REBELLIOUS', 'RECKLESS', 'RESOLUTE',
-                         'RUTHLESS', 'SELFLESS', 'SERENE', 'SINCERE', 'SKEPTICAL', 'STEADFAST',
-                         'STOIC', 'STUBBORN', 'SYMPATHETIC', 'TENACIOUS', 'VENGEFUL', 'VIGILANT',
-                         'VOLATILE', 'ZEALOUS']
+            if t.name in cls._EMOTIONAL_TRAIT_NAMES
         ]
         social_traits = [
             t for t in CharacterTrait
-            if t.name in ['CHARISMATIC', 'CHARMING', 'DIPLOMATIC', 'ELOQUENT', 'GREGARIOUS',
-                         'INTIMIDATING', 'MYSTERIOUS', 'PERSUASIVE', 'RESERVED', 'SHY',
-                         'SOCIABLE', 'WITTY']
+            if t.name in cls._SOCIAL_TRAIT_NAMES
         ]
         
         selected = []
@@ -81,6 +98,65 @@ class BackstoryGenerator:
         
         return [t for t in selected if t is not None]
     
+    # Class-level constant for genre backgrounds
+    _GENRE_BACKGROUNDS = {
+        TTRPGGenre.FANTASY: [
+            CharacterBackground.ACOLYTE, CharacterBackground.CRIMINAL,
+            CharacterBackground.FOLK_HERO, CharacterBackground.NOBLE,
+            CharacterBackground.SAGE, CharacterBackground.SOLDIER,
+            CharacterBackground.HERMIT, CharacterBackground.ENTERTAINER,
+            CharacterBackground.GUILD_ARTISAN, CharacterBackground.OUTLANDER,
+            CharacterBackground.SAILOR, CharacterBackground.URCHIN,
+            CharacterBackground.ALCHEMIST, CharacterBackground.KNIGHT,
+            CharacterBackground.MERCHANT, CharacterBackground.MYSTIC
+        ],
+        TTRPGGenre.SCI_FI: [
+            CharacterBackground.ASTEROID_MINER, CharacterBackground.COLONY_ADMINISTRATOR,
+            CharacterBackground.CORPORATE_AGENT, CharacterBackground.CYBORG_ENGINEER,
+            CharacterBackground.DATA_ANALYST, CharacterBackground.DIPLOMAT_ENVOY,
+            CharacterBackground.GENETIC_RESEARCHER, CharacterBackground.HACKER,
+            CharacterBackground.JUMP_PILOT, CharacterBackground.ORBITAL_MECHANIC,
+            CharacterBackground.SPACE_MARINE, CharacterBackground.STARSHIP_ENGINEER,
+            CharacterBackground.TERRAFORMER, CharacterBackground.VOID_TRADER,
+            CharacterBackground.XENOBIOLOGIST
+        ],
+        TTRPGGenre.CYBERPUNK: [
+            CharacterBackground.CORPORATE_EXEC, CharacterBackground.FIXER,
+            CharacterBackground.GANG_MEMBER, CharacterBackground.MEDIA_JOURNALIST,
+            CharacterBackground.NETRUNNER, CharacterBackground.NOMAD,
+            CharacterBackground.RIPPERDOC, CharacterBackground.ROCKERBOY,
+            CharacterBackground.STREET_SAMURAI, CharacterBackground.TECH_SPECIALIST
+        ],
+        TTRPGGenre.POST_APOCALYPTIC: [
+            CharacterBackground.BUNKER_SURVIVOR, CharacterBackground.CARAVAN_TRADER,
+            CharacterBackground.MUTANT_OUTCAST, CharacterBackground.RAIDER,
+            CharacterBackground.SCAVENGER, CharacterBackground.SETTLEMENT_LEADER,
+            CharacterBackground.TRIBAL_SHAMAN, CharacterBackground.VAULT_DWELLER,
+            CharacterBackground.WASTELAND_DOCTOR, CharacterBackground.WASTELAND_SCOUT
+        ],
+        TTRPGGenre.COSMIC_HORROR: [
+            CharacterBackground.ANTIQUARIAN, CharacterBackground.ASYLUM_PATIENT,
+            CharacterBackground.CULT_SURVIVOR, CharacterBackground.CURSED_BLOODLINE,
+            CharacterBackground.DREAM_TOUCHED, CharacterBackground.OCCULT_INVESTIGATOR,
+            CharacterBackground.PROFESSOR, CharacterBackground.PSYCHIC_SENSITIVE
+        ],
+        TTRPGGenre.WESTERN: [
+            CharacterBackground.BOUNTY_KILLER, CharacterBackground.CATTLE_RUSTLER,
+            CharacterBackground.FRONTIER_DOCTOR, CharacterBackground.GUNSLINGER,
+            CharacterBackground.HOMESTEADER, CharacterBackground.LAWMAN,
+            CharacterBackground.OUTLAW, CharacterBackground.PREACHER,
+            CharacterBackground.PROSPECTOR, CharacterBackground.RANCH_HAND,
+            CharacterBackground.SALOON_OWNER, CharacterBackground.STAGE_DRIVER
+        ],
+        TTRPGGenre.SUPERHERO: [
+            CharacterBackground.ALIEN_REFUGEE, CharacterBackground.GOVERNMENT_AGENT,
+            CharacterBackground.LAB_ACCIDENT_SURVIVOR, CharacterBackground.MASKED_VIGILANTE,
+            CharacterBackground.MILITARY_EXPERIMENT, CharacterBackground.MUTANT_ACTIVIST,
+            CharacterBackground.REPORTER, CharacterBackground.SCIENTIST,
+            CharacterBackground.SIDEKICK, CharacterBackground.TECH_GENIUS
+        ]
+    }
+    
     @classmethod
     def get_random_motivation(cls) -> CharacterMotivation:
         """Get a random character motivation from extracted content."""
@@ -90,65 +166,7 @@ class BackstoryGenerator:
     def get_random_background(cls, genre: Optional[TTRPGGenre] = None) -> CharacterBackground:
         """Get a random background appropriate for the genre."""
         if genre:
-            genre_backgrounds = {
-                TTRPGGenre.FANTASY: [
-                    CharacterBackground.ACOLYTE, CharacterBackground.CRIMINAL,
-                    CharacterBackground.FOLK_HERO, CharacterBackground.NOBLE,
-                    CharacterBackground.SAGE, CharacterBackground.SOLDIER,
-                    CharacterBackground.HERMIT, CharacterBackground.ENTERTAINER,
-                    CharacterBackground.GUILD_ARTISAN, CharacterBackground.OUTLANDER,
-                    CharacterBackground.SAILOR, CharacterBackground.URCHIN,
-                    CharacterBackground.ALCHEMIST, CharacterBackground.KNIGHT,
-                    CharacterBackground.MERCHANT, CharacterBackground.MYSTIC
-                ],
-                TTRPGGenre.SCI_FI: [
-                    CharacterBackground.ASTEROID_MINER, CharacterBackground.COLONY_ADMINISTRATOR,
-                    CharacterBackground.CORPORATE_AGENT, CharacterBackground.CYBORG_ENGINEER,
-                    CharacterBackground.DATA_ANALYST, CharacterBackground.DIPLOMAT_ENVOY,
-                    CharacterBackground.GENETIC_RESEARCHER, CharacterBackground.HACKER,
-                    CharacterBackground.JUMP_PILOT, CharacterBackground.ORBITAL_MECHANIC,
-                    CharacterBackground.SPACE_MARINE, CharacterBackground.STARSHIP_ENGINEER,
-                    CharacterBackground.TERRAFORMER, CharacterBackground.VOID_TRADER,
-                    CharacterBackground.XENOBIOLOGIST
-                ],
-                TTRPGGenre.CYBERPUNK: [
-                    CharacterBackground.CORPORATE_EXEC, CharacterBackground.FIXER,
-                    CharacterBackground.GANG_MEMBER, CharacterBackground.MEDIA_JOURNALIST,
-                    CharacterBackground.NETRUNNER, CharacterBackground.NOMAD,
-                    CharacterBackground.RIPPERDOC, CharacterBackground.ROCKERBOY,
-                    CharacterBackground.STREET_SAMURAI, CharacterBackground.TECH_SPECIALIST
-                ],
-                TTRPGGenre.POST_APOCALYPTIC: [
-                    CharacterBackground.BUNKER_SURVIVOR, CharacterBackground.CARAVAN_TRADER,
-                    CharacterBackground.MUTANT_OUTCAST, CharacterBackground.RAIDER,
-                    CharacterBackground.SCAVENGER, CharacterBackground.SETTLEMENT_LEADER,
-                    CharacterBackground.TRIBAL_SHAMAN, CharacterBackground.VAULT_DWELLER,
-                    CharacterBackground.WASTELAND_DOCTOR, CharacterBackground.WASTELAND_SCOUT
-                ],
-                TTRPGGenre.COSMIC_HORROR: [
-                    CharacterBackground.ANTIQUARIAN, CharacterBackground.ASYLUM_PATIENT,
-                    CharacterBackground.CULT_SURVIVOR, CharacterBackground.CURSED_BLOODLINE,
-                    CharacterBackground.DREAM_TOUCHED, CharacterBackground.OCCULT_INVESTIGATOR,
-                    CharacterBackground.PROFESSOR, CharacterBackground.PSYCHIC_SENSITIVE
-                ],
-                TTRPGGenre.WESTERN: [
-                    CharacterBackground.BOUNTY_KILLER, CharacterBackground.CATTLE_RUSTLER,
-                    CharacterBackground.FRONTIER_DOCTOR, CharacterBackground.GUNSLINGER,
-                    CharacterBackground.HOMESTEADER, CharacterBackground.LAWMAN,
-                    CharacterBackground.OUTLAW, CharacterBackground.PREACHER,
-                    CharacterBackground.PROSPECTOR, CharacterBackground.RANCH_HAND,
-                    CharacterBackground.SALOON_OWNER, CharacterBackground.STAGE_DRIVER
-                ],
-                TTRPGGenre.SUPERHERO: [
-                    CharacterBackground.ALIEN_REFUGEE, CharacterBackground.GOVERNMENT_AGENT,
-                    CharacterBackground.LAB_ACCIDENT_SURVIVOR, CharacterBackground.MASKED_VIGILANTE,
-                    CharacterBackground.MILITARY_EXPERIMENT, CharacterBackground.MUTANT_ACTIVIST,
-                    CharacterBackground.REPORTER, CharacterBackground.SCIENTIST,
-                    CharacterBackground.SIDEKICK, CharacterBackground.TECH_GENIUS
-                ]
-            }
-            
-            backgrounds = genre_backgrounds.get(genre, list(CharacterBackground))
+            backgrounds = cls._GENRE_BACKGROUNDS.get(genre, list(CharacterBackground))
             return random.choice(backgrounds)
         
         return random.choice(list(CharacterBackground))

@@ -30,15 +30,21 @@ logger = logging.getLogger(__name__)
 class NPCGenerator:
     """Generate NPCs with enriched traits, motivations, and diverse characteristics."""
     
+    # NPC-specific trait categories
+    _NPC_TRAIT_CATEGORIES = {
+        'physical': ['SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER', 'STOCKY'],
+        'mental': ['CUNNING', 'SHREWD', 'OBSERVANT', 'KNOWLEDGEABLE'],
+        'emotional': ['GRIM', 'CHEERFUL', 'SUSPICIOUS', 'FRIENDLY', 'GRUFF'],
+        'social': ['MYSTERIOUS', 'INTIMIDATING', 'CHARMING', 'RESERVED']
+    }
+    
     @classmethod
     def get_random_npc_traits(cls, count: int = 3) -> List[CharacterTrait]:
         """Get random NPC traits from enriched content."""
         # NPCs often have more pronounced traits
         trait_categories = {
-            'physical': [t for t in CharacterTrait if t.name in ['SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER', 'STOCKY']],
-            'mental': [t for t in CharacterTrait if t.name in ['CUNNING', 'SHREWD', 'OBSERVANT', 'KNOWLEDGEABLE']],
-            'emotional': [t for t in CharacterTrait if t.name in ['GRIM', 'CHEERFUL', 'SUSPICIOUS', 'FRIENDLY', 'GRUFF']],
-            'social': [t for t in CharacterTrait if t.name in ['MYSTERIOUS', 'INTIMIDATING', 'CHARMING', 'RESERVED']]
+            category: [t for t in CharacterTrait if t.name in trait_names]
+            for category, trait_names in cls._NPC_TRAIT_CATEGORIES.items()
         }
         
         selected = []

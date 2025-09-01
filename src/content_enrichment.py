@@ -523,38 +523,41 @@ class ContentEnricher:
 class GenreDetector:
     """Detect TTRPG genre from text content."""
     
+    # Genre keyword mappings
+    genre_keywords = {
+        TTRPGGenre.FANTASY: [
+            'magic', 'wizard', 'dragon', 'elf', 'dwarf', 'sword', 'spell',
+            'castle', 'kingdom', 'quest', 'dungeon', 'orc', 'goblin'
+        ],
+        TTRPGGenre.SCI_FI: [
+            'space', 'ship', 'laser', 'alien', 'planet', 'galaxy', 'star',
+            'android', 'robot', 'cyborg', 'quantum', 'warp', 'station'
+        ],
+        TTRPGGenre.CYBERPUNK: [
+            'cyber', 'hack', 'net', 'corp', 'chrome', 'street', 'data',
+            'neural', 'implant', 'matrix', 'runner', 'punk', 'neon'
+        ],
+        TTRPGGenre.COSMIC_HORROR: [
+            'elder', 'ancient', 'madness', 'sanity', 'cosmic', 'cult',
+            'forbidden', 'tentacle', 'void', 'darkness', 'horror'
+        ],
+        TTRPGGenre.POST_APOCALYPTIC: [
+            'wasteland', 'radiation', 'mutant', 'survivor', 'vault',
+            'scavenger', 'ruins', 'apocalypse', 'fallout', 'raider'
+        ],
+        TTRPGGenre.WESTERN: [
+            'gunslinger', 'sheriff', 'saloon', 'outlaw', 'ranch',
+            'frontier', 'cowboy', 'desert', 'duel', 'marshal'
+        ],
+        TTRPGGenre.SUPERHERO: [
+            'hero', 'villain', 'power', 'super', 'cape', 'mask',
+            'vigilante', 'justice', 'sidekick', 'nemesis'
+        ]
+    }
+    
     def __init__(self):
-        """Initialize genre detector with keyword mappings."""
-        self.genre_keywords = {
-            TTRPGGenre.FANTASY: [
-                'magic', 'wizard', 'dragon', 'elf', 'dwarf', 'sword', 'spell',
-                'castle', 'kingdom', 'quest', 'dungeon', 'orc', 'goblin'
-            ],
-            TTRPGGenre.SCI_FI: [
-                'space', 'ship', 'laser', 'alien', 'planet', 'galaxy', 'star',
-                'android', 'robot', 'cyborg', 'quantum', 'warp', 'station'
-            ],
-            TTRPGGenre.CYBERPUNK: [
-                'cyber', 'hack', 'net', 'corp', 'chrome', 'street', 'data',
-                'neural', 'implant', 'matrix', 'runner', 'punk', 'neon'
-            ],
-            TTRPGGenre.COSMIC_HORROR: [
-                'elder', 'ancient', 'madness', 'sanity', 'cosmic', 'cult',
-                'forbidden', 'tentacle', 'void', 'darkness', 'horror'
-            ],
-            TTRPGGenre.POST_APOCALYPTIC: [
-                'wasteland', 'radiation', 'mutant', 'survivor', 'vault',
-                'scavenger', 'ruins', 'apocalypse', 'fallout', 'raider'
-            ],
-            TTRPGGenre.WESTERN: [
-                'gunslinger', 'sheriff', 'saloon', 'outlaw', 'ranch',
-                'frontier', 'cowboy', 'desert', 'duel', 'marshal'
-            ],
-            TTRPGGenre.SUPERHERO: [
-                'hero', 'villain', 'power', 'super', 'cape', 'mask',
-                'vigilante', 'justice', 'sidekick', 'nemesis'
-            ]
-        }
+        """Initialize genre detector."""
+        pass
     
     def detect_genres(self, text: str) -> List[TTRPGGenre]:
         """Detect genres from text."""

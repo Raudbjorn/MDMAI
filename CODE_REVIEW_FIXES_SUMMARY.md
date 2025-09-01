@@ -16,8 +16,8 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Provides adaptive timeout suggestions based on historical data
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/latency_tracker.py` (new)
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/provider_registry.py`
+- `./src/ai_providers/latency_tracker.py` (new)
+- `./src/ai_providers/provider_registry.py`
 
 ### 8. Fixed Context API to Use Request Body ✅
 **Issue**: POST endpoint was incorrectly using path parameters for context data.
@@ -29,7 +29,7 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Added proper PUT and POST endpoints for context updates
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/context/api.py` (new)
+- `./src/context/api.py` (new)
 
 ### 9. Centralized JSON Serialization ✅
 **Issue**: Multiple places had duplicate JSON serialization logic.
@@ -41,7 +41,7 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Supports Pydantic models, sets, bytes, and other complex types
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/utils/serialization.py` (new)
+- `./src/utils/serialization.py` (new)
 
 ### 10. Enhanced Health Monitoring with Error Type Tracking ✅
 **Issue**: Health checks only counted errors without tracking specific types.
@@ -54,7 +54,7 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Provides actionable recommendations based on error patterns
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/health_monitor.py` (new)
+- `./src/ai_providers/health_monitor.py` (new)
 
 ### 11. Custom Exceptions Instead of RuntimeError ✅
 **Issue**: Generic RuntimeError was used throughout provider_manager.py.
@@ -66,8 +66,8 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Used `BudgetExceededError` for budget limit violations
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/error_handler.py`
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/provider_manager.py`
+- `./src/ai_providers/error_handler.py`
+- `./src/ai_providers/provider_manager.py`
 
 ### 12. Consistent Tool Parameter Naming ✅
 **Issue**: Inconsistent naming between MCPTool's `inputSchema` and ProviderTool's `parameters`.
@@ -78,7 +78,7 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Updated all references in tool_translator.py
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/models.py`
+- `./src/ai_providers/models.py`
 
 ### 13. Improved Token Estimation Accuracy ✅
 **Issue**: Basic character division (chars // 4) was too simplistic for accurate token estimation.
@@ -91,8 +91,8 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Includes cost estimation based on token counts
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/token_estimator.py` (new)
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/abstract_provider.py`
+- `./src/ai_providers/token_estimator.py` (new)
+- `./src/ai_providers/abstract_provider.py`
 
 ### 14. Fixed Google Provider System Message Handling ✅
 **Issue**: Google provider was skipping system messages instead of prepending them to the first user message.
@@ -104,7 +104,7 @@ Successfully implemented fixes for all 8 remaining Python code review issues in 
 - Properly maintains message order and content
 
 **Files Modified**:
-- `/home/svnbjrn/code/phase12/MDMAI/src/ai_providers/google_provider.py`
+- `./src/ai_providers/google_provider.py`
 
 ## Testing
 

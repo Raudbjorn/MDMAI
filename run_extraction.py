@@ -13,16 +13,13 @@ import logging
 import sys
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-from content_enrichment import ContentEnricher
-from ebook_extraction import EbookExtractor
-from character_generation.enhanced_generator import (
+from src.content_enrichment import ContentEnricher
+from src.ebook_extraction import EbookExtractor
+from src.character_generation.enhanced_generator import (
     EnhancedCharacterGenerator,
     EnrichedContentManager,
 )
-from character_generation.models import CharacterClass, NPCRole, TTRPGGenre
+from src.character_generation.models import CharacterClass, NPCRole, TTRPGGenre
 
 # Configure logging
 logging.basicConfig(
@@ -101,7 +98,6 @@ def run_enrichment(extracted_path: Path, output_dir: Path) -> Path:
     logger.info("\n=== Starting Content Enrichment ===")
     
     # Load extracted content
-    from ebook_extraction import EbookExtractor
     extractor = EbookExtractor()
     extracted_content = extractor.load_extracted_content(extracted_path)
     
@@ -219,13 +215,13 @@ def main():
     parser.add_argument(
         "--epub-dir",
         type=Path,
-        default=Path("/home/svnbjrn/code/phase12/sample_epubs"),
+        default=Path("./sample_epubs"),
         help="Directory containing EPUB files"
     )
     parser.add_argument(
         "--mobi-dir",
         type=Path,
-        default=Path("/home/svnbjrn/code/phase12/sample_mobis"),
+        default=Path("./sample_mobis"),
         help="Directory containing MOBI files"
     )
     parser.add_argument(
