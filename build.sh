@@ -700,6 +700,14 @@ _show_installer_artifacts() {
     
     local bundle_dir="desktop/frontend/src-tauri/target/release/bundle"
     local found_artifacts=false
+
+    # Helper function to format file sizes
+    _format_size() {
+        local bytes=$1
+        if [ $bytes -lt 1024 ]; then echo "${bytes}B";
+        elif [ $bytes -lt 1048576 ]; then echo "$((bytes/1024))K";
+        else echo "$((bytes/1048576))M"; fi
+    }
     
     if [ -d "$bundle_dir" ]; then
         # Look for various installer types
@@ -709,14 +717,7 @@ _show_installer_artifacts() {
             while IFS= read -r -d '' artifact; do
                 if [ -f "$artifact" ]; then
                     local size_bytes=$(wc -c < "$artifact")
-                    # Simple function to format bytes, can be enhanced
-                    format_size() {
-                        local bytes=$1
-                        if [ $bytes -lt 1024 ]; then echo "${bytes}B";
-                        elif [ $bytes -lt 1048576 ]; then echo "$((bytes/1024))K";
-                        else echo "$((bytes/1048576))M"; fi
-                    }
-                    local size=$(format_size $size_bytes)
+                    local size=$(_format_size $size_bytes)
 
                     print_success "  $(basename "$artifact") ($size)"
                     found_artifacts=true
