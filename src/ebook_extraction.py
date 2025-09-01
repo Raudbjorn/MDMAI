@@ -15,10 +15,32 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from xml.etree import ElementTree as ET
 
-import ebooklib
-import mobi
-from bs4 import BeautifulSoup
-from ebooklib import epub
+# Handle optional dependencies with graceful degradation
+try:
+    import ebooklib
+    from ebooklib import epub
+    EBOOKLIB_AVAILABLE = True
+except ImportError:
+    logging.warning("ebooklib not installed. EPUB support will be unavailable. Install with: pip install ebooklib")
+    EBOOKLIB_AVAILABLE = False
+    ebooklib = None
+    epub = None
+
+try:
+    import mobi
+    MOBI_AVAILABLE = True
+except ImportError:
+    logging.warning("mobi library not installed. MOBI support will be unavailable. Install with: pip install mobi")
+    MOBI_AVAILABLE = False
+    mobi = None
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    logging.warning("BeautifulSoup not installed. HTML parsing will be limited. Install with: pip install beautifulsoup4")
+    BS4_AVAILABLE = False
+    BeautifulSoup = None
 
 # Configure logging
 logging.basicConfig(
@@ -347,6 +369,14 @@ class EbookExtractor:
         """Extract content from an EPUB file."""
         content = ExtractedContent()
         
+        if not EBOOKLIB_AVAILABLE:
+            logger.error("Cannot extract from EPUB: ebooklib is not installed. Install with: pip install ebooklib")
+            return content
+        
+        if not BS4_AVAILABLE:
+            logger.error("Cannot extract from EPUB: BeautifulSoup is not installed. Install with: pip install beautifulsoup4")
+            return content
+        
         try:
             book = epub.read_epub(str(epub_path))
             
@@ -373,6 +403,14 @@ class EbookExtractor:
     def extract_from_mobi(self, mobi_path: Path) -> ExtractedContent:
         """Extract content from a MOBI file."""
         content = ExtractedContent()
+        
+        if not MOBI_AVAILABLE:
+            logger.error("Cannot extract from MOBI: mobi library is not installed. Install with: pip install mobi")
+            return content
+        
+        if not BS4_AVAILABLE:
+            logger.error("Cannot extract from MOBI: BeautifulSoup is not installed. Install with: pip install beautifulsoup4")
+            return content
         
         try:
             # Extract MOBI content

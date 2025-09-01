@@ -1,6 +1,7 @@
 """MCP tool definitions for document processing (PDF, EPUB, MOBI)."""
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -245,17 +246,85 @@ class BatchProcessDocumentsTool:
                 if not all(k in doc_config for k in ['document_path', 'rulebook_name', 'system']):
                     raise ValueError(f"Missing required fields in document config: {doc_config}")
                 
-                # Rename 'document_path' to 'pdf_path' for backward compatibility
+                # Field renaming for backward compatibility
+                # DEPRECATION: 'document_path' has been renamed to 'pdf_path' 
+                # to support multiple document types (PDF, EPUB, MOBI).
+                # The 'document_path' field will be removed in a future version.
+                # Please update your code to use 'pdf_path' instead.
                 if 'document_path' in doc_config:
+                    logger.warning(
+                        "DEPRECATION WARNING: 'document_path' field is deprecated "
+                        "and will be removed in a future version. "
+                        "Please use 'pdf_path' instead for document configuration."
+                    )
+                    # Explicitly map the deprecated field to the new field name
                     doc_config['pdf_path'] = doc_config.pop('document_path')
                 
                 validated_docs.append(doc_config)
             
-            result = await self.pipeline.process_multiple_pdfs(
-                pdf_files=validated_docs,
-                enable_adaptive_learning=input_data.enable_adaptive_learning,
-                max_workers=input_data.max_workers,
-            )
+            # Process documents in parallel using asyncio.gather
+            # This supports all document types (PDF, EPUB, MOBI), not just PDFs
+            tasks = []
+            for doc_config in validated_docs:
+                # Use the unified process_document method that handles all formats
+                task = self.pipeline.process_document(
+                    document_path=doc_config.get('pdf_path'),  # Using renamed field
+                    rulebook_name=doc_config.get('rulebook_name'),
+                    system=doc_config.get('system'),
+                    source_type=doc_config.get('source_type', 'rulebook'),
+                    enable_adaptive_learning=input_data.enable_adaptive_learning,
+                    skip_size_check=True,  # Already validated in batch
+                    user_confirmed=True,  # Batch processing assumes confirmation
+                )
+                tasks.append(task)
+            
+            # Execute all document processing tasks concurrently
+            # Use asyncio.gather for proper async processing
+            start_time = time.time()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results and count successes/failures
+            processed_results = []
+            successful = 0
+            failed = 0
+            
+            for i, result in enumerate(results):
+                doc_config = validated_docs[i]
+                if isinstance(result, Exception):
+                    # Handle exceptions as failures
+                    processed_results.append({
+                        "document_path": doc_config.get('pdf_path'),
+                        "status": "error",
+                        "error": str(result),
+                        "error_type": type(result).__name__,
+                    })
+                    failed += 1
+                elif isinstance(result, dict) and result.get("status") == "success":
+                    processed_results.append({
+                        "document_path": doc_config.get('pdf_path'),
+                        "status": "success",
+                        "result": result,
+                    })
+                    successful += 1
+                else:
+                    # Handle other error cases
+                    processed_results.append({
+                        "document_path": doc_config.get('pdf_path'),
+                        "status": "error",
+                        "error": result.get("error", "Unknown error"),
+                        "result": result,
+                    })
+                    failed += 1
+            
+            result = {
+                "status": "success" if failed == 0 else "partial",
+                "results": processed_results,
+                "total": len(processed_results),
+                "successful": successful,
+                "failed": failed,
+                "method": "asyncio.gather",
+                "processing_time": round(time.time() - start_time, 2),
+            }
             
             return result
             

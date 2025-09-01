@@ -1412,15 +1412,59 @@ class ExtendedCharacter(Character):
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExtendedCharacter":
-        """Create from dictionary including genre data."""
-        # Extract genre_data before passing to parent
+        """Create from dictionary including genre data.
+        
+        Properly creates an ExtendedCharacter instance, not a base Character.
+        Uses cls.__new__(cls) to create the correct type, then initializes
+        using the parent class's from_dict logic.
+        """
+        # Extract genre_data before processing
         data_copy = data.copy()
         genre_data_dict = data_copy.pop("genre_data", {})
+        
+        # Process the base character data using parent's logic
+        # but create an ExtendedCharacter instance
+        if isinstance(data_copy.get("created_at"), str):
+            data_copy["created_at"] = datetime.fromisoformat(data_copy["created_at"])
+        if isinstance(data_copy.get("updated_at"), str):
+            data_copy["updated_at"] = datetime.fromisoformat(data_copy["updated_at"])
 
-        # Call parent from_dict to get base character data
-        # Since we're using cls, it will create an ExtendedCharacter instance
-        instance = super().from_dict(data_copy)
+        # Handle genre field
+        genre_str = data_copy.get("genre")
+        if isinstance(genre_str, str):
+            try:
+                data_copy["genre"] = TTRPGGenre(genre_str)
+            except ValueError:
+                data_copy["genre"] = TTRPGGenre.FANTASY
+        elif "genre" not in data_copy:
+            data_copy["genre"] = TTRPGGenre.FANTASY
 
+        class_str = data_copy.get("character_class")
+        if isinstance(class_str, str):
+            try:
+                data_copy["character_class"] = CharacterClass(class_str)
+            except ValueError:
+                data_copy["character_class"] = CharacterClass.CUSTOM
+                data_copy["custom_class"] = class_str
+
+        if isinstance(data_copy.get("race"), str):
+            try:
+                data_copy["race"] = CharacterRace(data_copy["race"])
+            except ValueError:
+                data_copy["race"] = CharacterRace.CUSTOM
+                data_copy["custom_race"] = data_copy.get("race")
+
+        if isinstance(data_copy.get("stats"), dict):
+            data_copy["stats"] = CharacterStats.from_dict(data_copy["stats"])
+        if isinstance(data_copy.get("equipment"), dict):
+            data_copy["equipment"] = Equipment.from_dict(data_copy["equipment"])
+        if isinstance(data_copy.get("backstory"), dict):
+            data_copy["backstory"] = Backstory.from_dict(data_copy["backstory"])
+        
+        # Create ExtendedCharacter instance with processed data
+        instance = cls(**data_copy)
+        
+        # Add genre-specific data if present
         if genre_data_dict:
             instance.genre_data = GenreSpecificData.from_dict(genre_data_dict)
 

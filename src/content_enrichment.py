@@ -11,7 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from character_generation.models import (
+from src.character_generation.models import (
     Backstory,
     Character,
     CharacterClass,
@@ -22,7 +22,7 @@ from character_generation.models import (
     PersonalityTrait,
     TTRPGGenre,
 )
-from ebook_extraction import ExtractedContent
+from src.ebook_extraction import ExtractedContent
 
 # Configure logging
 logging.basicConfig(

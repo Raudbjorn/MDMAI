@@ -15,6 +15,10 @@ try:
 except ImportError:
     EBOOKLIB_AVAILABLE = False
 
+# Optional dependency pattern for MOBI support
+# When mobi library is unavailable, MOBI file parsing will be disabled
+# but the rest of the module remains functional for other ebook formats.
+# Install with: pip install mobi
 try:
     import mobi
     MOBI_AVAILABLE = True
