@@ -8,12 +8,19 @@ from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
 from .models import (
     NPC,
+    CharacterBackground,
     CharacterClass,
+    CharacterMotivation,
     CharacterRace,
     CharacterStats,
+    CharacterTrait,
     Equipment,
+    ItemType,
     NPCRole,
     PersonalityTrait,
+    StoryHook,
+    WeaponType,
+    WorldElement,
 )
 from .validators import CharacterValidator, ValidationError
 
@@ -21,7 +28,47 @@ logger = logging.getLogger(__name__)
 
 
 class NPCGenerator:
-    """Generate NPCs with appropriate stats and personalities."""
+    """Generate NPCs with enriched traits, motivations, and diverse characteristics."""
+    
+    @classmethod
+    def get_random_npc_traits(cls, count: int = 3) -> List[CharacterTrait]:
+        """Get random NPC traits from enriched content."""
+        # NPCs often have more pronounced traits
+        trait_categories = {
+            'physical': [t for t in CharacterTrait if t.name in ['SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER', 'STOCKY']],
+            'mental': [t for t in CharacterTrait if t.name in ['CUNNING', 'SHREWD', 'OBSERVANT', 'KNOWLEDGEABLE']],
+            'emotional': [t for t in CharacterTrait if t.name in ['GRIM', 'CHEERFUL', 'SUSPICIOUS', 'FRIENDLY', 'GRUFF']],
+            'social': [t for t in CharacterTrait if t.name in ['MYSTERIOUS', 'INTIMIDATING', 'CHARMING', 'RESERVED']]
+        }
+        
+        selected = []
+        for category, traits in trait_categories.items():
+            if traits and len(selected) < count:
+                selected.append(random.choice(traits))
+        
+        # Fill remaining with random traits
+        while len(selected) < count:
+            trait = random.choice(list(CharacterTrait))
+            if trait not in selected:
+                selected.append(trait)
+        
+        return selected[:count]
+    
+    @classmethod
+    def get_npc_motivation(cls, role: NPCRole) -> CharacterMotivation:
+        """Get appropriate motivation for NPC role."""
+        role_motivations = {
+            NPCRole.MERCHANT: [CharacterMotivation.WEALTH, CharacterMotivation.PROSPERITY, CharacterMotivation.STATUS],
+            NPCRole.GUARD: [CharacterMotivation.DUTY, CharacterMotivation.HONOR, CharacterMotivation.PROTECTION],
+            NPCRole.NOBLE: [CharacterMotivation.POWER, CharacterMotivation.LEGACY, CharacterMotivation.INFLUENCE],
+            NPCRole.SCHOLAR: [CharacterMotivation.KNOWLEDGE, CharacterMotivation.DISCOVERY, CharacterMotivation.TRUTH],
+            NPCRole.CRIMINAL: [CharacterMotivation.SURVIVAL, CharacterMotivation.WEALTH, CharacterMotivation.FREEDOM],
+            NPCRole.PRIEST: [CharacterMotivation.SERVICE, CharacterMotivation.SALVATION, CharacterMotivation.DUTY],
+            NPCRole.ADVENTURER: [CharacterMotivation.ADVENTURE, CharacterMotivation.GLORY, CharacterMotivation.WEALTH],
+        }
+        
+        motivations = role_motivations.get(role, list(CharacterMotivation))
+        return random.choice(motivations) if motivations else CharacterMotivation.SURVIVAL
 
     # NPC stat modifiers by role
     ROLE_STAT_MODIFIERS = {
@@ -273,8 +320,14 @@ class NPCGenerator:
         # Apply role-specific modifications
         self._apply_role_modifiers(npc)
 
-        # Generate personality
-        npc.personality_traits = self._generate_personality_traits(npc.role, personality_traits)
+        # Generate personality with enriched traits
+        npc.personality_traits = self._generate_enriched_personality_traits(npc.role, personality_traits)
+        
+        # Apply enriched character traits
+        self._apply_enriched_traits_to_npc(npc)
+        
+        # Set enriched motivations
+        self._set_enriched_motivations(npc)
 
         # Set behavioral attributes
         self._set_behavioral_attributes(npc)
@@ -884,3 +937,114 @@ class NPCGenerator:
 
         faction_options = factions.get(role, ["Independent", "Local Guild", "Free Agent"])
         return random.choice(faction_options)
+    
+    def _generate_enriched_personality_traits(self, role: NPCRole, custom_traits: Optional[List[str]] = None) -> List[PersonalityTrait]:
+        """Generate personality traits using enriched content."""
+        traits = []
+        
+        if custom_traits:
+            # Use provided custom traits
+            for trait_str in custom_traits:
+                traits.append(PersonalityTrait(
+                    category="custom",
+                    trait=trait_str,
+                    description="User-defined trait"
+                ))
+        
+        # Get enriched traits
+        npc_traits = self.get_random_npc_traits(count=3)
+        
+        for char_trait in npc_traits:
+            # Categorize the trait
+            if char_trait.name in ['STRONG', 'AGILE', 'SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER']:
+                category = "appearance"
+            elif char_trait.name in ['INTELLIGENT', 'CUNNING', 'OBSERVANT', 'CLEVER', 'WISE']:
+                category = "intellect"
+            elif char_trait.name in ['GRIM', 'CHEERFUL', 'CALM', 'ANXIOUS', 'FIERCE']:
+                category = "demeanor"
+            else:
+                category = "personality"
+            
+            traits.append(PersonalityTrait(
+                category=category,
+                trait=char_trait.value.replace('_', ' ').title(),
+                description=f"Displays {char_trait.value.replace('_', ' ')} characteristics"
+            ))
+        
+        # Add role-specific trait
+        role_traits = self.ROLE_PERSONALITY_TRAITS.get(role, {})
+        if role_traits:
+            for category, trait_list in role_traits.items():
+                if trait_list:
+                    selected = random.choice(trait_list)
+                    traits.append(PersonalityTrait(
+                        category=category,
+                        trait=selected,
+                        description=f"Role-specific trait for {role.value}"
+                    ))
+                    break
+        
+        return traits
+    
+    def _apply_enriched_traits_to_npc(self, npc: NPC) -> None:
+        """Apply enriched character traits to NPC stats and features."""
+        # Get appropriate traits for the NPC's role
+        trait_count = 2 if npc.importance == "Minor" else 3 if npc.importance == "Supporting" else 4
+        selected_traits = self.get_random_npc_traits(count=trait_count)
+        
+        for trait in selected_traits:
+            # Apply stat modifiers based on traits
+            if trait == CharacterTrait.STRONG or trait == CharacterTrait.MUSCULAR:
+                npc.stats.strength += 2
+            elif trait == CharacterTrait.AGILE or trait == CharacterTrait.QUICK:
+                npc.stats.dexterity += 2
+            elif trait == CharacterTrait.TOUGH or trait == CharacterTrait.RESILIENT:
+                npc.stats.constitution += 2
+                npc.stats.hit_points += 5
+            elif trait == CharacterTrait.INTELLIGENT or trait == CharacterTrait.CLEVER:
+                npc.stats.intelligence += 2
+            elif trait == CharacterTrait.WISE or trait == CharacterTrait.OBSERVANT:
+                npc.stats.wisdom += 2
+            elif trait == CharacterTrait.CHARISMATIC or trait == CharacterTrait.CHARMING:
+                npc.stats.charisma += 2
+            elif trait == CharacterTrait.INTIMIDATING:
+                npc.stats.strength += 1
+                npc.stats.charisma += 1
+            
+            # Add trait to features
+            npc.features.append(f"Trait: {trait.value.replace('_', ' ').title()}")
+    
+    def _set_enriched_motivations(self, npc: NPC) -> None:
+        """Set NPC motivations using enriched content."""
+        # Get primary motivation based on role
+        primary_motivation = self.get_npc_motivation(npc.role if npc.role else NPCRole.COMMONER)
+        
+        # Initialize backstory if needed
+        if not npc.backstory:
+            from .models import Backstory
+            npc.backstory = Backstory()
+        
+        # Set motivation in backstory
+        npc.backstory.motivation = f"Driven by {primary_motivation.value.replace('_', ' ')}"
+        
+        # Add related goals
+        if primary_motivation == CharacterMotivation.WEALTH:
+            npc.backstory.goals.append("Accumulate riches")
+        elif primary_motivation == CharacterMotivation.KNOWLEDGE:
+            npc.backstory.goals.append("Uncover hidden truths")
+        elif primary_motivation == CharacterMotivation.POWER:
+            npc.backstory.goals.append("Gain influence and control")
+        elif primary_motivation == CharacterMotivation.PROTECTION:
+            npc.backstory.goals.append("Keep loved ones safe")
+        
+        # Add related fears
+        fear_map = {
+            CharacterMotivation.WEALTH: CharacterMotivation.POVERTY,
+            CharacterMotivation.POWER: CharacterMotivation.POWERLESSNESS,
+            CharacterMotivation.KNOWLEDGE: CharacterMotivation.IGNORANCE,
+            CharacterMotivation.PROTECTION: CharacterMotivation.LOSS,
+        }
+        
+        if primary_motivation in fear_map:
+            fear = fear_map[primary_motivation]
+            npc.backstory.fears.append(f"Fear of {fear.value.replace('_', ' ')}")

@@ -301,3 +301,10 @@ Thumbs.db
 desktop/test_*.py
 **/test_*.temp
 **/temp_*
+
+# Ebook extraction outputs
+extracted_content/
+extraction_logs/
+*.extraction.log
+ttrpg_content.json
+enriched_content.json
