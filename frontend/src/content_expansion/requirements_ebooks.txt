@@ -1,0 +1,26 @@
+# Ebook Processing Dependencies
+# These are the required packages for ebook extraction and analysis
+
+# Core dependencies for ebook formats
+ebooklib>=0.18          # EPUB file processing
+mobi>=0.3.3            # MOBI/AZW file processing
+lxml>=4.9.0            # XML processing for EPUB
+beautifulsoup4>=4.12.0 # HTML parsing
+
+# Text processing and analysis
+chardet>=5.0.0         # Character encoding detection
+langdetect>=1.0.9      # Language detection
+python-magic>=0.4.27   # File type detection
+
+# Optional but recommended for enhanced functionality
+pypdf>=3.17.0          # PDF processing (if pdf_analyzer.py is used)
+pdfplumber>=0.10.0     # Advanced PDF text extraction
+camelot-py>=0.11.0     # PDF table extraction
+
+# Natural language processing (optional, for advanced analysis)
+nltk>=3.8              # Natural Language Toolkit
+spacy>=3.7.0           # Advanced NLP (optional, comment out if not needed)
+
+# Utilities
+tqdm>=4.66.0           # Progress bars for large file processing
+colorama>=0.4.6        # Colored terminal output
