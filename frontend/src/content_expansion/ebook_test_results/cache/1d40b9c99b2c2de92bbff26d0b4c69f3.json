@@ -1,0 +1,110 @@
+{
+  "statistics": {
+    "word_count": 144332,
+    "sentence_count": 14882,
+    "paragraph_count": 1,
+    "average_word_length": 3.605444392096001,
+    "average_sentence_length": 9.698427630694798,
+    "unique_words": 64767,
+    "lexical_diversity": 0.44873624698611536
+  },
+  "key_themes": [
+    "Apple",
+    "Shadowrun",
+    "Sorry",
+    "Elodie",
+    "Belfa",
+    "Three",
+    "Hello",
+    "Younowhemor",
+    "Iinclyopeot",
+    "Zarya"
+  ],
+  "frequent_words": [
+    [
+      "8217",
+      190
+    ],
+    [
+      "8220",
+      116
+    ],
+    [
+      "nbsp",
+      78
+    ],
+    [
+      "8221",
+      45
+    ],
+    [
+      "apple",
+      31
+    ],
+    [
+      "yeah",
+      17
+    ],
+    [
+      "8212",
+      15
+    ],
+    [
+      "know",
+      13
+    ],
+    [
+      "oebps",
+      13
+    ],
+    [
+      "self",
+      11
+    ],
+    [
+      "back",
+      11
+    ],
+    [
+      "well",
+      11
+    ],
+    [
+      "gain",
+      8
+    ],
+    [
+      "half",
+      8
+    ],
+    [
+      "lign",
+      8
+    ],
+    [
+      "look",
+      8
+    ],
+    [
+      "okay",
+      8
+    ],
+    [
+      "knew",
+      8
+    ],
+    [
+      "door",
+      8
+    ],
+    [
+      "html",
+      8
+    ]
+  ],
+  "reading_level": "Elementary",
+  "estimated_reading_time": 577,
+  "language_detected": null,
+  "summary": null,
+  "chapters_analyzed": 1
+}

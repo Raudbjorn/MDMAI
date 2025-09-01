@@ -1,0 +1,125 @@
+{
+  "file_name": "Shadowrun 017 - Nosferatu 2055 - Carl Sargent u Marc Gascoigne.epub",
+  "file_path": "/home/svnbjrn/code/phase12/sample_epubs/Shadowrun 017 - Nosferatu 2055 - Carl Sargent u Marc Gascoigne.epub",
+  "format": "epub",
+  "processing_time": 0.03104114532470703,
+  "metadata": {
+    "title": null,
+    "author": null,
+    "publisher": null,
+    "language": null,
+    "isbn": null,
+    "publication_date": "2016-11-15",
+    "description": null,
+    "subjects": [],
+    "contributors": []
+  },
+  "analysis": {
+    "statistics": {
+      "word_count": 98927,
+      "sentence_count": 8461,
+      "paragraph_count": 51,
+      "average_word_length": 5.130682220222993,
+      "average_sentence_length": 11.69211677106725,
+      "unique_words": 12892,
+      "lexical_diversity": 0.1303183155255896
+    },
+    "key_themes": [
+      "Serrin",
+      "Michael",
+      "Kristen",
+      "Troll",
+      "Luther",
+      "Niall",
+      "Leute",
+      "Augen",
+      "Gesicht",
+      "Vielleicht"
+    ],
+    "frequent_words": [
+      [
+        "nicht",
+        1282
+      ],
+      [
+        "sich",
+        1275
+      ],
+      [
+        "serrin",
+        650
+      ],
+      [
+        "hatte",
+        648
+      ],
+      [
+        "eine",
+        610
+      ],
+      [
+        "sagte",
+        608
+      ],
+      [
+        "aber",
+        567
+      ],
+      [
+        "noch",
+        434
+      ],
+      [
+        "einen",
+        417
+      ],
+      [
+        "michael",
+        385
+      ],
+      [
+        "sein",
+        384
+      ],
+      [
+        "wenn",
+        378
+      ],
+      [
+        "font",
+        358
+      ],
+      [
+        "nbsp",
+        322
+      ],
+      [
+        "seine",
+        316
+      ],
+      [
+        "dann",
+        314
+      ],
+      [
+        "einem",
+        306
+      ],
+      [
+        "nach",
+        285
+      ],
+      [
+        "auch",
+        279
+      ],
+      [
+        "haben",
+        256
+      ]
+    ],
+    "reading_level": "Middle School",
+    "estimated_reading_time": 396,
+    "summary": null
+  }
+}

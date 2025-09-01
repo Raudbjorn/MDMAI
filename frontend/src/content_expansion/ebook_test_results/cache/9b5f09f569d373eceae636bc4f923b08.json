@@ -1,0 +1,110 @@
+{
+  "statistics": {
+    "word_count": 318947,
+    "sentence_count": 30073,
+    "paragraph_count": 1,
+    "average_word_length": 2.9313271483976964,
+    "average_sentence_length": 10.605759318990456,
+    "unique_words": 82864,
+    "lexical_diversity": 0.2598049205667399
+  },
+  "key_themes": [
+    "Shadowrun",
+    "Chapter",
+    "Instead",
+    "Plastic",
+    "Gobbe",
+    "Duncan",
+    "Sowrun",
+    "Sharun",
+    "Gobbet",
+    "Raymond"
+  ],
+  "frequent_words": [
+    [
+      "8217",
+      207
+    ],
+    [
+      "8220",
+      204
+    ],
+    [
+      "nbsp",
+      120
+    ],
+    [
+      "8221",
+      78
+    ],
+    [
+      "dtdhtml",
+      77
+    ],
+    [
+      "http",
+      77
+    ],
+    [
+      "doctypetpublic",
+      76
+    ],
+    [
+      "htmlpk",
+      75
+    ],
+    [
+      "1999",
+      74
+    ],
+    [
+      "trict",
+      56
+    ],
+    [
+      "oebps",
+      53
+    ],
+    [
+      "chap",
+      36
+    ],
+    [
+      "shadowrun",
+      35
+    ],
+    [
+      "chapter",
+      30
+    ],
+    [
+      "dunc",
+      29
+    ],
+    [
+      "align",
+      27
+    ],
+    [
+      "8212",
+      20
+    ],
+    [
+      "yeah",
+      19
+    ],
+    [
+      "ong\u02c0",
+      19
+    ],
+    [
+      "keadtitle",
+      17
+    ]
+  ],
+  "reading_level": "Middle School",
+  "estimated_reading_time": 1276,
+  "language_detected": null,
+  "summary": null,
+  "chapters_analyzed": 1
+}

@@ -10,16 +10,26 @@ from pathlib import Path
 from typing import Dict, Optional, Any, Union
 from enum import Enum
 
-from .epub_extractor import EPUBExtractor
-from .mobi_extractor import MOBIExtractor
-from .ebook_analyzer import EbookAnalyzer, ContentAnalysis
+try:
+    from .epub_extractor import EPUBExtractor
+    from .mobi_extractor import MOBIExtractor
+    from .ebook_analyzer import EbookAnalyzer, ContentAnalysis
+except ImportError:
+    # Fallback for direct imports
+    from epub_extractor import EPUBExtractor
+    from mobi_extractor import MOBIExtractor
+    from ebook_analyzer import EbookAnalyzer, ContentAnalysis
 
 # Try to import PDF analyzer if available
 try:
     from .pdf_analyzer import PDFAnalyzer
     PDF_SUPPORT = True
 except ImportError:
-    PDF_SUPPORT = False
+    try:
+        from pdf_analyzer import PDFAnalyzer
+        PDF_SUPPORT = True
+    except ImportError:
+        PDF_SUPPORT = False
     
 logger = logging.getLogger(__name__)
 

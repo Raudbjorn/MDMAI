@@ -1,0 +1,90 @@
+================================================================================
+EBOOK PROCESSING SYSTEM TEST REPORT
+================================================================================
+Generated: 2025-09-01 08:43:45
+
+SUMMARY STATISTICS
+----------------------------------------
+Total files processed: 6
+Successful: 6
+Failed: 1
+Average processing time: 0.05 seconds
+
+FORMAT BREAKDOWN
+----------------------------------------
+  • EPUB: 4 files
+  • MOBI: 2 files
+
+SUCCESSFULLY PROCESSED FILES
+----------------------------------------
+
+1. Shadowrun - [Shadowrun 35] - Run Hard, Die Fast (epub).epub
+   Format: EPUB
+   Title: 35 Shadowrun - Novel - Run Hard, Die Fast
+   Word count: 81,968
+   Processing time: 0.03s
+
+2. Shadowrun - [Shadowrun 36] - Crossroads (epub).epub
+   Format: EPUB
+   Word count: 78,766
+   Processing time: 0.02s
+
+3. Shadowrun 017 - Nosferatu 2055 - Carl Sargent u Marc Gascoigne.epub
+   Format: EPUB
+   Word count: 98,927
+   Processing time: 0.03s
+
+4. Delta Green- Strange Authorities - John Scott Tynes (The Corn King; Final Report; My Father's Son; The Dark Above; The Rules of Engagement) (epub).epub
+   Format: EPUB
+   Title: Delta Green: Strange Authorities
+   Word count: 112,616
+   Processing time: 0.03s
+   TTRPG Content: ✓ (Delta Green)
+
+5. Shadowrun - World of Shadows Various Authors (retail) (mobi).mobi
+   Format: MOBI
+   Title: Shadowrun_World_of_Shadows
+   Word count: 144,332
+   Processing time: 0.06s
+   TTRPG Content: ✓ (Shadowrun)
+
+6. Shadowrun - Hong Kong Mel Odom (retail) (mobi).mobi
+   Format: MOBI
+   Title: Shadowrun_Hong_Kong
+   Word count: 318,947
+   Processing time: 0.13s
+   TTRPG Content: ✓ (Shadowrun)
+
+PROCESSING ERRORS
+----------------------------------------
+
+  • Shadowrun - [Shadowrun 41] - Born to Run Stephen Kenson (mobi).mobi
+    Error: unpack requires a buffer of 4 bytes
+
+CONTENT EXTRACTION SUMMARY
+----------------------------------------
+Total words extracted: 835,556
+Total sentences extracted: 76,311
+Metadata fields found: author, contributor, contributors, description, isbn, language, publication_date, publish_date, publisher, rights, subject, subjects, title
+
+TTRPG CONTENT DETECTED IN:
+----------------------------------------
+  • Shadowrun - [Shadowrun 35] - Run Hard, Die Fast (epub).epub
+  • Shadowrun - [Shadowrun 36] - Crossroads (epub).epub
+  • Shadowrun 017 - Nosferatu 2055 - Carl Sargent u Marc Gascoigne.epub
+  • Delta Green- Strange Authorities - John Scott Tynes (The Corn King; Final Report; My Father's Son; The Dark Above; The Rules of Engagement) (epub).epub
+  • Shadowrun - World of Shadows Various Authors (retail) (mobi).mobi
+  • Shadowrun - Hong Kong Mel Odom (retail) (mobi).mobi
+
+SYSTEM VALIDATION
+----------------------------------------
+✓ Unified analyzer operational
+✓ EPUB extraction: Working
+✓ MOBI extraction: Working
+✓ Content analysis: Working
+✓ Metadata extraction: Working
+✓ Error handling: Tested
+
+================================================================================
+END OF REPORT
+================================================================================

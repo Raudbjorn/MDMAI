@@ -1,0 +1,125 @@
+{
+  "file_name": "Shadowrun - [Shadowrun 36] - Crossroads (epub).epub",
+  "file_path": "/home/svnbjrn/code/phase12/sample_epubs/Shadowrun - [Shadowrun 36] - Crossroads (epub).epub",
+  "format": "epub",
+  "processing_time": 0.021186351776123047,
+  "metadata": {
+    "title": null,
+    "author": null,
+    "publisher": null,
+    "language": null,
+    "isbn": null,
+    "publication_date": "2013-07-02",
+    "description": null,
+    "subjects": [],
+    "contributors": []
+  },
+  "analysis": {
+    "statistics": {
+      "word_count": 78766,
+      "sentence_count": 6113,
+      "paragraph_count": 27,
+      "average_word_length": 4.111101236574156,
+      "average_sentence_length": 12.884999182070997,
+      "unique_words": 6993,
+      "lexical_diversity": 0.08878196176015032
+    },
+    "key_themes": [
+      "Trouble",
+      "Garnoff",
+      "Gallow",
+      "Talon",
+      "Isogi",
+      "Boston",
+      "Hammer",
+      "Manadyne",
+      "Gordon",
+      "Sloane"
+    ],
+    "frequent_words": [
+      [
+        "said",
+        572
+      ],
+      [
+        "like",
+        336
+      ],
+      [
+        "trouble",
+        285
+      ],
+      [
+        "into",
+        270
+      ],
+      [
+        "garnoff",
+        260
+      ],
+      [
+        "about",
+        212
+      ],
+      [
+        "boom",
+        198
+      ],
+      [
+        "back",
+        197
+      ],
+      [
+        "over",
+        193
+      ],
+      [
+        "gallow",
+        164
+      ],
+      [
+        "didn",
+        160
+      ],
+      [
+        "down",
+        158
+      ],
+      [
+        "then",
+        156
+      ],
+      [
+        "time",
+        153
+      ],
+      [
+        "know",
+        132
+      ],
+      [
+        "power",
+        128
+      ],
+      [
+        "your",
+        128
+      ],
+      [
+        "around",
+        127
+      ],
+      [
+        "eyes",
+        124
+      ],
+      [
+        "even",
+        123
+      ]
+    ],
+    "reading_level": "Middle School",
+    "estimated_reading_time": 315,
+    "summary": null
+  }
+}

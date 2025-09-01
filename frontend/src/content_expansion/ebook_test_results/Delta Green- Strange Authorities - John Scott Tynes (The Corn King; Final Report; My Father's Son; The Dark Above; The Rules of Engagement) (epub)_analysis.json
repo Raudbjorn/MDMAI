@@ -1,0 +1,136 @@
+{
+  "file_name": "Delta Green- Strange Authorities - John Scott Tynes (The Corn King; Final Report; My Father's Son; The Dark Above; The Rules of Engagement) (epub).epub",
+  "file_path": "/home/svnbjrn/code/phase12/sample_epubs/Delta Green- Strange Authorities - John Scott Tynes (The Corn King; Final Report; My Father's Son; The Dark Above; The Rules of Engagement) (epub).epub",
+  "format": "epub",
+  "processing_time": 0.031733036041259766,
+  "metadata": {
+    "title": "Delta Green: Strange Authorities",
+    "author": "John Scott Tynes",
+    "publisher": "Arc Dream Publishing",
+    "language": "en",
+    "isbn": null,
+    "publication_date": "2012-03-15T05:00:00+00:00",
+    "description": "<p class=\"description\">The mind-blasting horror of H.P. Lovecraft's Cthulhu Mythos meets the modern world of deadly conspiracies and personal apocalypse. \"Delta Green: Strange Authorities\" collects award-winning author John Scott Tynes' stories \"The Corn King,\" \"Final Report\" \"My Father's Son,\" and \"The Dark Above,\" and the novel \"The Rules of Engagement.\"</p>",
+    "subjects": [
+      "cthulhu mythos",
+      "horror",
+      "cthulhu",
+      "conspiracy",
+      "suspense",
+      "delta green",
+      "espionage",
+      "lovecraft"
+    ],
+    "contributors": [
+      "calibre (1.24.0) [http://calibre-ebook.com]"
+    ]
+  },
+  "analysis": {
+    "statistics": {
+      "word_count": 112616,
+      "sentence_count": 10441,
+      "paragraph_count": 26,
+      "average_word_length": 4.237621652340698,
+      "average_sentence_length": 10.785940044057083,
+      "unique_words": 10179,
+      "lexical_diversity": 0.09038680116502096
+    },
+    "key_themes": [
+      "Stephanie",
+      "James",
+      "David",
+      "Alphonse",
+      "Delta Green",
+      "Nancy",
+      "Frank",
+      "Reggie",
+      "Nolan",
+      "Sonja"
+    ],
+    "frequent_words": [
+      [
+        "said",
+        404
+      ],
+      [
+        "stephanie",
+        385
+      ],
+      [
+        "then",
+        348
+      ],
+      [
+        "back",
+        347
+      ],
+      [
+        "into",
+        339
+      ],
+      [
+        "down",
+        337
+      ],
+      [
+        "james",
+        320
+      ],
+      [
+        "over",
+        260
+      ],
+      [
+        "know",
+        233
+      ],
+      [
+        "about",
+        232
+      ],
+      [
+        "like",
+        232
+      ],
+      [
+        "looked",
+        205
+      ],
+      [
+        "green",
+        200
+      ],
+      [
+        "david",
+        199
+      ],
+      [
+        "through",
+        195
+      ],
+      [
+        "time",
+        193
+      ],
+      [
+        "three",
+        189
+      ],
+      [
+        "around",
+        179
+      ],
+      [
+        "your",
+        177
+      ],
+      [
+        "alphonse",
+        177
+      ]
+    ],
+    "reading_level": "Middle School",
+    "estimated_reading_time": 450,
+    "summary": null
+  }
+}

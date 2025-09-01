@@ -1,0 +1,110 @@
+{
+  "statistics": {
+    "word_count": 81968,
+    "sentence_count": 6341,
+    "paragraph_count": 72,
+    "average_word_length": 4.309803825883272,
+    "average_sentence_length": 12.926667718025548,
+    "unique_words": 7652,
+    "lexical_diversity": 0.09335350380636345
+  },
+  "key_themes": [
+    "Argent",
+    "Ironaxe",
+    "Archangel",
+    "Villiers",
+    "Nakatomi",
+    "Brynnmawr",
+    "Laveau",
+    "Sencio",
+    "Unknown Chapter",
+    "Lanier"
+  ],
+  "frequent_words": [
+    [
+      "argent",
+      819
+    ],
+    [
+      "said",
+      393
+    ],
+    [
+      "into",
+      385
+    ],
+    [
+      "through",
+      264
+    ],
+    [
+      "back",
+      247
+    ],
+    [
+      "over",
+      231
+    ],
+    [
+      "then",
+      218
+    ],
+    [
+      "ironaxe",
+      217
+    ],
+    [
+      "down",
+      210
+    ],
+    [
+      "know",
+      203
+    ],
+    [
+      "going",
+      180
+    ],
+    [
+      "didn",
+      170
+    ],
+    [
+      "time",
+      148
+    ],
+    [
+      "like",
+      146
+    ],
+    [
+      "about",
+      139
+    ],
+    [
+      "knew",
+      135
+    ],
+    [
+      "archangel",
+      135
+    ],
+    [
+      "around",
+      132
+    ],
+    [
+      "your",
+      129
+    ],
+    [
+      "asked",
+      127
+    ]
+  ],
+  "reading_level": "Middle School",
+  "estimated_reading_time": 328,
+  "language_detected": null,
+  "summary": null,
+  "chapters_analyzed": 72
+}
