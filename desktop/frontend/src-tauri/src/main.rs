@@ -9,13 +9,21 @@ mod native_features;
 mod error_handling;
 mod data_manager;
 mod data_manager_commands;
+mod security;
+mod security_commands;
+mod secure_mcp_bridge;
+mod performance;
+mod performance_commands;
 
-use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH, Instant}};
 use tokio::sync::Mutex;
 use tauri::{Manager, Emitter, DragDropEvent};
 use process_manager::ProcessManagerState;
 use native_features::{NativeFeaturesState, DragDropEvent as CustomDragDropEvent};
 use data_manager_commands::DataManagerStateWrapper;
+use security::{SecurityManager, SecurityConfig};
+use security_commands::SecurityManagerState;
+use performance_commands::PerformanceManagerState;
 
 /// Convert paths to string vector
 fn paths_to_strings(paths: &[std::path::PathBuf]) -> Vec<String> {
@@ -64,6 +72,8 @@ fn main() {
         .manage(ProcessManagerState::new())
         .manage(NativeFeaturesState::new())
         .manage(DataManagerStateWrapper::new())
+        .manage(SecurityManagerState::new())
+        .manage(PerformanceManagerState::new())
         .invoke_handler(tauri::generate_handler![
             mcp_bridge::start_mcp_backend,
             mcp_bridge::stop_mcp_backend,
@@ -112,16 +122,102 @@ fn main() {
             data_manager_commands::get_database_stats,
             data_manager_commands::perform_database_maintenance,
             data_manager_commands::shutdown_data_manager,
+            // Security Commands
+            security_commands::initialize_security_manager,
+            security_commands::create_security_session,
+            security_commands::validate_session_permission,
+            security_commands::validate_input,
+            security_commands::sanitize_string,
+            security_commands::validate_file_path,
+            security_commands::store_credential,
+            security_commands::retrieve_credential,
+            security_commands::delete_credential,
+            security_commands::check_permission,
+            security_commands::get_security_stats,
+            security_commands::get_security_alerts,
+            security_commands::generate_secure_random,
+            security_commands::hash_data,
+            security_commands::create_sandboxed_process,
+            security_commands::terminate_sandboxed_process,
+            security_commands::get_process_status,
+            security_commands::log_security_event,
+            security_commands::cleanup_expired_items,
+            // Secure MCP Bridge Commands
+            secure_mcp_bridge::secure_mcp_call,
+            secure_mcp_bridge::validate_mcp_method,
+            secure_mcp_bridge::get_secure_mcp_stats,
+            // Performance Commands
+            performance_commands::initialize_performance_manager,
+            performance_commands::begin_performance_startup,
+            performance_commands::get_performance_metrics,
+            performance_commands::update_performance_config,
+            performance_commands::run_performance_benchmarks,
+            performance_commands::get_resource_stats,
+            performance_commands::optimize_memory,
+            performance_commands::get_cache_stats,
+            performance_commands::clear_memory_caches,
+            performance_commands::get_memory_pool_stats,
+            performance_commands::get_ipc_optimizer_stats,
+            performance_commands::reset_ipc_optimizer,
+            performance_commands::get_lazy_loader_stats,
+            performance_commands::get_component_info,
+            performance_commands::load_component,
+            performance_commands::preload_components,
+            performance_commands::get_benchmark_history,
+            performance_commands::get_benchmark_baselines,
+            performance_commands::clear_benchmark_baselines,
+            performance_commands::run_startup_benchmark,
+            performance_commands::get_metrics_history,
+            performance_commands::get_metrics_range,
+            performance_commands::get_active_alerts,
+            performance_commands::get_performance_trends,
+            performance_commands::get_optimization_recommendations,
+            performance_commands::get_historical_resource_data,
+            performance_commands::get_system_info_summary,
+            performance_commands::create_optimization_report,
+            performance_commands::export_performance_data,
+            performance_commands::shutdown_performance_manager,
+            performance_commands::get_performance_status,
+            performance_commands::force_optimization,
         ])
         .setup(|app| {
+            let startup_time = Instant::now();
+            log::info!("Starting TTRPG Assistant with performance optimization");
+
+            // Initialize performance manager
+            let performance_manager = app.state::<PerformanceManagerState>();
+            
             // Initialize native features
             let native_features = app.state::<NativeFeaturesState>();
             let app_handle = app.handle().clone();
             
             tauri::async_runtime::block_on(async {
+                // Begin performance tracking
+                let startup_context = performance_manager.0.begin_startup().await;
+                
+                // Initialize performance manager
+                let perf_task = startup_context.begin_task("performance_manager_init").await;
+                if let Err(e) = performance_manager.0.initialize().await {
+                    log::error!("Failed to initialize performance manager: {}", e);
+                    perf_task.complete_with_error(&e).await;
+                } else {
+                    perf_task.complete().await;
+                }
+                
+                // Initialize native features with performance tracking
+                let native_task = startup_context.begin_task("native_features_init").await;
                 if let Err(e) = native_features.inner().initialize(&app_handle).await {
                     log::error!("Failed to initialize native features: {}", e);
+                    native_task.complete_with_error(&format!("{}", e)).await;
+                } else {
+                    native_task.complete().await;
                 }
+                
+                // Complete startup tracking
+                performance_manager.0.complete_startup(startup_context).await;
+                
+                let total_startup_time = startup_time.elapsed();
+                log::info!("TTRPG Assistant startup completed in {:?}", total_startup_time);
             });
             
             Ok(())
@@ -130,15 +226,28 @@ fn main() {
             use tauri::WindowEvent;
             match event {
                 WindowEvent::CloseRequested { .. } => {
-                    // Clean shutdown on window close
-                    let state: tauri::State<Arc<Mutex<Option<mcp_bridge::MCPBridge>>>> = window.state();
-                    let state_clone = state.inner().clone();
+                    log::info!("Application shutdown requested");
                     
-                    // Stop MCP backend gracefully
+                    // Clean shutdown on window close
+                    let mcp_state: tauri::State<Arc<Mutex<Option<mcp_bridge::MCPBridge>>>> = window.state();
+                    let mcp_state_clone = mcp_state.inner().clone();
+                    
+                    let performance_state: tauri::State<PerformanceManagerState> = window.state();
+                    let performance_manager = performance_state.0.clone();
+                    
+                    // Stop services gracefully
                     tauri::async_runtime::block_on(async {
-                        if let Some(bridge) = state_clone.lock().await.as_ref() {
+                        // Stop performance manager first
+                        if let Err(e) = performance_manager.shutdown().await {
+                            log::error!("Error shutting down performance manager: {}", e);
+                        }
+                        
+                        // Stop MCP backend
+                        if let Some(bridge) = mcp_state_clone.lock().await.as_ref() {
                             let _ = bridge.stop().await;
                         }
+                        
+                        log::info!("Application shutdown completed");
                     });
                 },
                 WindowEvent::DragDrop(drag_event) => {
