@@ -212,7 +212,7 @@ mod tests {
                 filename: filename.to_string(),
                 size_bytes: content.len() as u64,
                 content_type: "application/octet-stream".to_string(),
-                stored_path: format!("/tmp/{}", Uuid::new_v4()),
+                stored_path: std::env::temp_dir().join(Uuid::new_v4().to_string()).to_string_lossy().to_string(),
                 created_at: Utc::now(),
             };
             

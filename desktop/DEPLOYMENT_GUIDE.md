@@ -111,7 +111,7 @@ npm run tauri:build -- --target x86_64-pc-windows-msvc
       "windows": {
         "certificateThumbprint": "YOUR_CERT_THUMBPRINT",
         "digestAlgorithm": "sha256",
-        "timestampUrl": "http://timestamp.digicert.com",
+        "timestampUrl": "https://timestamp.digicert.com",
         "wix": {
           "language": "en-US",
           "template": "wix/template.wxs"
@@ -197,7 +197,7 @@ npm run tauri:build -- --bundles rpm
 2. **Sign Application:**
    ```powershell
    # Using SignTool
-   signtool sign /f mycert.pfx /p password /fd sha256 /tr http://timestamp.digicert.com /td sha256 "TTRPG Assistant.exe"
+   signtool sign /f mycert.pfx /p password /fd sha256 /tr https://timestamp.digicert.com /td sha256 "TTRPG Assistant.exe"
    ```
 
 3. **Verify Signature:**
@@ -658,7 +658,7 @@ jobs:
           [IO.File]::WriteAllBytes($cert_path, $pfx_cert_byte)
           
           # Sign executable
-          & signtool sign /f $cert_path /p "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" /fd sha256 /tr http://timestamp.digicert.com /td sha256 "desktop/frontend/src-tauri/target/release/TTRPG Assistant.exe"
+          & signtool sign /f $cert_path /p "${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}" /fd sha256 /tr https://timestamp.digicert.com /td sha256 "desktop/frontend/src-tauri/target/release/TTRPG Assistant.exe"
       
       # Code signing (macOS)
       - name: Sign macOS app
