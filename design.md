@@ -1252,9 +1252,9 @@ class CredentialManager:
     def __init__(self, storage_path: str = "./data/credentials"):
         # The encryption key MUST be loaded from a secure, persistent source.
         # Generating a key on the fly is insecure as it makes previously encrypted data unrecoverable on restart.
-        key = os.environ.get('ENCRYPTION_KEY')
+        key = os.environ.get('MDMAI_ENCRYPTION_KEY')
         if not key:
-            raise ValueError("ENCRYPTION_KEY environment variable must be set for secure operation.")
+            raise ValueError("MDMAI_ENCRYPTION_KEY environment variable must be set for secure operation.")
         
         # Validate the key format before creating Fernet cipher
         # Fernet requires a 32-byte URL-safe base64-encoded key
@@ -1270,7 +1270,7 @@ class CredentialManager:
             self.cipher = Fernet(key_bytes)
         except (ValueError, TypeError) as e:
             raise ValueError(
-                f"Invalid ENCRYPTION_KEY format. Must be a 32-byte URL-safe base64-encoded key. "
+                f"Invalid MDMAI_ENCRYPTION_KEY format. Must be a 32-byte URL-safe base64-encoded key. "
                 f"Generate a valid key using: Fernet.generate_key().decode('utf-8'). Error: {e}"
             )
         
@@ -1285,7 +1285,8 @@ class CredentialManager:
         
     def encrypt_api_key(self, api_key: str, user_id: str) -> str:
         """Encrypt API key for secure storage"""
-        # Add user-specific salt for additional security
+        # Add user-specific identifier (not a cryptographic salt, but user context for namespacing)
+        # This concatenates user_id with the API key to ensure keys are unique per user
         salted_key = f"{user_id}:{api_key}"
         encrypted = self.cipher.encrypt(salted_key.encode()).decode()
         
@@ -1670,6 +1671,7 @@ class UsageTracker:
         
         # Load pricing from configuration file
         self.pricing_config = self._load_pricing_config()
+    
     def _load_pricing_config(self) -> Dict[str, Dict[str, Dict[str, float]]]:
         """Load pricing configuration from file."""
         import yaml
@@ -1727,10 +1729,12 @@ class UsageTracker:
         """Calculate OpenAI API costs from configuration."""
         pricing = self.pricing_config.get('openai', {})
         
-        if model in pricing and isinstance(pricing[model], dict):
+        # Use consistent matching strategy: find the best match in the pricing dictionary keys
+        model_key = next((key for key in pricing if key in model), None)
+        if model_key and isinstance(pricing[model_key], dict):
             per_tokens = self.pricing_config.get('per_tokens', 1_000_000)
-            input_cost = (input_tokens / per_tokens) * pricing[model]['input']
-            output_cost = (output_tokens / per_tokens) * pricing[model]['output']
+            input_cost = (input_tokens / per_tokens) * pricing[model_key]['input']
+            output_cost = (output_tokens / per_tokens) * pricing[model_key]['output']
             return input_cost + output_cost
         return 0.0
     
@@ -1786,7 +1790,17 @@ class UsageTracker:
         if self.records_file.exists():
             with open(self.records_file, 'r') as f:
                 data = json.load(f)
-                return [UsageRecord(**r) for r in data]
+                # Handle datetime string parsing when loading from JSON
+                records = []
+                for r in data:
+                    # Convert timestamp string back to datetime object
+                    if 'timestamp' in r and isinstance(r['timestamp'], str):
+                        r['timestamp'] = datetime.fromisoformat(r['timestamp'])
+                    # Convert provider string to enum if needed
+                    if 'provider' in r and isinstance(r['provider'], str):
+                        r['provider'] = ProviderType[r['provider']]
+                    records.append(UsageRecord(**r))
+                return records
         return []
     
     def _load_limits_json(self) -> Dict[str, float]:
@@ -2266,7 +2280,7 @@ def select_optimal_model(
 #### Security Testing
 ```python
 # tests/test_credential_security.py
-@patch.dict(os.environ, {"ENCRYPTION_KEY": Fernet.generate_key().decode('utf-8')})
+@patch.dict(os.environ, {"MDMAI_ENCRYPTION_KEY": Fernet.generate_key().decode('utf-8')})
 def test_api_key_encryption():
     """Ensure API keys are properly encrypted"""
     manager = CredentialManager()
@@ -2541,6 +2555,8 @@ rate_limiter = RateLimiter()
 #### Integration with Providers
 ```python
 # Update BaseAIProvider to use rate limiting
+import httpx
+
 class BaseAIProvider(ABC):
     def __init__(self, config: ProviderConfig):
         self.config = config
