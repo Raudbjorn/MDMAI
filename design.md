@@ -1411,17 +1411,19 @@ class OpenAIProvider(BaseAIProvider):
         else:
             yield response.choices[0].message.content
     
-    def _convert_tools_to_functions(self, tools: List[Dict]) -> List[Dict]:
-        """Convert generic tool format to OpenAI's function calling format.
-        OpenAI uses 'functions' with specific schema requirements."""
-        functions = []
-        for tool in tools:
-            functions.append({
-                "name": tool.get("name"),
-                "description": tool.get("description"),
-                "parameters": tool.get("parameters", {})
-            })
-        return functions
+    def _convert_to_openai_tools(self, tools: List[Dict]) -> List[Dict]:
+        """Convert generic tool format to OpenAI's `tools` format."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.get("name"),
+                    "description": tool.get("description"),
+                    "parameters": tool.get("parameters", {}),
+                },
+            }
+            for tool in tools
+        ]
 ```
 
 #### 4. Provider Selection and Routing
