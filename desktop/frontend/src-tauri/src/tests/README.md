@@ -5,7 +5,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 ## Test Files Created
 
 ### 1. `mcp_bridge_tests.rs` - MCP Bridge Module Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/mcp_bridge_tests.rs`
+**File Path**: `desktop/frontend/src-tauri/src/tests/mcp_bridge_tests.rs`
 
 **Key Test Cases**:
 - Bridge creation and initialization
