@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod comprehensive_resource_manager_tests {
-    use super::super::resource_manager::*;
+    use crate::resource_manager::*;
     use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}};
     use std::time::{Duration, Instant};
     use tokio::time::{sleep, timeout};
