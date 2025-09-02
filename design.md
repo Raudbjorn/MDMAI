@@ -2289,8 +2289,6 @@ def test_api_key_encryption():
 ```python
 # tests/test_providers.py
 from typing import AsyncIterator, List, Dict, Optional
-from unittest.mock import AsyncMock
-
 class MockProvider(BaseAIProvider):
     """Mock provider for testing fallback and streaming behavior."""
     
