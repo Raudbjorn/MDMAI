@@ -1094,7 +1094,8 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 25.1: Implement Secure Credential Management
 **Requirements:** REQ-013, REQ-018
-**Status:** PLANNED
+**Status:** IN_PROGRESS
+**Branch:** task-25-1-secure-credential-management
 - [ ] Create credential encryption service using AES-256
 - [ ] Implement user-specific salt generation
 - [ ] Build secure key storage using local filesystem (JSON) or ChromaDB
