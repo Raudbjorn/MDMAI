@@ -1019,6 +1019,7 @@ These items represent potential improvements rather than critical issues and can
 ### Task 24.6: Generator Integration
 **Requirements:** REQ-006, REQ-007, REQ-012
 **Status:** IN_PROGRESS
+**Branch:** feature/task-24-6-24-7-genre-integration
 - [x] Update character_generator.py with genre support
 - [x] Enhance backstory_generator.py with genre templates
 - [ ] Modify npc_generator.py for diverse settings
@@ -1028,6 +1029,7 @@ These items represent potential improvements rather than critical issues and can
 ### Task 24.7: MCP Tool Updates
 **Requirements:** REQ-004, REQ-012
 **Status:** IN_PROGRESS
+**Branch:** feature/task-24-6-24-7-genre-integration
 - [x] Add genre parameter to generate_character tool
 - [ ] Update generate_npc with genre filtering
 - [ ] Create list_available_genres tool
