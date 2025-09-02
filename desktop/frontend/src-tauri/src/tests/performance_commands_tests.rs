@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::performance_commands::*;
+    use crate::performance_commands::*;
     use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering}};
     use std::collections::HashMap;
     use tokio::sync::RwLock;
