@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::super::mcp_bridge::*;
-    use super::super::process_manager::*;
+    use crate::mcp_bridge::*;
+    use crate::process_manager::*;
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::{Mutex, RwLock};
