@@ -13,7 +13,7 @@ import functools
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Coroutine, Dict, List, Optional, TypeVar
 
 from returns.result import Failure, Result, Success
 
@@ -289,8 +289,8 @@ def map_error(result: Result[T, E], mapper: Callable[[E], F]) -> Result[T, F]:
 
 def flat_map_async(
     result: Result[T, E], 
-    mapper: Callable[[T], asyncio.Coroutine[Any, Any, Result[F, E]]]
-) -> asyncio.Coroutine[Any, Any, Result[F, E]]:
+    mapper: Callable[[T], Coroutine[Any, Any, Result[F, E]]]
+) -> Coroutine[Any, Any, Result[F, E]]:
     """
     Async flat_map operation for Result.
     
@@ -398,9 +398,9 @@ class AsyncResult:
     
     @staticmethod
     def from_coroutine(
-        coro: asyncio.Coroutine[Any, Any, T],
+        coro: Coroutine[Any, Any, T],
         error_kind: ErrorKind = ErrorKind.SYSTEM,
-    ) -> asyncio.Coroutine[Any, Any, Result[T, AppError]]:
+    ) -> Coroutine[Any, Any, Result[T, AppError]]:
         """
         Convert a coroutine to one that returns a Result.
         
