@@ -1392,8 +1392,8 @@ class OpenAIProvider(BaseAIProvider):
         tools: Optional[List[Dict]] = None,
         stream: bool = False
     ) -> AsyncIterator[str]:
-        # Convert tools to OpenAI function format
-        functions = self._convert_tools_to_functions(tools) if tools else None
+        # Convert tools to OpenAI tool format
+        openai_tools = self._convert_to_openai_tools(tools) if tools else None
         
         response = await self.client.chat.completions.create(
             model=self.config.model or self.model_mapping['balanced'],
@@ -1401,7 +1401,8 @@ class OpenAIProvider(BaseAIProvider):
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
             stream=stream,
-            functions=functions
+            tools=openai_tools,
+            tool_choice="auto" if openai_tools else None
         )
         
         if stream:
