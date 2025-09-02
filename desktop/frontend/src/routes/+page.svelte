@@ -239,14 +239,14 @@
                     <!-- File Operations -->
                     <div class="flex items-center gap-1 mr-4">
                         <button
-                            onclick={() => fileOperations?.importRulebooks()}
+                            onclick={() => fileOperations?.['importRulebooks']?.()}
                             class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md 
                                    transition-colors duration-200"
                         >
                             📖 Import Rulebooks
                         </button>
                         <button
-                            onclick={() => fileOperations?.openCampaign()}
+                            onclick={() => fileOperations?.['openCampaign']?.()}
                             class="px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-md
                                    transition-colors duration-200"
                         >
@@ -509,8 +509,8 @@
     <NativeFileOperations
         bind:this={fileOperations}
         on:files-selected={handleFilesSelected}
-        on:file-saved={(e) => console.log('File saved:', e.detail)}
-        on:directory-selected={(e) => console.log('Directory selected:', e.detail)}
+        on:file-saved={(e: CustomEvent) => console.log('File saved:', e.detail)}
+        on:directory-selected={(e: CustomEvent) => console.log('Directory selected:', e.detail)}
     />
 </div>
 
