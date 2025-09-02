@@ -1130,7 +1130,7 @@ The LLM Provider Authentication system enables users to bring their own API keys
 ```python
 # src/ai_providers/base_provider.py
 from abc import ABC, abstractmethod
-from typing import Dict, Any, AsyncIterator, Optional
+from typing import Dict, Any, AsyncIterator, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
@@ -1141,6 +1141,23 @@ class ProviderType(Enum):
     AZURE = "azure"
     COHERE = "cohere"
     LOCAL = "local"  # For Ollama/local models
+
+# Custom exceptions for better error handling
+class ProviderAuthenticationError(Exception):
+    """Raised when provider authentication fails."""
+    pass
+
+class ProviderRateLimitError(Exception):
+    """Raised when a provider hits rate limits."""
+    pass
+
+class ProviderTimeoutError(Exception):
+    """Raised when a provider request times out."""
+    pass
+
+class NoAvailableProvidersError(Exception):
+    """Raised when all providers have failed."""
+    pass
 
 @dataclass
 class ProviderConfig:
@@ -1218,7 +1235,7 @@ class CredentialManager:
 ```python
 # src/ai_providers/anthropic_provider.py
 from anthropic import Anthropic
-from typing import Dict, Any, AsyncIterator
+from typing import Dict, Any, AsyncIterator, List, Optional
 import asyncio
 
 class AnthropicProvider(BaseAIProvider):
@@ -1280,13 +1297,13 @@ class AnthropicProvider(BaseAIProvider):
 ##### OpenAI Provider
 ```python
 # src/ai_providers/openai_provider.py
-from openai import OpenAI
-from typing import Dict, Any, AsyncIterator
+from openai import AsyncOpenAI
+from typing import Dict, Any, AsyncIterator, List, Optional
 
 class OpenAIProvider(BaseAIProvider):
     def __init__(self, config: ProviderConfig):
         self.config = config
-        self.client = OpenAI(api_key=config.api_key)
+        self.client = AsyncOpenAI(api_key=config.api_key)
         
         # Model optimization for TTRPG
         self.model_mapping = {
@@ -1337,8 +1354,11 @@ class OpenAIProvider(BaseAIProvider):
 ```python
 # src/ai_providers/provider_router.py
 import logging
-from typing import Dict, Optional
-from .base_provider import BaseAIProvider, ProviderType
+from typing import Dict, Optional, List
+from .base_provider import (
+    BaseAIProvider, ProviderType, 
+    NoAvailableProvidersError, ProviderRateLimitError
+)
 from .anthropic_provider import AnthropicProvider
 from .openai_provider import OpenAIProvider
 
@@ -1392,7 +1412,7 @@ class ProviderRouter:
                     logger.warning(f"Fallback provider {provider_type.value} failed: {e}")
                     continue
         
-        raise Exception("No available providers")
+        raise NoAvailableProvidersError("All configured providers have failed")
 ```
 
 #### 5. Usage Tracking and Cost Management
