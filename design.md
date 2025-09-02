@@ -1663,13 +1663,8 @@ class UsageTracker:
             ProviderType.OPENAI: self._calculate_openai_cost,
         }
         
-    def __init__(self, storage_path: str = "./data/usage", use_chromadb: bool = False):
         # Load pricing from configuration file
         self.pricing_config = self._load_pricing_config()
-        
-        # Continue with existing initialization...
-        super().__init__(storage_path, use_chromadb)
-    
     def _load_pricing_config(self) -> Dict[str, Dict[str, Dict[str, float]]]:
         """Load pricing configuration from file."""
         import yaml
