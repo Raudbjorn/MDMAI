@@ -1133,6 +1133,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, AsyncIterator, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from dataclasses import dataclass
+from typing import Union, AsyncIterator, Optional
 
 class ProviderType(Enum):
     ANTHROPIC = "anthropic"
@@ -1141,6 +1143,14 @@ class ProviderType(Enum):
     AZURE = "azure"
     COHERE = "cohere"
     LOCAL = "local"  # For Ollama/local models
+
+@dataclass
+class CompletionResponse:
+    """Structured response from get_completion method."""
+    content: str  # The actual completion text
+    provider: ProviderType  # The provider that generated the response
+    is_fallback: bool = False  # Whether this was from a fallback provider
+    stream: Optional[AsyncIterator[str]] = None  # Stream iterator if streaming is enabled
 
 # Custom exceptions for better error handling
 class ProviderError(Exception):
@@ -1246,7 +1256,24 @@ class CredentialManager:
         key = os.environ.get('ENCRYPTION_KEY')
         if not key:
             raise ValueError("ENCRYPTION_KEY environment variable must be set for secure operation.")
-        self.cipher = Fernet(key.encode())
+        
+        # Validate the key format before creating Fernet cipher
+        # Fernet requires a 32-byte URL-safe base64-encoded key
+        try:
+            # Ensure the key is properly encoded
+            if isinstance(key, str):
+                key_bytes = key.encode('utf-8')
+            else:
+                key_bytes = key
+                
+            # Validate key format by attempting to create Fernet instance
+            # This will raise ValueError if the key format is invalid
+            self.cipher = Fernet(key_bytes)
+        except (ValueError, TypeError) as e:
+            raise ValueError(
+                f"Invalid ENCRYPTION_KEY format. Must be a 32-byte URL-safe base64-encoded key. "
+                f"Generate a valid key using: Fernet.generate_key().decode('utf-8'). Error: {e}"
+            )
         
         # Use local filesystem for credential storage - no external databases
         from pathlib import Path
@@ -1351,10 +1378,17 @@ class AnthropicProvider(BaseAIProvider):
         )
         
         if stream:
+            # Properly yield chunks as they arrive for true streaming
+            # This allows the consumer to process chunks immediately
+            # without waiting for the entire response
             async for chunk in response:
-                yield chunk.delta.text
+                if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                    if chunk.delta.text:
+                        yield chunk.delta.text
         else:
-            yield response.content[0].text
+            # For non-streaming, yield the complete response
+            if hasattr(response, 'content') and response.content:
+                yield response.content[0].text
     
     def _get_ttrpg_system_prompt(self) -> str:
         return """You are an expert Tabletop RPG Game Master and storyteller. 
@@ -1406,11 +1440,21 @@ class OpenAIProvider(BaseAIProvider):
         )
         
         if stream:
+            # Properly yield chunks as they arrive for true streaming
+            # This allows the consumer to process chunks immediately
+            # without waiting for the entire response
             async for chunk in response:
-                if chunk.choices[0].delta.content:
+                if (hasattr(chunk, 'choices') and chunk.choices and 
+                    hasattr(chunk.choices[0], 'delta') and 
+                    hasattr(chunk.choices[0].delta, 'content') and 
+                    chunk.choices[0].delta.content):
                     yield chunk.choices[0].delta.content
         else:
-            yield response.choices[0].message.content
+            # For non-streaming, yield the complete response
+            if (hasattr(response, 'choices') and response.choices and 
+                hasattr(response.choices[0], 'message') and 
+                hasattr(response.choices[0].message, 'content')):
+                yield response.choices[0].message.content
     
     def _convert_to_openai_tools(self, tools: List[Dict]) -> List[Dict]:
         """Convert generic tool format to OpenAI's `tools` format."""
@@ -1464,54 +1508,101 @@ class ProviderRouter:
         self, 
         user_id: str, 
         messages: List[Dict],
-        preferred_provider: Optional[ProviderType] = None
-    ) -> str:
-        """Get completion with automatic fallback"""
+        preferred_provider: Optional[ProviderType] = None,
+        stream: bool = False
+    ) -> Union[CompletionResponse, AsyncIterator[str]]:
+        """Get completion with automatic fallback.
+        
+        Args:
+            user_id: User identifier
+            messages: Chat messages
+            preferred_provider: Preferred provider to try first
+            stream: If True, returns an async iterator for streaming responses
+            
+        Returns:
+            CompletionResponse object containing the response and metadata,
+            or an AsyncIterator[str] if streaming is enabled
+        """
+        # Helper function to attempt completion with a specific provider
+        async def try_provider(provider_type: ProviderType, is_fallback: bool = False):
+            provider_key = f"{user_id}:{provider_type.value}"
+            if provider_key not in self.providers:
+                return None
+                
+            provider = self.providers[provider_key]
+            
+            if stream:
+                # Return the streaming iterator directly for true streaming
+                # The consumer can process chunks as they arrive
+                async def stream_with_metadata():
+                    try:
+                        async for chunk in provider.complete(messages, stream=True):
+                            yield chunk
+                    except Exception as e:
+                        logger.error(f"Stream error from {provider_type.value}: {e}")
+                        raise
+                return stream_with_metadata()
+            else:
+                # For non-streaming, aggregate the response
+                try:
+                    full_response = "".join([chunk async for chunk in provider.complete(messages, stream=False)])
+                    return CompletionResponse(
+                        content=full_response,
+                        provider=provider_type,
+                        is_fallback=is_fallback
+                    )
+                except Exception as e:
+                    logger.error(f"Error from {provider_type.value}: {e}")
+                    raise
+        
         # Try preferred provider first
         if preferred_provider:
-            provider_key = f"{user_id}:{preferred_provider.value}"
-            if provider_key in self.providers:
-                try:
-                    # Aggregate all chunks from the stream to get complete response
-                    full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
-                    return full_response
-                except ProviderRateLimitError as e:
-                    logger.warning(f"Provider {preferred_provider.value} rate limited: {e}")
-                    # Try fallback after rate limit
-                except ProviderAuthenticationError as e:
-                    logger.error(f"Provider {preferred_provider.value} auth failed: {e}")
-                    # Remove provider from available list
+            try:
+                result = await try_provider(preferred_provider, is_fallback=False)
+                if result:
+                    return result
+            except ProviderRateLimitError as e:
+                logger.warning(f"Provider {preferred_provider.value} rate limited: {e}")
+                # Try fallback after rate limit
+            except ProviderAuthenticationError as e:
+                logger.error(f"Provider {preferred_provider.value} auth failed: {e}")
+                # Remove provider from available list
+                provider_key = f"{user_id}:{preferred_provider.value}"
+                if provider_key in self.providers:
                     del self.providers[provider_key]
-                    # Try fallback
-                except ProviderTimeoutError as e:
-                    logger.warning(f"Provider {preferred_provider.value} timed out: {e}")
-                    # Try fallback immediately
-                except Exception as e:
-                    # Unexpected error - log with full traceback
-                    logger.exception(f"Unexpected error with provider {preferred_provider.value}: {e}")
+                # Try fallback
+            except ProviderTimeoutError as e:
+                logger.warning(f"Provider {preferred_provider.value} timed out: {e}")
+                # Try fallback immediately
+            except Exception as e:
+                # Unexpected error - log with full traceback
+                logger.exception(f"Unexpected error with provider {preferred_provider.value}: {e}")
         
         # Try fallback providers
         for provider_type in self.fallback_order:
-            provider_key = f"{user_id}:{provider_type.value}"
-            if provider_key in self.providers:
-                try:
-                    # Aggregate all chunks from the stream to get complete response
-                    full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
-                    return full_response
-                except ProviderRateLimitError as e:
-                    logger.warning(f"Fallback provider {provider_type.value} rate limited: {e}")
-                    continue
-                except ProviderAuthenticationError as e:
-                    logger.error(f"Fallback provider {provider_type.value} auth failed: {e}")
-                    # Remove failed provider
+            if provider_type == preferred_provider:
+                continue  # Skip the already-tried preferred provider
+            
+            try:
+                result = await try_provider(provider_type, is_fallback=True)
+                if result:
+                    return result
+            except ProviderRateLimitError as e:
+                logger.warning(f"Fallback provider {provider_type.value} rate limited: {e}")
+                continue
+            except ProviderAuthenticationError as e:
+                logger.error(f"Fallback provider {provider_type.value} auth failed: {e}")
+                # Remove failed provider
+                provider_key = f"{user_id}:{provider_type.value}"
+                if provider_key in self.providers:
                     del self.providers[provider_key]
-                    continue
-                except ProviderTimeoutError as e:
-                    logger.warning(f"Fallback provider {provider_type.value} timed out: {e}")
-                    continue
-                except Exception as e:
-                    logger.exception(f"Unexpected error with fallback provider {provider_type.value}: {e}")
-                    continue
+                continue
+            except ProviderTimeoutError as e:
+                logger.warning(f"Fallback provider {provider_type.value} timed out: {e}")
+                continue
+            except Exception as e:
+                logger.exception(f"Unexpected error with fallback provider {provider_type.value}: {e}")
+                continue
         
         raise NoAvailableProvidersError("All configured providers have failed")
 ```
@@ -2197,20 +2288,88 @@ def test_api_key_encryption():
 #### Provider Testing
 ```python
 # tests/test_providers.py
+from typing import AsyncIterator, List, Dict, Optional
+from unittest.mock import AsyncMock
+
+class MockProvider(BaseAIProvider):
+    """Mock provider for testing fallback and streaming behavior."""
+    
+    def __init__(self, should_fail: bool = False, provider_type: ProviderType = ProviderType.OPENAI):
+        self.should_fail = should_fail
+        self.provider_type = provider_type
+        self.config = type('MockConfig', (), {
+            'type': provider_type,
+            'api_key': 'test-key',
+            'max_tokens': 1000,
+            'temperature': 0.7
+        })()
+    
+    async def complete(
+        self, 
+        messages: List[Dict[str, str]], 
+        tools: Optional[List[Dict]] = None,
+        stream: bool = False
+    ) -> AsyncIterator[str]:
+        """Generate mock completion."""
+        if self.should_fail:
+            if self.provider_type == ProviderType.ANTHROPIC:
+                raise ProviderRateLimitError("Mock rate limit error", provider="anthropic")
+            else:
+                raise ProviderTimeoutError("Mock timeout error", provider=self.provider_type.value)
+        
+        # Simulate streaming response
+        if stream:
+            chunks = ["This ", "is ", "a ", "streaming ", "response ", "from ", f"{self.provider_type.value}."]
+            for chunk in chunks:
+                yield chunk
+        else:
+            yield f"This is a complete response from {self.provider_type.value}."
+    
+    async def validate_credentials(self) -> bool:
+        """Mock credential validation."""
+        return not self.should_fail
+
 async def test_provider_fallback():
     """Test automatic fallback when primary provider fails"""
     router = ProviderRouter()
     
     # Register providers with mock failure
-    mock_anthropic = MockProvider(should_fail=True)
-    mock_openai = MockProvider(should_fail=False)
+    mock_anthropic = MockProvider(should_fail=True, provider_type=ProviderType.ANTHROPIC)
+    mock_openai = MockProvider(should_fail=False, provider_type=ProviderType.OPENAI)
     
     router.register_provider("user1", mock_anthropic, is_primary=True)
     router.register_provider("user1", mock_openai)
     
     # Should fallback to OpenAI
-    response = await router.get_completion("user1", messages)
+    response = await router.get_completion("user1", messages, preferred_provider=ProviderType.ANTHROPIC)
+    
+    # Check that response is a CompletionResponse object
+    assert isinstance(response, CompletionResponse)
     assert response.provider == ProviderType.OPENAI
+    assert response.is_fallback == True
+    assert response.content != ""  # Should have actual content
+
+async def test_streaming_response():
+    """Test that streaming returns an async iterator without aggregation"""
+    router = ProviderRouter()
+    
+    mock_provider = MockProvider(should_fail=False, provider_type=ProviderType.OPENAI)
+    router.register_provider("user1", mock_provider)
+    
+    # Request streaming response
+    response = await router.get_completion("user1", messages, stream=True)
+    
+    # Should return an async iterator, not a CompletionResponse
+    assert hasattr(response, '__aiter__')
+    
+    # Verify we can iterate through chunks
+    chunks = []
+    async for chunk in response:
+        chunks.append(chunk)
+    
+    assert len(chunks) > 0  # Should have received chunks
+    full_content = "".join(chunks)
+    assert full_content != ""  # Should have actual content
 ```
 
 ### Rate Limiting Implementation
