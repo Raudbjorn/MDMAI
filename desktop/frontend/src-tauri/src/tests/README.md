@@ -28,7 +28,7 @@ This directory contains comprehensive unit tests for all the major Rust modules 
 - Process lifecycle management integration
 
 ### 2. `process_manager_comprehensive_tests.rs` - Process Manager Module Tests
-**File Path**: `/home/svnbjrn/code/cl1/MDMAI/desktop/frontend/src-tauri/src/tests/process_manager_comprehensive_tests.rs`
+**File Path**: `desktop/frontend/src-tauri/src/tests/process_manager_comprehensive_tests.rs`
 
 **Key Test Cases**:
 - Process lifecycle management (start/stop/crash)
