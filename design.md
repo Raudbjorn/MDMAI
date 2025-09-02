@@ -1112,6 +1112,641 @@ bridge:
 - **Logging**: Structured logging with correlation IDs
 - **Alerting**: PagerDuty integration for critical issues
 
+## LLM Provider Authentication Architecture
+
+### Overview
+The LLM Provider Authentication system enables users to bring their own API keys for various AI providers (Anthropic, OpenAI, Google Gemini, etc.) to use as the primary DM/Game Runner. This architecture prioritizes security, flexibility, and cost optimization while maintaining a seamless user experience.
+
+### Core Design Principles
+1. **Security First**: API keys are never exposed client-side
+2. **Provider Agnostic**: Easy to add new providers without major refactoring
+3. **User Control**: Users manage their own API keys and costs
+4. **Graceful Degradation**: Fallback options when primary provider fails
+5. **Cost Transparency**: Real-time usage tracking and cost estimation
+
+### Architecture Components
+
+#### 1. Provider Abstraction Layer (Python Backend)
+```python
+# src/ai_providers/base_provider.py
+from abc import ABC, abstractmethod
+from typing import Dict, Any, AsyncIterator, Optional
+from dataclasses import dataclass
+from enum import Enum
+
+class ProviderType(Enum):
+    ANTHROPIC = "anthropic"
+    OPENAI = "openai"
+    GOOGLE = "google"
+    AZURE = "azure"
+    COHERE = "cohere"
+    LOCAL = "local"  # For Ollama/local models
+
+@dataclass
+class ProviderConfig:
+    type: ProviderType
+    api_key: Optional[str] = None
+    endpoint: Optional[str] = None
+    model: str = ""
+    max_tokens: int = 4096
+    temperature: float = 0.7
+    
+class BaseAIProvider(ABC):
+    @abstractmethod
+    async def complete(
+        self, 
+        messages: List[Dict[str, str]], 
+        tools: Optional[List[Dict]] = None,
+        stream: bool = False
+    ) -> AsyncIterator[str]:
+        """Generate completion from the AI provider"""
+        pass
+    
+    @abstractmethod
+    async def validate_credentials(self) -> bool:
+        """Validate API credentials are working"""
+        pass
+    
+    @abstractmethod
+    def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        """Estimate cost for the request"""
+        pass
+```
+
+#### 2. Secure Credential Management
+```python
+# src/ai_providers/credential_manager.py
+from cryptography.fernet import Fernet
+import os
+from typing import Optional
+
+class CredentialManager:
+    def __init__(self):
+        # Use environment variable or generate key
+        key = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key())
+        self.cipher = Fernet(key)
+        
+    def encrypt_api_key(self, api_key: str, user_id: str) -> str:
+        """Encrypt API key for secure storage"""
+        # Add user-specific salt for additional security
+        salted_key = f"{user_id}:{api_key}"
+        return self.cipher.encrypt(salted_key.encode()).decode()
+    
+    def decrypt_api_key(self, encrypted_key: str, user_id: str) -> Optional[str]:
+        """Decrypt API key for use"""
+        try:
+            decrypted = self.cipher.decrypt(encrypted_key.encode()).decode()
+            stored_id, api_key = decrypted.split(':', 1)
+            if stored_id == user_id:
+                return api_key
+        except Exception:
+            pass
+        return None
+```
+
+#### 3. Provider Implementations
+
+##### Anthropic Provider (Primary)
+```python
+# src/ai_providers/anthropic_provider.py
+from anthropic import Anthropic
+from typing import Dict, Any, AsyncIterator
+import asyncio
+
+class AnthropicProvider(BaseAIProvider):
+    def __init__(self, config: ProviderConfig):
+        self.config = config
+        self.client = Anthropic(api_key=config.api_key)
+        
+        # Model selection with TTRPG optimization
+        self.model_mapping = {
+            'fast': 'claude-3-haiku-20240307',     # Quick responses, dice rolls
+            'balanced': 'claude-3-5-sonnet-20241022', # Main gameplay
+            'powerful': 'claude-3-opus-20240229'    # Complex narratives
+        }
+        
+    async def complete(
+        self, 
+        messages: List[Dict[str, str]], 
+        tools: Optional[List[Dict]] = None,
+        stream: bool = False
+    ) -> AsyncIterator[str]:
+        # Convert to Anthropic format
+        anthropic_messages = self._convert_messages(messages)
+        
+        # Add TTRPG-specific system prompt
+        system_prompt = self._get_ttrpg_system_prompt()
+        
+        # Use prompt caching for efficiency
+        response = await self.client.messages.create(
+            model=self.config.model or self.model_mapping['balanced'],
+            messages=anthropic_messages,
+            system=system_prompt,
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
+            stream=stream,
+            tools=tools,
+            extra_headers={
+                "anthropic-beta": "prompt-caching-2024-07-31"
+            }
+        )
+        
+        if stream:
+            async for chunk in response:
+                yield chunk.delta.text
+        else:
+            yield response.content[0].text
+    
+    def _get_ttrpg_system_prompt(self) -> str:
+        return """You are an expert Tabletop RPG Game Master and storyteller. 
+        Your role is to create immersive narratives, manage game mechanics, 
+        and ensure all players have an engaging experience. You have deep 
+        knowledge of various TTRPG systems and can adapt to different playstyles."""
+```
+
+##### OpenAI Provider
+```python
+# src/ai_providers/openai_provider.py
+from openai import OpenAI
+from typing import Dict, Any, AsyncIterator
+
+class OpenAIProvider(BaseAIProvider):
+    def __init__(self, config: ProviderConfig):
+        self.config = config
+        self.client = OpenAI(api_key=config.api_key)
+        
+        # Model optimization for TTRPG
+        self.model_mapping = {
+            'fast': 'gpt-4o-mini',      # Economy option
+            'balanced': 'gpt-4o',        # Recommended
+            'powerful': 'gpt-4-turbo'    # Premium features
+        }
+        
+    async def complete(
+        self, 
+        messages: List[Dict[str, str]], 
+        tools: Optional[List[Dict]] = None,
+        stream: bool = False
+    ) -> AsyncIterator[str]:
+        # Convert tools to OpenAI function format
+        functions = self._convert_tools_to_functions(tools) if tools else None
+        
+        response = await self.client.chat.completions.create(
+            model=self.config.model or self.model_mapping['balanced'],
+            messages=messages,
+            max_tokens=self.config.max_tokens,
+            temperature=self.config.temperature,
+            stream=stream,
+            functions=functions
+        )
+        
+        if stream:
+            async for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
+        else:
+            yield response.choices[0].message.content
+```
+
+#### 4. Provider Selection and Routing
+```python
+# src/ai_providers/provider_router.py
+from typing import Dict, Optional
+from .base_provider import BaseAIProvider, ProviderType
+from .anthropic_provider import AnthropicProvider
+from .openai_provider import OpenAIProvider
+
+class ProviderRouter:
+    def __init__(self):
+        self.providers: Dict[str, BaseAIProvider] = {}
+        self.primary_provider: Optional[str] = None
+        self.fallback_order = [
+            ProviderType.ANTHROPIC,
+            ProviderType.OPENAI,
+            ProviderType.GOOGLE
+        ]
+        
+    def register_provider(self, user_id: str, provider: BaseAIProvider, is_primary: bool = False):
+        """Register a provider for a user"""
+        self.providers[f"{user_id}:{provider.config.type.value}"] = provider
+        if is_primary:
+            self.primary_provider = f"{user_id}:{provider.config.type.value}"
+    
+    async def get_completion(
+        self, 
+        user_id: str, 
+        messages: List[Dict],
+        preferred_provider: Optional[ProviderType] = None
+    ) -> str:
+        """Get completion with automatic fallback"""
+        # Try preferred provider first
+        if preferred_provider:
+            provider_key = f"{user_id}:{preferred_provider.value}"
+            if provider_key in self.providers:
+                try:
+                    async for response in self.providers[provider_key].complete(messages):
+                        return response
+                except Exception as e:
+                    # Log error and fall through to fallback
+                    pass
+        
+        # Try fallback providers
+        for provider_type in self.fallback_order:
+            provider_key = f"{user_id}:{provider_type.value}"
+            if provider_key in self.providers:
+                try:
+                    async for response in self.providers[provider_key].complete(messages):
+                        return response
+                except Exception:
+                    continue
+        
+        raise Exception("No available providers")
+```
+
+#### 5. Usage Tracking and Cost Management
+```python
+# src/ai_providers/usage_tracker.py
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, List
+import asyncio
+
+@dataclass
+class UsageRecord:
+    user_id: str
+    provider: ProviderType
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost: float
+    timestamp: datetime
+    session_id: str
+    
+class UsageTracker:
+    def __init__(self):
+        self.usage_records: List[UsageRecord] = []
+        self.user_limits: Dict[str, float] = {}
+        self.cost_calculators = {
+            ProviderType.ANTHROPIC: self._calculate_anthropic_cost,
+            ProviderType.OPENAI: self._calculate_openai_cost,
+        }
+        
+    def _calculate_anthropic_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Calculate Anthropic API costs"""
+        pricing = {
+            'claude-3-haiku': {'input': 0.25, 'output': 1.25},      # per 1M tokens
+            'claude-3-5-sonnet': {'input': 3.0, 'output': 15.0},
+            'claude-3-opus': {'input': 15.0, 'output': 75.0}
+        }
+        
+        model_key = model.split('-20')[0]  # Remove date suffix
+        if model_key in pricing:
+            input_cost = (input_tokens / 1_000_000) * pricing[model_key]['input']
+            output_cost = (output_tokens / 1_000_000) * pricing[model_key]['output']
+            return input_cost + output_cost
+        return 0.0
+    
+    def _calculate_openai_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Calculate OpenAI API costs"""
+        pricing = {
+            'gpt-4o-mini': {'input': 0.15, 'output': 0.60},     # per 1M tokens
+            'gpt-4o': {'input': 2.50, 'output': 10.00},
+            'gpt-4-turbo': {'input': 10.00, 'output': 30.00}
+        }
+        
+        if model in pricing:
+            input_cost = (input_tokens / 1_000_000) * pricing[model]['input']
+            output_cost = (output_tokens / 1_000_000) * pricing[model]['output']
+            return input_cost + output_cost
+        return 0.0
+    
+    async def track_usage(
+        self,
+        user_id: str,
+        provider: ProviderType,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        session_id: str
+    ) -> UsageRecord:
+        """Track API usage and calculate costs"""
+        cost = self.cost_calculators[provider](model, input_tokens, output_tokens)
+        
+        record = UsageRecord(
+            user_id=user_id,
+            provider=provider,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=cost,
+            timestamp=datetime.utcnow(),
+            session_id=session_id
+        )
+        
+        self.usage_records.append(record)
+        
+        # Check if user exceeds limits
+        if user_id in self.user_limits:
+            daily_cost = self.get_daily_cost(user_id)
+            if daily_cost > self.user_limits[user_id]:
+                raise Exception(f"Daily spending limit exceeded: ${daily_cost:.2f}")
+        
+        return record
+```
+
+### Frontend Integration (TypeScript/SvelteKit)
+
+#### Provider Configuration UI
+```typescript
+// frontend/src/lib/stores/providers.ts
+import { writable, derived } from 'svelte/store';
+import type { ProviderConfig, ProviderType } from '$lib/types/providers';
+
+interface ProvidersState {
+    configs: Map<ProviderType, ProviderConfig>;
+    activeProvider: ProviderType;
+    usage: Map<ProviderType, UsageStats>;
+}
+
+export const providersStore = writable<ProvidersState>({
+    configs: new Map(),
+    activeProvider: 'anthropic' as ProviderType,
+    usage: new Map()
+});
+
+// Derived store for current provider
+export const currentProvider = derived(
+    providersStore,
+    $providers => $providers.configs.get($providers.activeProvider)
+);
+
+// API key management
+export async function saveProviderConfig(
+    provider: ProviderType,
+    config: ProviderConfig
+): Promise<void> {
+    // Send encrypted to backend
+    const response = await fetch('/api/providers/configure', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getAuthToken()}`
+        },
+        body: JSON.stringify({
+            provider,
+            apiKey: config.apiKey,  // Will be encrypted server-side
+            model: config.model,
+            settings: config.settings
+        })
+    });
+    
+    if (response.ok) {
+        providersStore.update(state => {
+            state.configs.set(provider, config);
+            return state;
+        });
+    }
+}
+```
+
+#### Provider Selection Component
+```svelte
+<!-- frontend/src/lib/components/ProviderSelector.svelte -->
+<script lang="ts">
+    import { providersStore, currentProvider } from '$lib/stores/providers';
+    import { ProviderType } from '$lib/types/providers';
+    
+    let showApiKeyModal = false;
+    let selectedProvider: ProviderType = 'anthropic';
+    
+    const providerInfo = {
+        anthropic: {
+            name: 'Anthropic Claude',
+            models: ['claude-3-haiku', 'claude-3-5-sonnet', 'claude-3-opus'],
+            description: 'Best for long narratives and consistent character roleplay'
+        },
+        openai: {
+            name: 'OpenAI GPT',
+            models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+            description: 'Great for creative worldbuilding and multimodal features'
+        },
+        google: {
+            name: 'Google Gemini',
+            models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+            description: 'Excellent for research and fact-based gameplay'
+        }
+    };
+    
+    async function switchProvider(provider: ProviderType) {
+        selectedProvider = provider;
+        
+        // Check if API key is configured
+        const config = $providersStore.configs.get(provider);
+        if (!config?.apiKey) {
+            showApiKeyModal = true;
+            return;
+        }
+        
+        // Switch active provider
+        $providersStore.activeProvider = provider;
+    }
+</script>
+
+<div class="provider-selector">
+    <h3>Select AI Game Master</h3>
+    
+    {#each Object.entries(providerInfo) as [key, info]}
+        <button 
+            class="provider-card"
+            class:active={$currentProvider?.type === key}
+            on:click={() => switchProvider(key)}
+        >
+            <h4>{info.name}</h4>
+            <p>{info.description}</p>
+            {#if $providersStore.configs.has(key)}
+                <span class="configured">✓ Configured</span>
+            {/if}
+        </button>
+    {/each}
+    
+    {#if showApiKeyModal}
+        <ApiKeyModal 
+            provider={selectedProvider}
+            on:save={handleApiKeySave}
+            on:close={() => showApiKeyModal = false}
+        />
+    {/if}
+</div>
+```
+
+### Security Considerations
+
+#### API Key Security
+1. **Never store API keys in:**
+   - Browser localStorage/sessionStorage
+   - Frontend code or environment variables
+   - Unencrypted database fields
+   - Log files or error messages
+
+2. **Always:**
+   - Encrypt API keys before storage (AES-256)
+   - Use HTTPS for all API key transmission
+   - Implement rate limiting per user
+   - Validate API key format before use
+   - Rotate encryption keys periodically
+
+#### Authentication Flow
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Encryption
+    participant AIProvider
+    
+    User->>Frontend: Enter API Key
+    Frontend->>Backend: POST /api/providers/configure (HTTPS)
+    Backend->>Encryption: Encrypt API Key
+    Encryption->>Backend: Encrypted Key
+    Backend->>Backend: Store in Database
+    Backend->>Frontend: Configuration Saved
+    
+    User->>Frontend: Start Game Session
+    Frontend->>Backend: Request with User Token
+    Backend->>Backend: Retrieve Encrypted Key
+    Backend->>Encryption: Decrypt API Key
+    Backend->>AIProvider: API Request with Key
+    AIProvider->>Backend: Response
+    Backend->>Frontend: Game Content
+```
+
+### Model Selection Strategy for TTRPG
+
+#### Anthropic Claude (Primary Choice)
+- **Claude 3 Haiku**: Simple dice rolls, rule lookups, quick NPC responses
+- **Claude 3.5 Sonnet**: Main gameplay, narrative generation, character interactions
+- **Claude 3 Opus**: Complex campaign creation, intricate plot development
+
+#### OpenAI GPT (Secondary)
+- **GPT-4o Mini**: Budget option for simple tasks
+- **GPT-4o**: Balanced performance for most gameplay
+- **GPT-4 Turbo**: Premium features, image generation
+
+#### Selection Algorithm
+```python
+def select_optimal_model(
+    task_type: str,
+    complexity: float,
+    user_budget: str,
+    context_length: int
+) -> tuple[ProviderType, str]:
+    """Select optimal model based on task requirements"""
+    
+    if user_budget == 'economy':
+        if task_type == 'dice_roll':
+            return (ProviderType.ANTHROPIC, 'claude-3-haiku')
+        return (ProviderType.OPENAI, 'gpt-4o-mini')
+    
+    if context_length > 100_000:
+        # Only Claude supports very long context
+        return (ProviderType.ANTHROPIC, 'claude-3-5-sonnet')
+    
+    if task_type in ['narrative', 'roleplay']:
+        # Claude excels at consistency
+        return (ProviderType.ANTHROPIC, 'claude-3-5-sonnet')
+    
+    if task_type == 'image_generation':
+        # Only OpenAI has DALL-E
+        return (ProviderType.OPENAI, 'gpt-4o')
+    
+    # Default balanced choice
+    return (ProviderType.ANTHROPIC, 'claude-3-5-sonnet')
+```
+
+### Implementation Phases
+
+#### Phase 1: Core Provider Integration (Week 1)
+- Implement base provider abstraction
+- Add Anthropic provider with full features
+- Create credential encryption system
+- Build basic usage tracking
+
+#### Phase 2: Multi-Provider Support (Week 2)
+- Add OpenAI provider implementation
+- Implement provider routing with fallback
+- Create model selection logic
+- Add cost calculation system
+
+#### Phase 3: Frontend Integration (Week 3)
+- Build provider configuration UI
+- Create API key management interface
+- Implement provider switching
+- Add usage dashboard
+
+#### Phase 4: Advanced Features (Week 4)
+- Add Google Gemini support
+- Implement prompt caching optimization
+- Create batch processing for non-realtime tasks
+- Add advanced cost optimization
+
+### Testing Strategy
+
+#### Security Testing
+```python
+# tests/test_credential_security.py
+def test_api_key_encryption():
+    """Ensure API keys are properly encrypted"""
+    manager = CredentialManager()
+    api_key = "sk-ant-test-key-12345"
+    user_id = "user123"
+    
+    encrypted = manager.encrypt_api_key(api_key, user_id)
+    assert encrypted != api_key
+    assert len(encrypted) > len(api_key)
+    
+    decrypted = manager.decrypt_api_key(encrypted, user_id)
+    assert decrypted == api_key
+    
+    # Wrong user ID should fail
+    wrong_decrypted = manager.decrypt_api_key(encrypted, "wrong_user")
+    assert wrong_decrypted is None
+```
+
+#### Provider Testing
+```python
+# tests/test_providers.py
+async def test_provider_fallback():
+    """Test automatic fallback when primary provider fails"""
+    router = ProviderRouter()
+    
+    # Register providers with mock failure
+    mock_anthropic = MockProvider(should_fail=True)
+    mock_openai = MockProvider(should_fail=False)
+    
+    router.register_provider("user1", mock_anthropic, is_primary=True)
+    router.register_provider("user1", mock_openai)
+    
+    # Should fallback to OpenAI
+    response = await router.get_completion("user1", messages)
+    assert response.provider == ProviderType.OPENAI
+```
+
+### Monitoring and Observability
+
+#### Key Metrics
+- **API Response Time**: Track latency per provider and model
+- **Cost per Session**: Monitor spending patterns
+- **Error Rates**: Track failures by provider
+- **Token Usage**: Monitor context window utilization
+- **Model Performance**: A/B test different models for tasks
+
+#### Dashboard Requirements
+- Real-time cost tracking
+- Provider health status
+- Usage trends and projections
+- Model performance comparison
+- Budget alerts and notifications
+
 ## Technology Stack Updates (2024)
 
 ### Frontend Migration: React → SvelteKit
