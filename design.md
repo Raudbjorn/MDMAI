@@ -1130,11 +1130,10 @@ The LLM Provider Authentication system enables users to bring their own API keys
 ```python
 # src/ai_providers/base_provider.py
 from abc import ABC, abstractmethod
-from typing import Dict, Any, AsyncIterator, Optional, List
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass
-from typing import Union, AsyncIterator, Optional
 
 class ProviderType(Enum):
     ANTHROPIC = "anthropic"
