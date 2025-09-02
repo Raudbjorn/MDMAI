@@ -1,7 +1,7 @@
 {
-  "name": "TTRPG Assistant",
-  "short_name": "TTRPG",
-  "description": "A comprehensive assistant for Tabletop RPG game masters",
+  "name": "MDMAI Desktop",
+  "short_name": "MDMAI",
+  "description": "MDMAI Desktop Application with advanced data management capabilities",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
