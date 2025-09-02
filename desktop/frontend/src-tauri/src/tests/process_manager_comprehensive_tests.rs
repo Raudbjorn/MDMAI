@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod comprehensive_process_manager_tests {
-    use super::super::process_manager::*;
+    use crate::process_manager::*;
     use std::sync::Arc;
     use std::time::{Duration, SystemTime};
     use tokio::time::{sleep, timeout};
