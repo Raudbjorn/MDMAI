@@ -216,8 +216,8 @@ sw.addEventListener('message', (event) => {
 sw.addEventListener('push', (event) => {
   const options = {
     body: event.data?.text() || 'New update from TTRPG Assistant',
-    icon: '/icon-192.png',
-    badge: '/badge-72.png',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
     vibrate: [100, 50, 100],
     data: {
       dateOfArrival: Date.now(),
@@ -227,12 +227,12 @@ sw.addEventListener('push', (event) => {
       {
         action: 'explore',
         title: 'Open',
-        icon: '/checkmark.png'
+        icon: '/icons/icon-checkmark-32x32.png'
       },
       {
         action: 'close',
         title: 'Close',
-        icon: '/xmark.png'
+        icon: '/icons/icon-close-32x32.png'
       }
     ]
   };
