@@ -227,12 +227,12 @@ sw.addEventListener('push', (event) => {
       {
         action: 'explore',
         title: 'Open',
-        icon: '/icons/icon-32x32.png'
+        icon: '/icons/icon-checkmark-32x32.png'
       },
       {
         action: 'close',
         title: 'Close',
-        icon: '/icons/icon-32x32.png'
+        icon: '/icons/icon-close-32x32.png'
       }
     ]
   };
