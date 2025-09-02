@@ -1095,7 +1095,7 @@ These items represent potential improvements rather than critical issues and can
 **Status:** PLANNED
 - [ ] Create credential encryption service using AES-256
 - [ ] Implement user-specific salt generation
-- [ ] Build secure key storage in database
+- [ ] Build secure key storage using local filesystem (JSON) or ChromaDB
 - [ ] Add API key validation before storage
 - [ ] Create key rotation mechanism
 - [ ] Implement secure key deletion
@@ -1125,9 +1125,9 @@ These items represent potential improvements rather than critical issues and can
 **Status:** PLANNED
 - [ ] Create token counting system for all providers
 - [ ] Build real-time cost calculation engine
-- [ ] Implement per-user usage tracking
-- [ ] Add daily/monthly spending limits
-- [ ] Create usage analytics dashboard
+- [ ] Implement per-user usage tracking with local JSON files or ChromaDB
+- [ ] Add daily/monthly spending limits persisted to local storage
+- [ ] Create usage analytics dashboard reading from local persistence
 - [ ] Build cost optimization recommendations
 
 ### Task 25.5: Create Model Selection Strategy
@@ -1200,6 +1200,7 @@ These items represent potential improvements rather than critical issues and can
 - ✅ Secure transmission over HTTPS only
 - ✅ User-specific encryption salts
 - ✅ Key rotation implemented
+- ✅ Local storage only - no external database dependencies
 
 ### Functionality
 - ✅ Support for Anthropic, OpenAI, and Google providers

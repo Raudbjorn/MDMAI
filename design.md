@@ -1143,21 +1143,52 @@ class ProviderType(Enum):
     LOCAL = "local"  # For Ollama/local models
 
 # Custom exceptions for better error handling
-class ProviderAuthenticationError(Exception):
+class ProviderError(Exception):
+    """Base exception for provider-related errors."""
+    def __init__(self, message: str, provider: Optional[str] = None, retry_after: Optional[int] = None):
+        super().__init__(message)
+        self.provider = provider
+        self.retry_after = retry_after
+
+class ProviderAuthenticationError(ProviderError):
     """Raised when provider authentication fails."""
-    pass
+    def __init__(self, message: str, provider: Optional[str] = None):
+        super().__init__(message, provider)
+        self.error_code = "AUTH_FAILED"
 
-class ProviderRateLimitError(Exception):
+class ProviderRateLimitError(ProviderError):
     """Raised when a provider hits rate limits."""
-    pass
+    def __init__(self, message: str, provider: Optional[str] = None, retry_after: Optional[int] = None):
+        super().__init__(message, provider, retry_after)
+        self.error_code = "RATE_LIMITED"
 
-class ProviderTimeoutError(Exception):
+class ProviderTimeoutError(ProviderError):
     """Raised when a provider request times out."""
-    pass
+    def __init__(self, message: str, provider: Optional[str] = None, timeout_seconds: Optional[float] = None):
+        super().__init__(message, provider)
+        self.timeout_seconds = timeout_seconds
+        self.error_code = "TIMEOUT"
 
-class NoAvailableProvidersError(Exception):
+class ProviderQuotaExceededError(ProviderError):
+    """Raised when provider quota is exceeded."""
+    def __init__(self, message: str, provider: Optional[str] = None, reset_time: Optional[datetime] = None):
+        super().__init__(message, provider)
+        self.reset_time = reset_time
+        self.error_code = "QUOTA_EXCEEDED"
+
+class ProviderInvalidRequestError(ProviderError):
+    """Raised when request to provider is invalid."""
+    def __init__(self, message: str, provider: Optional[str] = None, validation_errors: Optional[List[str]] = None):
+        super().__init__(message, provider)
+        self.validation_errors = validation_errors or []
+        self.error_code = "INVALID_REQUEST"
+
+class NoAvailableProvidersError(ProviderError):
     """Raised when all providers have failed."""
-    pass
+    def __init__(self, message: str = "All configured providers have failed", failed_providers: Optional[List[str]] = None):
+        super().__init__(message)
+        self.failed_providers = failed_providers or []
+        self.error_code = "NO_PROVIDERS"
 
 @dataclass
 class ProviderConfig:
@@ -1181,7 +1212,15 @@ class BaseAIProvider(ABC):
     
     @abstractmethod
     async def validate_credentials(self) -> bool:
-        """Validate API credentials are working"""
+        """Validate API credentials are working.
+        
+        Returns:
+            bool: True if credentials are valid, False otherwise.
+            
+        Raises:
+            ProviderAuthenticationError: If credentials are invalid.
+            ProviderTimeoutError: If validation request times out.
+        """
         pass
     
     @abstractmethod
@@ -1201,7 +1240,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 class CredentialManager:
-    def __init__(self):
+    def __init__(self, storage_path: str = "./data/credentials"):
         # The encryption key MUST be loaded from a secure, persistent source.
         # Generating a key on the fly is insecure as it makes previously encrypted data unrecoverable on restart.
         key = os.environ.get('ENCRYPTION_KEY')
@@ -1209,24 +1248,59 @@ class CredentialManager:
             raise ValueError("ENCRYPTION_KEY environment variable must be set for secure operation.")
         self.cipher = Fernet(key.encode())
         
+        # Use local filesystem for credential storage - no external databases
+        from pathlib import Path
+        self.storage_path = Path(storage_path)
+        self.storage_path.mkdir(parents=True, exist_ok=True)
+        self.credentials_file = self.storage_path / "encrypted_credentials.json"
+        
+        # Load existing credentials from local storage
+        self.stored_credentials = self._load_credentials()
+        
     def encrypt_api_key(self, api_key: str, user_id: str) -> str:
         """Encrypt API key for secure storage"""
         # Add user-specific salt for additional security
         salted_key = f"{user_id}:{api_key}"
-        return self.cipher.encrypt(salted_key.encode()).decode()
+        encrypted = self.cipher.encrypt(salted_key.encode()).decode()
+        
+        # Store encrypted key locally
+        self.stored_credentials[user_id] = encrypted
+        self._save_credentials()
+        
+        return encrypted
     
     def decrypt_api_key(self, encrypted_key: str, user_id: str) -> Optional[str]:
         """Decrypt API key for use"""
         try:
+            # Try to use provided key or fall back to stored credential
+            if not encrypted_key and user_id in self.stored_credentials:
+                encrypted_key = self.stored_credentials[user_id]
+            
             decrypted = self.cipher.decrypt(encrypted_key.encode()).decode()
             stored_id, api_key = decrypted.split(':', 1)
             if stored_id == user_id:
                 return api_key
-        except (InvalidToken, TypeError, ValueError) as e:
-            # In a real implementation, this should be logged for debugging.
-            # logger.warning(f"API key decryption failed for user {user_id}: {e}")
-            pass
+        except InvalidToken:
+            logger.warning(f"API key decryption failed for user {user_id}: Invalid token")
+        except TypeError as e:
+            logger.warning(f"API key decryption failed for user {user_id}: Type error - {type(e).__name__}")
+        except ValueError as e:
+            logger.warning(f"API key decryption failed for user {user_id}: Value error - {str(e)[:100]}")
         return None
+    
+    def _load_credentials(self) -> Dict[str, str]:
+        """Load encrypted credentials from local JSON file."""
+        import json
+        if self.credentials_file.exists():
+            with open(self.credentials_file, 'r') as f:
+                return json.load(f)
+        return {}
+    
+    def _save_credentials(self) -> None:
+        """Save encrypted credentials to local JSON file."""
+        import json
+        with open(self.credentials_file, 'w') as f:
+            json.dump(self.stored_credentials, f, indent=2)
 ```
 
 #### 3. Provider Implementations
@@ -1356,8 +1430,11 @@ class OpenAIProvider(BaseAIProvider):
 import logging
 from typing import Dict, Optional, List
 from .base_provider import (
-    BaseAIProvider, ProviderType, 
-    NoAvailableProvidersError, ProviderRateLimitError
+    BaseAIProvider, ProviderType, ProviderConfig,
+    ProviderError, ProviderAuthenticationError,
+    ProviderRateLimitError, ProviderTimeoutError,
+    ProviderQuotaExceededError, ProviderInvalidRequestError,
+    NoAvailableProvidersError
 )
 from .anthropic_provider import AnthropicProvider
 from .openai_provider import OpenAIProvider
@@ -1395,10 +1472,20 @@ class ProviderRouter:
                     # Aggregate all chunks from the stream to get complete response
                     full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
                     return full_response
+                except ProviderRateLimitError as e:
+                    logger.warning(f"Provider {preferred_provider.value} rate limited: {e}")
+                    # Try fallback after rate limit
+                except ProviderAuthenticationError as e:
+                    logger.error(f"Provider {preferred_provider.value} auth failed: {e}")
+                    # Remove provider from available list
+                    del self.providers[provider_key]
+                    # Try fallback
+                except ProviderTimeoutError as e:
+                    logger.warning(f"Provider {preferred_provider.value} timed out: {e}")
+                    # Try fallback immediately
                 except Exception as e:
-                    # Log error and fall through to fallback
-                    logger.warning(f"Provider {preferred_provider.value} failed: {e}")
-                    pass
+                    # Unexpected error - log with full traceback
+                    logger.exception(f"Unexpected error with provider {preferred_provider.value}: {e}")
         
         # Try fallback providers
         for provider_type in self.fallback_order:
@@ -1408,8 +1495,19 @@ class ProviderRouter:
                     # Aggregate all chunks from the stream to get complete response
                     full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
                     return full_response
+                except ProviderRateLimitError as e:
+                    logger.warning(f"Fallback provider {provider_type.value} rate limited: {e}")
+                    continue
+                except ProviderAuthenticationError as e:
+                    logger.error(f"Fallback provider {provider_type.value} auth failed: {e}")
+                    # Remove failed provider
+                    del self.providers[provider_key]
+                    continue
+                except ProviderTimeoutError as e:
+                    logger.warning(f"Fallback provider {provider_type.value} timed out: {e}")
+                    continue
                 except Exception as e:
-                    logger.warning(f"Fallback provider {provider_type.value} failed: {e}")
+                    logger.exception(f"Unexpected error with fallback provider {provider_type.value}: {e}")
                     continue
         
         raise NoAvailableProvidersError("All configured providers have failed")
@@ -1438,47 +1536,108 @@ class UsageRecord:
     session_id: str
     
 class UsageTracker:
-    def __init__(self):
-        # Note: In production, usage_records and user_limits should be persisted
-        # in a database (e.g., PostgreSQL, Redis) to survive application restarts
-        self.usage_records: List[UsageRecord] = []
-        self.user_limits: Dict[str, float] = {}
+    def __init__(self, storage_path: str = "./data/usage", use_chromadb: bool = False):
+        # Use local filesystem or ChromaDB for persistence - no external databases
+        import json
+        from pathlib import Path
+        
+        self.storage_path = Path(storage_path)
+        self.storage_path.mkdir(parents=True, exist_ok=True)
+        
+        if use_chromadb:
+            # Option 1: Use ChromaDB for persistence (embedded database)
+            import chromadb
+            self.client = chromadb.PersistentClient(path=str(self.storage_path / "chromadb"))
+            self.usage_collection = self.client.get_or_create_collection(
+                name="usage_records",
+                metadata={"description": "LLM usage tracking"}
+            )
+            self.limits_collection = self.client.get_or_create_collection(
+                name="user_limits",
+                metadata={"description": "User spending limits"}
+            )
+            self.usage_records = self._load_records_chromadb()
+            self.user_limits = self._load_limits_chromadb()
+        else:
+            # Option 2: Use local JSON files for persistence (default)
+            self.records_file = self.storage_path / "usage_records.json"
+            self.limits_file = self.storage_path / "user_limits.json"
+            self.usage_records: List[UsageRecord] = self._load_records_json()
+            self.user_limits: Dict[str, float] = self._load_limits_json()
+        
         self.cost_calculators = {
             ProviderType.ANTHROPIC: self._calculate_anthropic_cost,
             ProviderType.OPENAI: self._calculate_openai_cost,
         }
         
-    def _calculate_anthropic_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Calculate Anthropic API costs
-        Note: In production, pricing should be loaded from a configuration file
-        or fetched from provider APIs to stay current with pricing changes."""
-        pricing = {
-            'claude-3-haiku': {'input': 0.25, 'output': 1.25},      # per 1M tokens
-            'claude-3-5-sonnet': {'input': 3.0, 'output': 15.0},
-            'claude-3-opus': {'input': 15.0, 'output': 75.0}
+    def __init__(self, storage_path: str = "./data/usage", use_chromadb: bool = False):
+        # Load pricing from configuration file
+        self.pricing_config = self._load_pricing_config()
+        
+        # Continue with existing initialization...
+        super().__init__(storage_path, use_chromadb)
+    
+    def _load_pricing_config(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """Load pricing configuration from file."""
+        import yaml
+        from pathlib import Path
+        
+        config_path = Path(__file__).parent.parent / 'config' / 'pricing.yaml'
+        
+        # Create default config if it doesn't exist
+        if not config_path.exists():
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            default_config = self._get_default_pricing_config()
+            with open(config_path, 'w') as f:
+                yaml.dump(default_config, f, default_flow_style=False)
+            return default_config
+        
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    
+    def _get_default_pricing_config(self) -> Dict:
+        """Get default pricing configuration."""
+        return {
+            'anthropic': {
+                'claude-3-haiku': {'input': 0.25, 'output': 1.25},
+                'claude-3-5-sonnet': {'input': 3.0, 'output': 15.0},
+                'claude-3-opus': {'input': 15.0, 'output': 75.0}
+            },
+            'openai': {
+                'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
+                'gpt-4o': {'input': 2.50, 'output': 10.00},
+                'gpt-4-turbo': {'input': 10.00, 'output': 30.00}
+            },
+            'google': {
+                'gemini-1.5-flash': {'input': 0.075, 'output': 0.30},
+                'gemini-1.5-pro': {'input': 1.25, 'output': 5.00}
+            },
+            'updated_at': datetime.utcnow().isoformat(),
+            'currency': 'USD',
+            'per_tokens': 1_000_000
         }
+    
+    def _calculate_anthropic_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Calculate Anthropic API costs from configuration."""
+        pricing = self.pricing_config.get('anthropic', {})
         
         # Find the best match in the pricing dictionary keys
         model_key = next((key for key in pricing if key in model), None)
-        if model_key:
-            input_cost = (input_tokens / 1_000_000) * pricing[model_key]['input']
-            output_cost = (output_tokens / 1_000_000) * pricing[model_key]['output']
+        if model_key and isinstance(pricing[model_key], dict):
+            per_tokens = self.pricing_config.get('per_tokens', 1_000_000)
+            input_cost = (input_tokens / per_tokens) * pricing[model_key]['input']
+            output_cost = (output_tokens / per_tokens) * pricing[model_key]['output']
             return input_cost + output_cost
         return 0.0
     
     def _calculate_openai_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Calculate OpenAI API costs
-        Note: In production, pricing should be loaded from a configuration file
-        or fetched from provider APIs to stay current with pricing changes."""
-        pricing = {
-            'gpt-4o-mini': {'input': 0.15, 'output': 0.60},     # per 1M tokens
-            'gpt-4o': {'input': 2.50, 'output': 10.00},
-            'gpt-4-turbo': {'input': 10.00, 'output': 30.00}
-        }
+        """Calculate OpenAI API costs from configuration."""
+        pricing = self.pricing_config.get('openai', {})
         
-        if model in pricing:
-            input_cost = (input_tokens / 1_000_000) * pricing[model]['input']
-            output_cost = (output_tokens / 1_000_000) * pricing[model]['output']
+        if model in pricing and isinstance(pricing[model], dict):
+            per_tokens = self.pricing_config.get('per_tokens', 1_000_000)
+            input_cost = (input_tokens / per_tokens) * pricing[model]['input']
+            output_cost = (output_tokens / per_tokens) * pricing[model]['output']
             return input_cost + output_cost
         return 0.0
     
@@ -1513,6 +1672,9 @@ class UsageTracker:
             if daily_cost > self.user_limits[user_id]:
                 raise SpendingLimitExceededException(f"Daily spending limit exceeded: ${daily_cost:.2f}")
         
+        # Persist the updated records
+        self._save_records()
+        
         return record
     
     def get_daily_cost(self, user_id: str) -> float:
@@ -1524,6 +1686,141 @@ class UsageTracker:
             and record.timestamp.date() == today
         )
         return daily_cost
+    
+    # Persistence methods for local filesystem (JSON)
+    def _load_records_json(self) -> List[UsageRecord]:
+        """Load usage records from JSON file."""
+        if self.records_file.exists():
+            with open(self.records_file, 'r') as f:
+                data = json.load(f)
+                return [UsageRecord(**r) for r in data]
+        return []
+    
+    def _load_limits_json(self) -> Dict[str, float]:
+        """Load user limits from JSON file."""
+        if self.limits_file.exists():
+            with open(self.limits_file, 'r') as f:
+                return json.load(f)
+        return {}
+    
+    def _save_records(self) -> None:
+        """Save usage records to persistent storage."""
+        if hasattr(self, 'usage_collection'):
+            # ChromaDB persistence
+            self._save_records_chromadb()
+        else:
+            # JSON file persistence
+            with open(self.records_file, 'w') as f:
+                json.dump([asdict(r) for r in self.usage_records], f, default=str)
+    
+    def _save_limits(self) -> None:
+        """Save user limits to persistent storage."""
+        if hasattr(self, 'limits_collection'):
+            # ChromaDB persistence
+            self._save_limits_chromadb()
+        else:
+            # JSON file persistence
+            with open(self.limits_file, 'w') as f:
+                json.dump(self.user_limits, f)
+    
+    # Persistence methods for ChromaDB (embedded database)
+    def _load_records_chromadb(self) -> List[UsageRecord]:
+        """Load usage records from ChromaDB."""
+        results = self.usage_collection.get()
+        records = []
+        if results['documents']:
+            for doc, metadata in zip(results['documents'], results['metadatas']):
+                records.append(UsageRecord(**metadata))
+        return records
+    
+    def _load_limits_chromadb(self) -> Dict[str, float]:
+        """Load user limits from ChromaDB."""
+        results = self.limits_collection.get()
+        limits = {}
+        if results['documents']:
+            for doc, metadata in zip(results['documents'], results['metadatas']):
+                limits[metadata['user_id']] = metadata['limit']
+        return limits
+    
+    def _save_records_chromadb(self) -> None:
+        """Save usage records to ChromaDB."""
+        # Clear existing records and save all (for simplicity)
+        # In production, implement incremental updates
+        ids = [f"{r.user_id}_{r.timestamp.isoformat()}" for r in self.usage_records]
+        documents = [f"Usage: {r.user_id} - {r.provider.value}" for r in self.usage_records]
+        metadatas = [asdict(r) for r in self.usage_records]
+        
+        self.usage_collection.upsert(
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas
+        )
+    
+    def _save_limits_chromadb(self) -> None:
+        """Save user limits to ChromaDB."""
+        ids = list(self.user_limits.keys())
+        documents = [f"Limit for {uid}" for uid in ids]
+        metadatas = [{"user_id": uid, "limit": limit} for uid, limit in self.user_limits.items()]
+        
+        self.limits_collection.upsert(
+            ids=ids,
+            documents=documents,
+            metadatas=metadatas
+        )
+```
+
+#### Pricing Configuration File
+```yaml
+# config/pricing.yaml
+# LLM Provider Pricing Configuration
+# Prices are per 1M tokens unless otherwise specified
+# Update this file regularly to reflect current provider pricing
+
+anthropic:
+  claude-3-haiku-20240307:
+    input: 0.25
+    output: 1.25
+    context_window: 200000
+  claude-3-5-sonnet-20241022:
+    input: 3.0
+    output: 15.0
+    context_window: 200000
+  claude-3-opus-20240229:
+    input: 15.0
+    output: 75.0
+    context_window: 200000
+
+openai:
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+    context_window: 128000
+  gpt-4o:
+    input: 2.50
+    output: 10.00
+    context_window: 128000
+  gpt-4-turbo:
+    input: 10.00
+    output: 30.00
+    context_window: 128000
+
+google:
+  gemini-1.5-flash:
+    input: 0.075
+    output: 0.30
+    context_window: 1000000
+  gemini-1.5-pro:
+    input: 1.25
+    output: 5.00
+    context_window: 2000000
+
+# Metadata
+updated_at: 2024-11-01T00:00:00Z
+currency: USD
+per_tokens: 1000000  # Pricing is per this many tokens
+
+# Optional: Set alerts when prices change by this percentage
+price_change_alert_threshold: 10
 ```
 
 ### Frontend Integration (TypeScript/SvelteKit)
@@ -1552,33 +1849,142 @@ export const currentProvider = derived(
     $providers => $providers.configs.get($providers.activeProvider)
 );
 
-// API key management
+// Client-side encryption for API keys
+import { generateKeyPair, importKey, encrypt } from '$lib/crypto/encryption';
+
+// Initialize encryption on app load
+let serverPublicKey: CryptoKey | null = null;
+
+async function initializeEncryption(): Promise<void> {
+    // Fetch server's public key for API key encryption
+    const response = await fetch('/api/crypto/public-key');
+    const { publicKey } = await response.json();
+    serverPublicKey = await importKey(publicKey, 'spki', ['encrypt']);
+}
+
+// API key management with client-side encryption
 export async function saveProviderConfig(
     provider: ProviderType,
     config: ProviderConfig
 ): Promise<void> {
-    // Note: In production, consider client-side encryption before transmission
-    // or use a secure key exchange mechanism to avoid exposing keys in logs
+    if (!serverPublicKey) {
+        await initializeEncryption();
+    }
+    
+    // Encrypt API key on client before transmission
+    const encryptedApiKey = await encryptApiKey(config.apiKey);
+    
     const response = await fetch('/api/providers/configure', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getAuthToken()}`
+            'Authorization': `Bearer ${getAuthToken()}`,
+            'X-Request-ID': generateRequestId()  // For tracking in logs
         },
         body: JSON.stringify({
             provider,
-            apiKey: config.apiKey,  // Should be pre-encrypted on client
+            encryptedApiKey,  // Send encrypted key only
             model: config.model,
-            settings: config.settings || {}  // Default to empty object
+            settings: config.settings || {}
         })
     });
     
     if (response.ok) {
+        // Store config locally without the API key
+        const safeConfig = { ...config, apiKey: '***' };
         providersStore.update(state => {
-            state.configs.set(provider, config);
+            state.configs.set(provider, safeConfig);
             return state;
         });
+    } else {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to save provider config');
     }
+}
+
+async function encryptApiKey(apiKey: string): Promise<string> {
+    if (!serverPublicKey) {
+        throw new Error('Encryption not initialized');
+    }
+    
+    // Convert API key to bytes
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(apiKey);
+    
+    // Encrypt using RSA-OAEP with SHA-256
+    const encryptedBuffer = await crypto.subtle.encrypt(
+        {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256'
+        },
+        serverPublicKey,
+        keyData
+    );
+    
+    // Convert to base64 for transmission
+    return btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)));
+}
+
+function generateRequestId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+```
+
+#### Client-Side Encryption Library
+```typescript
+// frontend/src/lib/crypto/encryption.ts
+export async function generateKeyPair(): Promise<CryptoKeyPair> {
+    return await crypto.subtle.generateKey(
+        {
+            name: 'RSA-OAEP',
+            modulusLength: 4096,  // Strong key size
+            publicExponent: new Uint8Array([1, 0, 1]),
+            hash: 'SHA-256'
+        },
+        true,
+        ['encrypt', 'decrypt']
+    );
+}
+
+export async function importKey(
+    keyData: string,
+    format: 'spki' | 'pkcs8',
+    keyUsages: KeyUsage[]
+): Promise<CryptoKey> {
+    const binaryDer = str2ab(atob(keyData));
+    return await crypto.subtle.importKey(
+        format,
+        binaryDer,
+        {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256'
+        },
+        true,
+        keyUsages
+    );
+}
+
+export async function encrypt(data: string, publicKey: CryptoKey): Promise<ArrayBuffer> {
+    const encoder = new TextEncoder();
+    const encodedData = encoder.encode(data);
+    
+    return await crypto.subtle.encrypt(
+        {
+            name: 'RSA-OAEP',
+            hash: 'SHA-256'
+        },
+        publicKey,
+        encodedData
+    );
+}
+
+function str2ab(str: string): ArrayBuffer {
+    const buf = new ArrayBuffer(str.length);
+    const bufView = new Uint8Array(buf);
+    for (let i = 0; i < str.length; i++) {
+        bufView[i] = str.charCodeAt(i);
+    }
+    return buf;
 }
 ```
 
@@ -1804,7 +2210,520 @@ async def test_provider_fallback():
     assert response.provider == ProviderType.OPENAI
 ```
 
+### Rate Limiting Implementation
+
+#### Provider-Specific Rate Limiter
+```python
+# src/ai_providers/rate_limiter.py
+import asyncio
+import time
+from dataclasses import dataclass, field
+from typing import Dict, Optional
+from collections import deque
+import logging
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class RateLimitConfig:
+    """Configuration for provider-specific rate limits."""
+    requests_per_minute: int
+    requests_per_day: int
+    tokens_per_minute: int
+    tokens_per_day: int
+    concurrent_requests: int = 5
+    retry_after_seconds: int = 60
+    
+# Provider-specific rate limit configurations
+PROVIDER_LIMITS = {
+    ProviderType.ANTHROPIC: RateLimitConfig(
+        requests_per_minute=50,
+        requests_per_day=10000,
+        tokens_per_minute=100000,
+        tokens_per_day=10000000,
+        concurrent_requests=10
+    ),
+    ProviderType.OPENAI: RateLimitConfig(
+        requests_per_minute=60,
+        requests_per_day=10000,
+        tokens_per_minute=90000,
+        tokens_per_day=2000000,
+        concurrent_requests=20
+    ),
+    ProviderType.GOOGLE: RateLimitConfig(
+        requests_per_minute=60,
+        requests_per_day=1500,
+        tokens_per_minute=120000,
+        tokens_per_day=1000000,
+        concurrent_requests=10
+    )
+}
+
+@dataclass
+class RateLimitState:
+    """Track rate limit state for a provider."""
+    request_times: deque = field(default_factory=lambda: deque(maxlen=1000))
+    daily_requests: int = 0
+    daily_tokens: int = 0
+    last_reset: float = field(default_factory=time.time)
+    concurrent_count: int = 0
+    retry_after: Optional[float] = None
+
+class RateLimiter:
+    """Implements rate limiting with exponential backoff."""
+    
+    def __init__(self):
+        self.states: Dict[ProviderType, RateLimitState] = {}
+        self.locks: Dict[ProviderType, asyncio.Lock] = {}
+        self._initialize_states()
+    
+    def _initialize_states(self):
+        """Initialize rate limit states for all providers."""
+        for provider in ProviderType:
+            self.states[provider] = RateLimitState()
+            self.locks[provider] = asyncio.Lock()
+    
+    async def acquire(self, provider: ProviderType, estimated_tokens: int = 0) -> None:
+        """Acquire permission to make a request, waiting if necessary."""
+        config = PROVIDER_LIMITS.get(provider)
+        if not config:
+            return  # No limits configured
+        
+        async with self.locks[provider]:
+            state = self.states[provider]
+            
+            # Reset daily counters if needed
+            if time.time() - state.last_reset > 86400:  # 24 hours
+                state.daily_requests = 0
+                state.daily_tokens = 0
+                state.last_reset = time.time()
+            
+            # Check if we're in a retry_after period
+            if state.retry_after and time.time() < state.retry_after:
+                wait_time = state.retry_after - time.time()
+                logger.info(f"Rate limited for {provider.value}, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                state.retry_after = None
+            
+            # Check concurrent request limit
+            while state.concurrent_count >= config.concurrent_requests:
+                await asyncio.sleep(0.1)
+            
+            # Check rate limits with exponential backoff
+            await self._check_rate_limits(provider, config, state, estimated_tokens)
+            
+            # Update state
+            state.request_times.append(time.time())
+            state.daily_requests += 1
+            state.daily_tokens += estimated_tokens
+            state.concurrent_count += 1
+    
+    async def _check_rate_limits(
+        self,
+        provider: ProviderType,
+        config: RateLimitConfig,
+        state: RateLimitState,
+        estimated_tokens: int
+    ) -> None:
+        """Check and enforce rate limits with exponential backoff."""
+        backoff_multiplier = 1.0
+        max_backoff = 60.0  # Maximum backoff in seconds
+        
+        while True:
+            now = time.time()
+            
+            # Remove old request times
+            while state.request_times and state.request_times[0] < now - 60:
+                state.request_times.popleft()
+            
+            # Check per-minute request limit
+            if len(state.request_times) >= config.requests_per_minute:
+                wait_time = min(60 - (now - state.request_times[0]) + 1, max_backoff * backoff_multiplier)
+                logger.debug(f"Approaching request limit for {provider.value}, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                backoff_multiplier = min(backoff_multiplier * 2, 16)  # Exponential backoff
+                continue
+            
+            # Check daily limits
+            if state.daily_requests >= config.requests_per_day:
+                wait_time = min(86400 - (now - state.last_reset), max_backoff * backoff_multiplier)
+                logger.warning(f"Daily request limit reached for {provider.value}, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                backoff_multiplier = min(backoff_multiplier * 2, 16)
+                continue
+            
+            if state.daily_tokens + estimated_tokens > config.tokens_per_day:
+                wait_time = min(86400 - (now - state.last_reset), max_backoff * backoff_multiplier)
+                logger.warning(f"Daily token limit reached for {provider.value}, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                backoff_multiplier = min(backoff_multiplier * 2, 16)
+                continue
+            
+            # All checks passed
+            break
+    
+    async def release(self, provider: ProviderType) -> None:
+        """Release a concurrent request slot."""
+        async with self.locks[provider]:
+            state = self.states[provider]
+            state.concurrent_count = max(0, state.concurrent_count - 1)
+    
+    def set_retry_after(self, provider: ProviderType, retry_after_seconds: int) -> None:
+        """Set retry_after from a 429 response."""
+        state = self.states[provider]
+        state.retry_after = time.time() + retry_after_seconds
+        logger.info(f"Provider {provider.value} rate limited, retry after {retry_after_seconds}s")
+
+# Global rate limiter instance
+rate_limiter = RateLimiter()
+```
+
+#### Integration with Providers
+```python
+# Update BaseAIProvider to use rate limiting
+class BaseAIProvider(ABC):
+    def __init__(self, config: ProviderConfig):
+        self.config = config
+        self.rate_limiter = rate_limiter  # Use global instance
+    
+    async def complete_with_rate_limit(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict]] = None,
+        stream: bool = False
+    ) -> AsyncIterator[str]:
+        """Wrapper that applies rate limiting."""
+        # Estimate tokens (rough approximation)
+        estimated_tokens = sum(len(msg.get('content', '')) for msg in messages) // 4
+        
+        try:
+            # Acquire rate limit permission
+            await self.rate_limiter.acquire(self.config.type, estimated_tokens)
+            
+            # Make the actual API call
+            async for chunk in self.complete(messages, tools, stream):
+                yield chunk
+                
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                # Handle rate limit response
+                retry_after = int(e.response.headers.get('Retry-After', 60))
+                self.rate_limiter.set_retry_after(self.config.type, retry_after)
+                raise ProviderRateLimitError(f"Rate limited, retry after {retry_after}s")
+            raise
+        finally:
+            # Always release the concurrent slot
+            await self.rate_limiter.release(self.config.type)
+```
+
 ### Monitoring and Observability
+
+#### Monitoring Setup Documentation
+
+##### 1. Metrics Collection with Prometheus
+```python
+# src/monitoring/metrics.py
+from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+import time
+
+# Create custom registry for AI provider metrics
+registry = CollectorRegistry()
+
+# Define metrics
+api_requests_total = Counter(
+    'llm_api_requests_total',
+    'Total number of API requests to LLM providers',
+    ['provider', 'model', 'status'],
+    registry=registry
+)
+
+api_request_duration = Histogram(
+    'llm_api_request_duration_seconds',
+    'API request duration in seconds',
+    ['provider', 'model'],
+    buckets=[0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0],
+    registry=registry
+)
+
+api_tokens_used = Counter(
+    'llm_api_tokens_total',
+    'Total tokens used',
+    ['provider', 'model', 'token_type'],
+    registry=registry
+)
+
+api_cost_total = Counter(
+    'llm_api_cost_dollars_total',
+    'Total API cost in dollars',
+    ['provider', 'model', 'user_id'],
+    registry=registry
+)
+
+rate_limit_hits = Counter(
+    'llm_rate_limit_hits_total',
+    'Number of rate limit hits',
+    ['provider'],
+    registry=registry
+)
+
+active_sessions = Gauge(
+    'llm_active_sessions',
+    'Number of active game sessions',
+    registry=registry
+)
+
+class MetricsCollector:
+    """Collect and export metrics for monitoring."""
+    
+    @staticmethod
+    def record_api_call(
+        provider: str,
+        model: str,
+        duration: float,
+        status: str,
+        input_tokens: int,
+        output_tokens: int,
+        cost: float,
+        user_id: str
+    ):
+        """Record metrics for an API call."""
+        api_requests_total.labels(provider=provider, model=model, status=status).inc()
+        api_request_duration.labels(provider=provider, model=model).observe(duration)
+        api_tokens_used.labels(provider=provider, model=model, token_type='input').inc(input_tokens)
+        api_tokens_used.labels(provider=provider, model=model, token_type='output').inc(output_tokens)
+        api_cost_total.labels(provider=provider, model=model, user_id=user_id).inc(cost)
+    
+    @staticmethod
+    def record_rate_limit(provider: str):
+        """Record a rate limit hit."""
+        rate_limit_hits.labels(provider=provider).inc()
+    
+    @staticmethod
+    def update_active_sessions(count: int):
+        """Update active session count."""
+        active_sessions.set(count)
+    
+    @staticmethod
+    def export_metrics() -> bytes:
+        """Export metrics in Prometheus format."""
+        return generate_latest(registry)
+```
+
+##### 2. Structured Logging Setup
+```python
+# src/monitoring/logging_config.py
+import structlog
+import logging
+import sys
+from pathlib import Path
+
+def configure_logging(log_level: str = "INFO", log_file: Optional[str] = None):
+    """Configure structured logging for the application."""
+    
+    # Configure structlog
+    structlog.configure(
+        processors=[
+            structlog.stdlib.filter_by_level,
+            structlog.stdlib.add_logger_name,
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+            structlog.processors.CallsiteParameterAdder(
+                parameters=[structlog.processors.CallsiteParameter.FILENAME,
+                           structlog.processors.CallsiteParameter.LINENO]
+            ),
+            structlog.processors.dict_tracebacks,
+            structlog.dev.ConsoleRenderer() if sys.stdout.isatty() else structlog.processors.JSONRenderer()
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+    
+    # Configure standard logging
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=getattr(logging, log_level.upper())
+    )
+    
+    # Add file handler if specified
+    if log_file:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_path,
+            maxBytes=10*1024*1024,  # 10MB
+            backupCount=5
+        )
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        )
+        logging.getLogger().addHandler(file_handler)
+
+# Initialize logging
+configure_logging(log_level="INFO", log_file="./logs/llm_provider.log")
+```
+
+##### 3. Health Check Endpoint
+```python
+# src/monitoring/health.py
+from fastapi import APIRouter, Response
+from typing import Dict, Any
+import asyncio
+from datetime import datetime
+
+router = APIRouter(prefix="/health", tags=["monitoring"])
+
+@router.get("/")
+async def health_check() -> Dict[str, Any]:
+    """Basic health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "version": "1.0.0"
+    }
+
+@router.get("/providers")
+async def provider_health() -> Dict[str, Any]:
+    """Check health of all configured providers."""
+    results = {}
+    
+    for provider_type in ProviderType:
+        try:
+            # Try to validate credentials for each provider
+            provider = get_provider(provider_type)
+            is_healthy = await provider.validate_credentials()
+            results[provider_type.value] = {
+                "status": "healthy" if is_healthy else "unhealthy",
+                "response_time_ms": 0  # Would measure actual response time
+            }
+        except Exception as e:
+            results[provider_type.value] = {
+                "status": "error",
+                "error": str(e)
+            }
+    
+    return {
+        "providers": results,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.get("/metrics")
+async def metrics_endpoint(response: Response) -> bytes:
+    """Prometheus metrics endpoint."""
+    response.headers["Content-Type"] = CONTENT_TYPE_LATEST
+    return MetricsCollector.export_metrics()
+```
+
+##### 4. Alerting Configuration (Prometheus Rules)
+```yaml
+# monitoring/alerts.yml
+groups:
+  - name: llm_provider_alerts
+    interval: 30s
+    rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(llm_api_requests_total{status="error"}[5m])) /
+            sum(rate(llm_api_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected ({{ $value | humanizePercentage }})"
+          description: "Error rate is above 5% for the last 5 minutes"
+      
+      # High API latency alert
+      - alert: HighAPILatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(llm_api_request_duration_seconds_bucket[5m])) by (le, provider)
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API latency for {{ $labels.provider }}"
+          description: "95th percentile latency is above 10 seconds"
+      
+      # Rate limit warning
+      - alert: FrequentRateLimits
+        expr: rate(llm_rate_limit_hits_total[5m]) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Frequent rate limits for {{ $labels.provider }}"
+          description: "Provider {{ $labels.provider }} is being rate limited"
+      
+      # High cost alert
+      - alert: HighDailyCost
+        expr: |
+          sum(increase(llm_api_cost_dollars_total[24h])) by (user_id) > 100
+        labels:
+          severity: critical
+        annotations:
+          summary: "High daily cost for user {{ $labels.user_id }}"
+          description: "User {{ $labels.user_id }} has spent over $100 in the last 24 hours"
+```
+
+##### 5. Grafana Dashboard Configuration
+```json
+{
+  "dashboard": {
+    "title": "LLM Provider Monitoring",
+    "panels": [
+      {
+        "title": "Request Rate by Provider",
+        "targets": [{
+          "expr": "sum(rate(llm_api_requests_total[5m])) by (provider)"
+        }]
+      },
+      {
+        "title": "Error Rate",
+        "targets": [{
+          "expr": "sum(rate(llm_api_requests_total{status='error'}[5m])) / sum(rate(llm_api_requests_total[5m]))"
+        }]
+      },
+      {
+        "title": "API Latency (p50, p95, p99)",
+        "targets": [
+          {"expr": "histogram_quantile(0.5, sum(rate(llm_api_request_duration_seconds_bucket[5m])) by (le))"},
+          {"expr": "histogram_quantile(0.95, sum(rate(llm_api_request_duration_seconds_bucket[5m])) by (le))"},
+          {"expr": "histogram_quantile(0.99, sum(rate(llm_api_request_duration_seconds_bucket[5m])) by (le))"}
+        ]
+      },
+      {
+        "title": "Token Usage",
+        "targets": [{
+          "expr": "sum(rate(llm_api_tokens_total[5m])) by (provider, token_type)"
+        }]
+      },
+      {
+        "title": "Cumulative Cost",
+        "targets": [{
+          "expr": "sum(llm_api_cost_dollars_total) by (provider)"
+        }]
+      },
+      {
+        "title": "Rate Limit Hits",
+        "targets": [{
+          "expr": "sum(rate(llm_rate_limit_hits_total[5m])) by (provider)"
+        }]
+      }
+    ]
+  }
+}
+```
 
 #### Key Metrics
 - **API Response Time**: Track latency per provider and model
@@ -1812,13 +2731,17 @@ async def test_provider_fallback():
 - **Error Rates**: Track failures by provider
 - **Token Usage**: Monitor context window utilization
 - **Model Performance**: A/B test different models for tasks
+- **Rate Limit Events**: Track when limits are hit
+- **Concurrent Requests**: Monitor concurrent API usage
 
 #### Dashboard Requirements
-- Real-time cost tracking
-- Provider health status
+- Real-time cost tracking with budget alerts
+- Provider health status with automatic failover indicators
 - Usage trends and projections
 - Model performance comparison
-- Budget alerts and notifications
+- Rate limit visualization and predictions
+- User-level cost breakdown
+- Alert history and incident tracking
 
 ## Technology Stack Updates (2024)
 
