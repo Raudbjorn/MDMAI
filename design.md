@@ -1610,7 +1610,7 @@ class ProviderRouter:
 #### 5. Usage Tracking and Cost Management
 ```python
 # src/ai_providers/usage_tracker.py
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 from typing import Dict, List
 import asyncio
