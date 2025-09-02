@@ -1380,10 +1380,15 @@ class AnthropicProvider(BaseAIProvider):
             # Properly yield chunks as they arrive for true streaming
             # This allows the consumer to process chunks immediately
             # without waiting for the entire response
-            async for chunk in response:
-                if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
-                    if chunk.delta.text:
-                        yield chunk.delta.text
+            try:
+                async for chunk in response:
+                    if hasattr(chunk, 'delta') and hasattr(chunk.delta, 'text'):
+                        if chunk.delta.text:
+                            yield chunk.delta.text
+            except Exception as e:
+                print(f"Error during Anthropic streaming: {e}")
+                # Optionally, yield a special error message to the consumer
+                # yield f"[ERROR: {str(e)}]"
         else:
             # For non-streaming, yield the complete response
             if hasattr(response, 'content') and response.content:
