@@ -22,6 +22,15 @@ class TTRPGGenre(Enum):
     SPACE_OPERA = "space_opera"
     URBAN_FANTASY = "urban_fantasy"
     HISTORICAL = "historical"
+    NOIR = "noir"
+    PULP = "pulp"
+    MILITARY = "military"
+    HORROR = "horror"
+    MYSTERY = "mystery"
+    MYTHOLOGICAL = "mythological"
+    ANIME = "anime"
+    GENERIC = "generic"
+    UNKNOWN = "unknown"
     CUSTOM = "custom"
 
 
