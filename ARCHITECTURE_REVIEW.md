@@ -140,7 +140,7 @@ This document presents a comprehensive review of the MDMAI project's architectur
 
 #### File Structure Updates Needed
 ```
-/home/svnbjrn/mdmai_mcp/MDMAI/
+./MDMAI/
 ├── src/
 │   ├── bridge/                 # New: Bridge service
 │   │   ├── mcp_adapter.py      # JSON-RPC wrapper

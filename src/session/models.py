@@ -267,7 +267,7 @@ class Session:
         self,
         content: str,
         category: SessionNoteCategory = SessionNoteCategory.GENERAL,
-        tags: List[str] = None,
+        tags: Optional[List[str]] = None,
     ):
         """Add a note to the session."""
         note = SessionNote(content=content, category=category, tags=tags or [])
@@ -329,7 +329,7 @@ class Session:
 
         return None, False
 
-    def add_monster(self, monster: Monster, initiative: int = None):
+    def add_monster(self, monster: Monster, initiative: Optional[int] = None):
         """Add a monster to the session."""
         self.monsters.append(monster)
 

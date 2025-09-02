@@ -1,4 +1,4 @@
-"""Data models for character and NPC generation."""
+"""Data models for character and NPC generation with enriched content."""
 
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -170,6 +170,429 @@ class CharacterRace(Enum):
     CUSTOM = "custom"
 
 
+class CharacterTrait(Enum):
+    """Comprehensive character traits from extracted content."""
+    
+    # Physical Traits
+    AGILE = "agile"
+    ATHLETIC = "athletic"
+    BRAWNY = "brawny"
+    BURLY = "burly"
+    DELICATE = "delicate"
+    DEXTEROUS = "dexterous"
+    ENDURING = "enduring"
+    ENERGETIC = "energetic"
+    GRACEFUL = "graceful"
+    HARDY = "hardy"
+    LITHE = "lithe"
+    MUSCULAR = "muscular"
+    NIMBLE = "nimble"
+    POWERFUL = "powerful"
+    QUICK = "quick"
+    RESILIENT = "resilient"
+    ROBUST = "robust"
+    RUGGED = "rugged"
+    SCARRED = "scarred"
+    SLENDER = "slender"
+    STOCKY = "stocky"
+    STRONG = "strong"
+    STURDY = "sturdy"
+    SWIFT = "swift"
+    TALL = "tall"
+    TOUGH = "tough"
+    TOWERING = "towering"
+    WEATHERED = "weathered"
+    WIRY = "wiry"
+    
+    # Mental Traits
+    ANALYTICAL = "analytical"
+    ASTUTE = "astute"
+    BRILLIANT = "brilliant"
+    CALCULATING = "calculating"
+    CLEVER = "clever"
+    CREATIVE = "creative"
+    CUNNING = "cunning"
+    CURIOUS = "curious"
+    FOCUSED = "focused"
+    GENIUS = "genius"
+    IMAGINATIVE = "imaginative"
+    INSIGHTFUL = "insightful"
+    INTELLECTUAL = "intellectual"
+    INTELLIGENT = "intelligent"
+    INTUITIVE = "intuitive"
+    KNOWLEDGEABLE = "knowledgeable"
+    LEARNED = "learned"
+    LOGICAL = "logical"
+    METHODICAL = "methodical"
+    OBSERVANT = "observant"
+    PERCEPTIVE = "perceptive"
+    PHILOSOPHICAL = "philosophical"
+    QUICK_WITTED = "quick_witted"
+    RATIONAL = "rational"
+    RESOURCEFUL = "resourceful"
+    SCHOLARLY = "scholarly"
+    SHARP = "sharp"
+    SHREWD = "shrewd"
+    STRATEGIC = "strategic"
+    STUDIOUS = "studious"
+    TACTICAL = "tactical"
+    THOUGHTFUL = "thoughtful"
+    WISE = "wise"
+    
+    # Emotional Traits
+    AMBITIOUS = "ambitious"
+    ANXIOUS = "anxious"
+    BOLD = "bold"
+    BRAVE = "brave"
+    CALM = "calm"
+    CAUTIOUS = "cautious"
+    CHEERFUL = "cheerful"
+    COMPASSIONATE = "compassionate"
+    CONFIDENT = "confident"
+    COURAGEOUS = "courageous"
+    DETERMINED = "determined"
+    DEVOTED = "devoted"
+    DISCIPLINED = "disciplined"
+    EMPATHETIC = "empathetic"
+    ENTHUSIASTIC = "enthusiastic"
+    FEARLESS = "fearless"
+    FIERCE = "fierce"
+    GENTLE = "gentle"
+    GRIM = "grim"
+    HOPEFUL = "hopeful"
+    HUMBLE = "humble"
+    IMPULSIVE = "impulsive"
+    INDEPENDENT = "independent"
+    JOYFUL = "joyful"
+    KIND = "kind"
+    LOYAL = "loyal"
+    MELANCHOLIC = "melancholic"
+    MERCIFUL = "merciful"
+    PASSIONATE = "passionate"
+    PATIENT = "patient"
+    PROUD = "proud"
+    REBELLIOUS = "rebellious"
+    RECKLESS = "reckless"
+    RESOLUTE = "resolute"
+    RUTHLESS = "ruthless"
+    SELFLESS = "selfless"
+    SERENE = "serene"
+    SINCERE = "sincere"
+    SKEPTICAL = "skeptical"
+    STEADFAST = "steadfast"
+    STOIC = "stoic"
+    STUBBORN = "stubborn"
+    SYMPATHETIC = "sympathetic"
+    TENACIOUS = "tenacious"
+    VENGEFUL = "vengeful"
+    VIGILANT = "vigilant"
+    VOLATILE = "volatile"
+    ZEALOUS = "zealous"
+    
+    # Social Traits
+    CHARISMATIC = "charismatic"
+    CHARMING = "charming"
+    DIPLOMATIC = "diplomatic"
+    ELOQUENT = "eloquent"
+    GREGARIOUS = "gregarious"
+    INTIMIDATING = "intimidating"
+    MYSTERIOUS = "mysterious"
+    PERSUASIVE = "persuasive"
+    RESERVED = "reserved"
+    SHY = "shy"
+    SOCIABLE = "sociable"
+    WITTY = "witty"
+
+
+class CharacterBackground(Enum):
+    """Expanded character backgrounds from extracted content."""
+    
+    # Traditional Backgrounds
+    ACOLYTE = "acolyte"
+    CRIMINAL = "criminal"
+    FOLK_HERO = "folk_hero"
+    NOBLE = "noble"
+    SAGE = "sage"
+    SOLDIER = "soldier"
+    HERMIT = "hermit"
+    ENTERTAINER = "entertainer"
+    GUILD_ARTISAN = "guild_artisan"
+    OUTLANDER = "outlander"
+    SAILOR = "sailor"
+    URCHIN = "urchin"
+    
+    # Expanded Traditional
+    ALCHEMIST = "alchemist"
+    AMBASSADOR = "ambassador"
+    ARISTOCRAT = "aristocrat"
+    ASSASSIN = "assassin"
+    BANDIT = "bandit"
+    BLACKSMITH = "blacksmith"
+    BOUNTY_HUNTER = "bounty_hunter"
+    CARAVAN_GUARD = "caravan_guard"
+    CHARLATAN = "charlatan"
+    CLAN_CRAFTER = "clan_crafter"
+    CLOISTERED_SCHOLAR = "cloistered_scholar"
+    COURTIER = "courtier"
+    CULT_INITIATE = "cult_initiate"
+    DETECTIVE = "detective"
+    EXILE = "exile"
+    EXPLORER = "explorer"
+    FARMER = "farmer"
+    FISHER = "fisher"
+    GLADIATOR = "gladiator"
+    GUARD = "guard"
+    HEALER = "healer"
+    HUNTER = "hunter"
+    INNKEEPER = "innkeeper"
+    INVESTIGATOR = "investigator"
+    KNIGHT = "knight"
+    LIBRARIAN = "librarian"
+    MERCHANT = "merchant"
+    MERCENARY = "mercenary"
+    MINER = "miner"
+    MONK_INITIATE = "monk_initiate"
+    MYSTIC = "mystic"
+    PIRATE = "pirate"
+    PRIEST = "priest"
+    RANGER_SCOUT = "ranger_scout"
+    REFUGEE = "refugee"
+    SCHOLAR_MAGE = "scholar_mage"
+    SCRIBE = "scribe"
+    SHIP_CAPTAIN = "ship_captain"
+    SMUGGLER = "smuggler"
+    SPY = "spy"
+    STREET_THIEF = "street_thief"
+    TAVERN_KEEPER = "tavern_keeper"
+    TEMPLE_GUARDIAN = "temple_guardian"
+    THIEF = "thief"
+    TRADER = "trader"
+    TRIBAL_WARRIOR = "tribal_warrior"
+    VETERAN = "veteran"
+    WANDERER = "wanderer"
+    WAR_REFUGEE = "war_refugee"
+    
+    # Sci-Fi Backgrounds
+    ASTEROID_MINER = "asteroid_miner"
+    COLONY_ADMINISTRATOR = "colony_administrator"
+    CORPORATE_AGENT = "corporate_agent"
+    CYBORG_ENGINEER = "cyborg_engineer"
+    DATA_ANALYST = "data_analyst"
+    DIPLOMAT_ENVOY = "diplomat_envoy"
+    GENETIC_RESEARCHER = "genetic_researcher"
+    HACKER = "hacker"
+    JUMP_PILOT = "jump_pilot"
+    ORBITAL_MECHANIC = "orbital_mechanic"
+    SPACE_MARINE = "space_marine"
+    STARSHIP_ENGINEER = "starship_engineer"
+    TERRAFORMER = "terraformer"
+    VOID_TRADER = "void_trader"
+    XENOBIOLOGIST = "xenobiologist"
+    
+    # Cyberpunk Backgrounds
+    CORPORATE_EXEC = "corporate_exec"
+    FIXER = "fixer"
+    GANG_MEMBER = "gang_member"
+    MEDIA_JOURNALIST = "media_journalist"
+    NETRUNNER = "netrunner"
+    NOMAD = "nomad"
+    RIPPERDOC = "ripperdoc"
+    ROCKERBOY = "rockerboy"
+    STREET_SAMURAI = "street_samurai"
+    TECH_SPECIALIST = "tech_specialist"
+    
+    # Post-Apocalyptic Backgrounds
+    BUNKER_SURVIVOR = "bunker_survivor"
+    CARAVAN_TRADER = "caravan_trader"
+    MUTANT_OUTCAST = "mutant_outcast"
+    RAIDER = "raider"
+    SCAVENGER = "scavenger"
+    SETTLEMENT_LEADER = "settlement_leader"
+    TRIBAL_SHAMAN = "tribal_shaman"
+    VAULT_DWELLER = "vault_dweller"
+    WASTELAND_DOCTOR = "wasteland_doctor"
+    WASTELAND_SCOUT = "wasteland_scout"
+    
+    # Cosmic Horror Backgrounds
+    ANTIQUARIAN = "antiquarian"
+    ASYLUM_PATIENT = "asylum_patient"
+    CULT_SURVIVOR = "cult_survivor"
+    CURSED_BLOODLINE = "cursed_bloodline"
+    DREAM_TOUCHED = "dream_touched"
+    OCCULT_INVESTIGATOR = "occult_investigator"
+    PROFESSOR = "professor"
+    PSYCHIC_SENSITIVE = "psychic_sensitive"
+    
+    # Western Backgrounds
+    BOUNTY_KILLER = "bounty_killer"
+    CATTLE_RUSTLER = "cattle_rustler"
+    FRONTIER_DOCTOR = "frontier_doctor"
+    GUNSLINGER = "gunslinger"
+    HOMESTEADER = "homesteader"
+    LAWMAN = "lawman"
+    OUTLAW = "outlaw"
+    PREACHER = "preacher"
+    PROSPECTOR = "prospector"
+    RANCH_HAND = "ranch_hand"
+    SALOON_OWNER = "saloon_owner"
+    STAGE_DRIVER = "stage_driver"
+    
+    # Superhero Backgrounds
+    ALIEN_REFUGEE = "alien_refugee"
+    GOVERNMENT_AGENT = "government_agent"
+    LAB_ACCIDENT_SURVIVOR = "lab_accident_survivor"
+    MASKED_VIGILANTE = "masked_vigilante"
+    MILITARY_EXPERIMENT = "military_experiment"
+    MUTANT_ACTIVIST = "mutant_activist"
+    REPORTER = "reporter"
+    SCIENTIST = "scientist"
+    SIDEKICK = "sidekick"
+    TECH_GENIUS = "tech_genius"
+
+
+class CharacterMotivation(Enum):
+    """Character motivations from extracted content."""
+    
+    # Core Desires
+    ACCEPTANCE = "acceptance"
+    ACHIEVEMENT = "achievement"
+    ADVENTURE = "adventure"
+    APPROVAL = "approval"
+    BALANCE = "balance"
+    BELONGING = "belonging"
+    CHALLENGE = "challenge"
+    CHANGE = "change"
+    COMFORT = "comfort"
+    CONNECTION = "connection"
+    CONTROL = "control"
+    DISCOVERY = "discovery"
+    DUTY = "duty"
+    EXCELLENCE = "excellence"
+    EXCITEMENT = "excitement"
+    EXPLORATION = "exploration"
+    FAME = "fame"
+    FREEDOM = "freedom"
+    GLORY = "glory"
+    GROWTH = "growth"
+    HAPPINESS = "happiness"
+    HARMONY = "harmony"
+    HONOR = "honor"
+    HOPE = "hope"
+    INDEPENDENCE = "independence"
+    INFLUENCE = "influence"
+    JUSTICE = "justice"
+    KNOWLEDGE = "knowledge"
+    LEGACY = "legacy"
+    LOVE = "love"
+    MASTERY = "mastery"
+    MEANING = "meaning"
+    ORDER = "order"
+    PEACE = "peace"
+    PERFECTION = "perfection"
+    PLEASURE = "pleasure"
+    POWER = "power"
+    PRESTIGE = "prestige"
+    PROGRESS = "progress"
+    PROSPERITY = "prosperity"
+    PROTECTION = "protection"
+    PURPOSE = "purpose"
+    RECOGNITION = "recognition"
+    REDEMPTION = "redemption"
+    RESPECT = "respect"
+    RESTORATION = "restoration"
+    REVENGE = "revenge"
+    SAFETY = "safety"
+    SALVATION = "salvation"
+    SECURITY = "security"
+    SERVICE = "service"
+    STABILITY = "stability"
+    STATUS = "status"
+    STRENGTH = "strength"
+    SUCCESS = "success"
+    SURVIVAL = "survival"
+    TRADITION = "tradition"
+    TRANSCENDENCE = "transcendence"
+    TRANSFORMATION = "transformation"
+    TRUTH = "truth"
+    UNDERSTANDING = "understanding"
+    UNITY = "unity"
+    VALIDATION = "validation"
+    VENGEANCE = "vengeance"
+    VICTORY = "victory"
+    WEALTH = "wealth"
+    WISDOM = "wisdom"
+    
+    # Fears
+    ABANDONMENT = "abandonment"
+    BETRAYAL = "betrayal"
+    CHAOS = "chaos"
+    CONFINEMENT = "confinement"
+    CORRUPTION = "corruption"
+    DARKNESS = "darkness"
+    DEATH = "death"
+    DEFEAT = "defeat"
+    DISGRACE = "disgrace"
+    DISEASE = "disease"
+    EXPOSURE = "exposure"
+    FAILURE = "failure"
+    FORGETTING = "forgetting"
+    HELPLESSNESS = "helplessness"
+    HUMILIATION = "humiliation"
+    IGNORANCE = "ignorance"
+    INSIGNIFICANCE = "insignificance"
+    ISOLATION = "isolation"
+    LOSS = "loss"
+    MADNESS = "madness"
+    MEANINGLESSNESS = "meaninglessness"
+    OBSCURITY = "obscurity"
+    PAIN = "pain"
+    POVERTY = "poverty"
+    POWERLESSNESS = "powerlessness"
+    REJECTION = "rejection"
+    RESPONSIBILITY = "responsibility"
+    STAGNATION = "stagnation"
+    SUFFERING = "suffering"
+    THE_UNKNOWN = "the_unknown"
+    VULNERABILITY = "vulnerability"
+    WEAKNESS = "weakness"
+    
+    # Complex Motivations
+    ATONEMENT = "atonement"
+    BREAKING_CHAINS = "breaking_chains"
+    BUILDING_EMPIRE = "building_empire"
+    CHASING_LEGEND = "chasing_legend"
+    CLAIMING_BIRTHRIGHT = "claiming_birthright"
+    CONQUERING_FEAR = "conquering_fear"
+    DEFENDING_HOMELAND = "defending_homeland"
+    DESTROYING_EVIL = "destroying_evil"
+    DISCOVERING_HERITAGE = "discovering_heritage"
+    ENDING_TYRANNY = "ending_tyranny"
+    ESCAPING_PAST = "escaping_past"
+    FINDING_HOME = "finding_home"
+    FINDING_IDENTITY = "finding_identity"
+    FULFILLING_DESTINY = "fulfilling_destiny"
+    FULFILLING_OATH = "fulfilling_oath"
+    HONORING_ANCESTORS = "honoring_ancestors"
+    LIBERATING_OPPRESSED = "liberating_oppressed"
+    MAINTAINING_BALANCE = "maintaining_balance"
+    MAKING_AMENDS = "making_amends"
+    PRESERVING_MEMORY = "preserving_memory"
+    PROTECTING_INNOCENT = "protecting_innocent"
+    PROVING_WORTH = "proving_worth"
+    RECLAIMING_THRONE = "reclaiming_throne"
+    RECOVERING_ARTIFACT = "recovering_artifact"
+    REDEEMING_FAMILY = "redeeming_family"
+    RESTORING_HONOR = "restoring_honor"
+    REUNITING_FAMILY = "reuniting_family"
+    REVEALING_TRUTH = "revealing_truth"
+    SAVING_LOVED_ONE = "saving_loved_one"
+    SEEKING_ENLIGHTENMENT = "seeking_enlightenment"
+    SOLVING_MYSTERY = "solving_mystery"
+    STOPPING_PROPHECY = "stopping_prophecy"
+    UNCOVERING_CONSPIRACY = "uncovering_conspiracy"
+    UNITING_PEOPLE = "uniting_people"
+
+
 class NPCRole(Enum):
     """NPC roles across multiple TTRPG genres."""
     
@@ -289,6 +712,213 @@ class CharacterStats:
         return (stat_value - 10) // 2
 
 
+class WeaponType(Enum):
+    """Expanded weapon types from extracted content."""
+    
+    # Melee Weapons
+    SWORD = "sword"
+    LONGSWORD = "longsword"
+    SHORTSWORD = "shortsword"
+    GREATSWORD = "greatsword"
+    RAPIER = "rapier"
+    SCIMITAR = "scimitar"
+    KATANA = "katana"
+    CUTLASS = "cutlass"
+    BROADSWORD = "broadsword"
+    CLAYMORE = "claymore"
+    
+    AXE = "axe"
+    BATTLEAXE = "battleaxe"
+    HANDAXE = "handaxe"
+    GREATAXE = "greataxe"
+    WARAXE = "waraxe"
+    THROWING_AXE = "throwing_axe"
+    
+    MACE = "mace"
+    CLUB = "club"
+    WARHAMMER = "warhammer"
+    MAUL = "maul"
+    MORNINGSTAR = "morningstar"
+    FLAIL = "flail"
+    
+    SPEAR = "spear"
+    PIKE = "pike"
+    HALBERD = "halberd"
+    GLAIVE = "glaive"
+    TRIDENT = "trident"
+    LANCE = "lance"
+    
+    DAGGER = "dagger"
+    KNIFE = "knife"
+    STILETTO = "stiletto"
+    DIRK = "dirk"
+    KRIS = "kris"
+    
+    STAFF = "staff"
+    QUARTERSTAFF = "quarterstaff"
+    WALKING_STICK = "walking_stick"
+    BO_STAFF = "bo_staff"
+    
+    # Ranged Weapons
+    BOW = "bow"
+    LONGBOW = "longbow"
+    SHORTBOW = "shortbow"
+    COMPOSITE_BOW = "composite_bow"
+    CROSSBOW = "crossbow"
+    HEAVY_CROSSBOW = "heavy_crossbow"
+    HAND_CROSSBOW = "hand_crossbow"
+    
+    # Firearms
+    PISTOL = "pistol"
+    REVOLVER = "revolver"
+    RIFLE = "rifle"
+    SHOTGUN = "shotgun"
+    MUSKET = "musket"
+    BLUNDERBUSS = "blunderbuss"
+    
+    # Energy Weapons
+    LASER_PISTOL = "laser_pistol"
+    LASER_RIFLE = "laser_rifle"
+    PLASMA_GUN = "plasma_gun"
+    PULSE_RIFLE = "pulse_rifle"
+    DISRUPTOR = "disruptor"
+    STUNNER = "stunner"
+    
+    # Exotic Weapons
+    WHIP = "whip"
+    NET = "net"
+    BOLAS = "bolas"
+    CHAKRAM = "chakram"
+    SHURIKEN = "shuriken"
+    BLOWGUN = "blowgun"
+    
+    # Improvised/Natural
+    CLAWS = "claws"
+    BITE = "bite"
+    TENTACLE = "tentacle"
+    IMPROVISED = "improvised"
+
+
+class ItemType(Enum):
+    """Expanded item types from extracted content."""
+    
+    # Adventuring Gear
+    ROPE = "rope"
+    GRAPPLING_HOOK = "grappling_hook"
+    TORCH = "torch"
+    LANTERN = "lantern"
+    OIL_FLASK = "oil_flask"
+    TINDERBOX = "tinderbox"
+    BEDROLL = "bedroll"
+    TENT = "tent"
+    RATIONS = "rations"
+    WATERSKIN = "waterskin"
+    BACKPACK = "backpack"
+    POUCH = "pouch"
+    SACK = "sack"
+    CHEST = "chest"
+    BARREL = "barrel"
+    
+    # Tools
+    THIEVES_TOOLS = "thieves_tools"
+    LOCKPICKS = "lockpicks"
+    CROWBAR = "crowbar"
+    HAMMER = "hammer"
+    PITON = "piton"
+    SHOVEL = "shovel"
+    PICKAXE = "pickaxe"
+    CLIMBING_KIT = "climbing_kit"
+    HEALERS_KIT = "healers_kit"
+    HERBALISM_KIT = "herbalism_kit"
+    ALCHEMIST_SUPPLIES = "alchemist_supplies"
+    BREWERS_SUPPLIES = "brewers_supplies"
+    CALLIGRAPHERS_SUPPLIES = "calligraphers_supplies"
+    CARPENTERS_TOOLS = "carpenters_tools"
+    CARTOGRAPHERS_TOOLS = "cartographers_tools"
+    COBBLERS_TOOLS = "cobblers_tools"
+    COOKS_UTENSILS = "cooks_utensils"
+    GLASSBLOWERS_TOOLS = "glassblowers_tools"
+    JEWELERS_TOOLS = "jewelers_tools"
+    LEATHERWORKERS_TOOLS = "leatherworkers_tools"
+    MASONS_TOOLS = "masons_tools"
+    PAINTERS_SUPPLIES = "painters_supplies"
+    POTTERS_TOOLS = "potters_tools"
+    SMITHS_TOOLS = "smiths_tools"
+    TINKERS_TOOLS = "tinkers_tools"
+    WEAVERS_TOOLS = "weavers_tools"
+    WOODCARVERS_TOOLS = "woodcarvers_tools"
+    DISGUISE_KIT = "disguise_kit"
+    FORGERY_KIT = "forgery_kit"
+    GAMING_SET = "gaming_set"
+    MUSICAL_INSTRUMENT = "musical_instrument"
+    NAVIGATORS_TOOLS = "navigators_tools"
+    POISONERS_KIT = "poisoners_kit"
+    
+    # Magic Items
+    POTION = "potion"
+    SCROLL = "scroll"
+    WAND = "wand"
+    ROD = "rod"
+    STAFF_MAGICAL = "staff_magical"
+    RING = "ring"
+    AMULET = "amulet"
+    CLOAK = "cloak"
+    BOOTS = "boots"
+    GLOVES = "gloves"
+    BELT = "belt"
+    BRACERS = "bracers"
+    CIRCLET = "circlet"
+    
+    # Books and Documents
+    SPELLBOOK = "spellbook"
+    TOME = "tome"
+    MAP = "map"
+    LETTER = "letter"
+    JOURNAL = "journal"
+    CONTRACT = "contract"
+    DEED = "deed"
+    
+    # Technology Items
+    COMMUNICATOR = "communicator"
+    SCANNER = "scanner"
+    DATAPAD = "datapad"
+    HOLO_PROJECTOR = "holo_projector"
+    MEDKIT = "medkit"
+    REPAIR_KIT = "repair_kit"
+    ENERGY_CELL = "energy_cell"
+    CYBERDECK = "cyberdeck"
+    NEURAL_IMPLANT = "neural_implant"
+    
+    # Miscellaneous
+    HOLY_SYMBOL = "holy_symbol"
+    COMPONENT_POUCH = "component_pouch"
+    ARCANE_FOCUS = "arcane_focus"
+    DRUIDIC_FOCUS = "druidic_focus"
+    MIRROR = "mirror"
+    MAGNIFYING_GLASS = "magnifying_glass"
+    SPYGLASS = "spyglass"
+    COMPASS = "compass"
+    HOURGLASS = "hourglass"
+    SCALES = "scales"
+    VIAL = "vial"
+    FLASK = "flask"
+    BOTTLE = "bottle"
+    SOAP = "soap"
+    BELL = "bell"
+    WHISTLE = "whistle"
+    SIGNAL_HORN = "signal_horn"
+    MANACLES = "manacles"
+    CHAIN = "chain"
+    BALL_BEARINGS = "ball_bearings"
+    CALTROPS = "caltrops"
+    CHALK = "chalk"
+    LADDER = "ladder"
+    POLE = "pole"
+    RAM = "ram"
+    SIGNET_RING = "signet_ring"
+    SEALING_WAX = "sealing_wax"
+
+
 @dataclass
 class Equipment:
     """Character equipment and inventory."""
@@ -310,6 +940,56 @@ class Equipment:
 
 
 @dataclass
+class StoryHook:
+    """Story hook for character integration into narratives."""
+    
+    hook_type: str  # "quest", "mystery", "conflict", "discovery", "relationship"
+    title: str
+    description: str
+    urgency: str = "medium"  # "low", "medium", "high", "critical"
+    stakes: str = ""
+    potential_allies: List[str] = field(default_factory=list)
+    potential_enemies: List[str] = field(default_factory=list)
+    rewards: List[str] = field(default_factory=list)
+    complications: List[str] = field(default_factory=list)
+    genre_tags: List[str] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert story hook to dictionary."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "StoryHook":
+        """Create story hook from dictionary."""
+        return cls(**data)
+
+
+@dataclass
+class WorldElement:
+    """World-building element for character context."""
+    
+    element_type: str  # "location", "faction", "event", "artifact", "phenomenon"
+    name: str
+    description: str
+    significance: str = ""
+    history: str = ""
+    current_state: str = ""
+    connections: List[str] = field(default_factory=list)
+    secrets: List[str] = field(default_factory=list)
+    rumors: List[str] = field(default_factory=list)
+    genre: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert world element to dictionary."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "WorldElement":
+        """Create world element from dictionary."""
+        return cls(**data)
+
+
+@dataclass
 class Backstory:
     """Character backstory information."""
 
@@ -325,6 +1005,10 @@ class Backstory:
     goals: List[str] = field(default_factory=list)
     fears: List[str] = field(default_factory=list)
     relationships: List[Dict[str, str]] = field(default_factory=list)
+    
+    # Story integration
+    story_hooks: List[StoryHook] = field(default_factory=list)
+    world_connections: List[WorldElement] = field(default_factory=list)
 
     # System/personality-aware elements
     narrative_style: str = ""  # Matches source personality
@@ -332,11 +1016,18 @@ class Backstory:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert backstory to dictionary."""
-        return asdict(self)
+        data = asdict(self)
+        data["story_hooks"] = [hook.to_dict() for hook in self.story_hooks]
+        data["world_connections"] = [elem.to_dict() for elem in self.world_connections]
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Backstory":
         """Create backstory from dictionary."""
+        if "story_hooks" in data:
+            data["story_hooks"] = [StoryHook.from_dict(h) for h in data["story_hooks"]]
+        if "world_connections" in data:
+            data["world_connections"] = [WorldElement.from_dict(e) for e in data["world_connections"]]
         return cls(**data)
 
 
@@ -721,13 +1412,59 @@ class ExtendedCharacter(Character):
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ExtendedCharacter":
-        """Create from dictionary including genre data."""
-        genre_data_dict = data.pop("genre_data", {})
+        """Create from dictionary including genre data.
+        
+        Properly creates an ExtendedCharacter instance, not a base Character.
+        Uses cls.__new__(cls) to create the correct type, then initializes
+        using the parent class's from_dict logic.
+        """
+        # Extract genre_data before processing
+        data_copy = data.copy()
+        genre_data_dict = data_copy.pop("genre_data", {})
+        
+        # Process the base character data using parent's logic
+        # but create an ExtendedCharacter instance
+        if isinstance(data_copy.get("created_at"), str):
+            data_copy["created_at"] = datetime.fromisoformat(data_copy["created_at"])
+        if isinstance(data_copy.get("updated_at"), str):
+            data_copy["updated_at"] = datetime.fromisoformat(data_copy["updated_at"])
 
-        # The parent from_dict is a classmethod, so it will correctly
-        # return an instance of `cls` (ExtendedCharacter).
-        instance = super(ExtendedCharacter, cls).from_dict(data)
+        # Handle genre field
+        genre_str = data_copy.get("genre")
+        if isinstance(genre_str, str):
+            try:
+                data_copy["genre"] = TTRPGGenre(genre_str)
+            except ValueError:
+                data_copy["genre"] = TTRPGGenre.FANTASY
+        elif "genre" not in data_copy:
+            data_copy["genre"] = TTRPGGenre.FANTASY
 
+        class_str = data_copy.get("character_class")
+        if isinstance(class_str, str):
+            try:
+                data_copy["character_class"] = CharacterClass(class_str)
+            except ValueError:
+                data_copy["character_class"] = CharacterClass.CUSTOM
+                data_copy["custom_class"] = class_str
+
+        if isinstance(data_copy.get("race"), str):
+            try:
+                data_copy["race"] = CharacterRace(data_copy["race"])
+            except ValueError:
+                data_copy["race"] = CharacterRace.CUSTOM
+                data_copy["custom_race"] = data_copy.get("race")
+
+        if isinstance(data_copy.get("stats"), dict):
+            data_copy["stats"] = CharacterStats.from_dict(data_copy["stats"])
+        if isinstance(data_copy.get("equipment"), dict):
+            data_copy["equipment"] = Equipment.from_dict(data_copy["equipment"])
+        if isinstance(data_copy.get("backstory"), dict):
+            data_copy["backstory"] = Backstory.from_dict(data_copy["backstory"])
+        
+        # Create ExtendedCharacter instance with processed data
+        instance = cls(**data_copy)
+        
+        # Add genre-specific data if present
         if genre_data_dict:
             instance.genre_data = GenreSpecificData.from_dict(genre_data_dict)
 

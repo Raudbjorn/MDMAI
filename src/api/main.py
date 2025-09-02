@@ -3,8 +3,8 @@
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import Annotated, List, Optional
+from enum import Enum
+from typing import Annotated, Any, Dict, List, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Request, status
@@ -18,14 +18,14 @@ from src.api.pdf_routes import router as pdf_router
 logger = get_logger(__name__)
 
 
-class HealthStatus(StrEnum):
+class HealthStatus(str, Enum):
     """Health check status values."""
     HEALTHY = "healthy"
     STARTING = "starting"
     UNHEALTHY = "unhealthy"
 
 
-class ServiceStatus(StrEnum):
+class ServiceStatus(str, Enum):
     """Service status values."""
     ONLINE = "online"
     OFFLINE = "offline"
@@ -70,7 +70,7 @@ class ServiceHealth:
     uptime: Optional[float] = None
     version: str = "0.1.0"
     
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON response."""
         result = {
             "status": self.status,

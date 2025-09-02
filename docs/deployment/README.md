@@ -102,7 +102,7 @@ docker-compose logs -f ttrpg-assistant
 #### 1. Multi-stage Dockerfile
 
 ```dockerfile
-# /home/svnbjrn/code/phase12/MDMAI/Dockerfile.prod
+# ./Dockerfile.prod
 FROM python:3.11-slim as builder
 
 # Install build dependencies

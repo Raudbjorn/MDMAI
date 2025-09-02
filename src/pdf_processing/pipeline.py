@@ -1,8 +1,12 @@
-"""Main PDF processing pipeline that integrates all components."""
+"""Main document processing pipeline that integrates all components.
+
+Supports PDF, EPUB, and MOBI document formats.
+"""
 
 import asyncio
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
@@ -12,6 +16,8 @@ from src.pdf_processing.adaptive_learning import AdaptiveLearningSystem
 from src.pdf_processing.content_chunker import ContentChunk, ContentChunker
 from src.pdf_processing.embedding_generator import EmbeddingGenerator
 from src.pdf_processing.pdf_parser import PDFParser, PDFProcessingError
+from src.pdf_processing.ebook_parser import EbookParser
+from src.pdf_processing.document_parser import UnifiedDocumentParser
 from src.performance.parallel_processor import ParallelProcessor, ResourceLimits
 from src.utils.file_size_handler import FileSizeCategory, FileSizeHandler
 from src.utils.security import InputSanitizer, InputValidationError, validate_path
@@ -19,12 +25,12 @@ from src.utils.security import InputSanitizer, InputValidationError, validate_pa
 logger = get_logger(__name__)
 
 
-class PDFProcessingPipeline:
-    """Orchestrates the complete PDF processing workflow."""
+class DocumentProcessingPipeline:
+    """Orchestrates the complete document processing workflow for PDF, EPUB, and MOBI files."""
 
     def __init__(self, enable_parallel: bool = True, max_workers: Optional[int] = None, 
                  prompt_for_ollama: bool = True, model_name: Optional[str] = None):
-        """Initialize the PDF processing pipeline.
+        """Initialize the document processing pipeline.
 
         Args:
             enable_parallel: Whether to enable parallel processing
@@ -32,7 +38,13 @@ class PDFProcessingPipeline:
             prompt_for_ollama: Whether to prompt user for Ollama model selection
             model_name: Specific model to use for embeddings (e.g., "nomic-embed-text")
         """
-        self.parser = PDFParser()
+        # Initialize parsers
+        self.pdf_parser = PDFParser()
+        self.ebook_parser = EbookParser()
+        self.unified_parser = UnifiedDocumentParser()
+        
+        # For backward compatibility
+        self.parser = self.pdf_parser
         self.chunker = ContentChunker()
         self.adaptive_system = AdaptiveLearningSystem()
         
@@ -55,9 +67,9 @@ class PDFProcessingPipeline:
                 )
             )
 
-    async def process_pdf(
+    async def process_document(
         self,
-        pdf_path: str,
+        document_path: str,
         rulebook_name: str,
         system: str,
         source_type: str = "rulebook",
@@ -66,10 +78,10 @@ class PDFProcessingPipeline:
         user_confirmed: bool = False,
     ) -> Dict[str, Any]:
         """
-        Process a PDF file through the complete pipeline.
+        Process a document file (PDF, EPUB, or MOBI) through the complete pipeline.
 
         Args:
-            pdf_path: Path to PDF file
+            document_path: Path to document file
             rulebook_name: Name of the rulebook
             system: Game system (e.g., "D&D 5e")
             source_type: Type of source ("rulebook" or "flavor")
@@ -84,40 +96,41 @@ class PDFProcessingPipeline:
 
         try:
             # Validate inputs
-            pdf_path_obj = self._validate_inputs(pdf_path, rulebook_name, system, source_type)
+            document_path_obj = self._validate_document_inputs(document_path, rulebook_name, system, source_type)
 
             # Handle file size validation
-            size_result = self._handle_file_size(pdf_path_obj, skip_size_check, user_confirmed)
+            size_result = self._handle_file_size(document_path_obj, skip_size_check, user_confirmed)
             if size_result:
                 return size_result
 
             logger.info(
-                "Starting PDF processing",
-                pdf=pdf_path,
+                "Starting document processing",
+                document=document_path,
                 rulebook=rulebook_name,
                 system=system,
+                format=document_path_obj.suffix[1:],
             )
 
-            # Step 1: Extract content from PDF
-            logger.info("Step 1: Extracting PDF content")
+            # Step 1: Extract content from document
+            logger.info("Step 1: Extracting document content")
             try:
-                pdf_content = await asyncio.to_thread(
-                    self.parser.extract_text_from_pdf,
-                    str(pdf_path_obj),
+                document_content = await asyncio.to_thread(
+                    self.unified_parser.extract_text_from_document,
+                    str(document_path_obj),
                     skip_size_check=skip_size_check,
                     user_confirmed=user_confirmed,
                 )
-            except PDFProcessingError as e:
-                logger.error(f"Failed to extract PDF content: {e}")
+            except (PDFProcessingError, Exception) as e:
+                logger.error(f"Failed to extract document content: {e}")
                 raise
 
             # Check for duplicate
-            if self._is_duplicate(pdf_content["file_hash"]):
-                logger.warning("Duplicate PDF detected", hash=pdf_content["file_hash"])
+            if self._is_duplicate(document_content["file_hash"]):
+                logger.warning("Duplicate document detected", hash=document_content["file_hash"])
                 return {
                     "status": "duplicate",
-                    "message": "This PDF has already been processed",
-                    "file_hash": pdf_content["file_hash"],
+                    "message": "This document has already been processed",
+                    "file_hash": document_content["file_hash"],
                 }
 
             # Prepare source metadata
@@ -127,19 +140,20 @@ class PDFProcessingPipeline:
                 "rulebook_name": rulebook_name,
                 "system": system,
                 "source_type": source_type,
-                "file_name": pdf_content["file_name"],
-                "file_hash": pdf_content["file_hash"],
+                "file_name": document_content["file_name"],
+                "file_hash": document_content["file_hash"],
+                "document_type": document_content.get("document_type", "pdf"),
             }
 
             # Step 2: Apply adaptive learning patterns
             if enable_adaptive_learning and settings.enable_adaptive_learning:
                 logger.info("Step 2: Applying adaptive learning")
-                self._apply_adaptive_patterns(pdf_content, system)
+                self._apply_adaptive_patterns(document_content, system)
 
             # Step 3: Chunk the content
             logger.info("Step 3: Chunking content")
             chunks = await asyncio.to_thread(
-                self.chunker.chunk_document, pdf_content, source_metadata
+                self.chunker.chunk_document, document_content, source_metadata
             )
 
             # Step 4: Generate embeddings
@@ -159,7 +173,7 @@ class PDFProcessingPipeline:
             # Step 6: Learn from this document
             if enable_adaptive_learning and settings.enable_adaptive_learning:
                 logger.info("Step 6: Learning from document")
-                self.adaptive_system.learn_from_document(pdf_content, system)
+                self.adaptive_system.learn_from_document(document_content, system)
 
             # Store source metadata
             self._store_source_metadata(source_metadata)
@@ -171,44 +185,84 @@ class PDFProcessingPipeline:
                 "source_id": source_id,
                 "rulebook_name": rulebook_name,
                 "system": system,
-                "total_pages": pdf_content["total_pages"],
+                "document_type": document_content.get("document_type", "pdf"),
+                "total_pages": document_content["total_pages"],
                 "total_chunks": len(chunks),
                 "stored_chunks": stored_count,
-                "tables_extracted": len(pdf_content.get("tables", [])),
+                "tables_extracted": len(document_content.get("tables", [])),
                 "embeddings_generated": len(embeddings),
-                "file_hash": pdf_content["file_hash"],
+                "file_hash": document_content["file_hash"],
                 "processing_time_seconds": round(processing_time, 2),
             }
 
-            logger.info("PDF processing complete", **stats)
+            logger.info("Document processing complete", **stats)
 
             return stats
 
         except FileNotFoundError as e:
-            logger.error(f"PDF file not found: {e}")
+            logger.error(f"Document file not found: {e}")
             return {
                 "status": "error",
                 "error": str(e),
                 "error_type": "file_not_found",
-                "pdf_path": pdf_path,
+                "document_path": document_path,
             }
-        except PDFProcessingError as e:
-            logger.error(f"PDF processing error: {e}")
+        except (PDFProcessingError, Exception) as e:
+            logger.error(f"Document processing error: {e}")
             return {
                 "status": "error",
                 "error": str(e),
-                "error_type": "pdf_processing_error",
-                "pdf_path": pdf_path,
+                "error_type": "document_processing_error",
+                "document_path": document_path,
             }
         except Exception as e:
-            logger.error("Unexpected error during PDF processing", error=str(e), exc_info=True)
+            logger.error("Unexpected error during document processing", error=str(e), exc_info=True)
             return {
                 "status": "error",
                 "error": str(e),
                 "error_type": "unexpected_error",
-                "pdf_path": pdf_path,
+                "document_path": document_path,
                 "processing_time_seconds": round(time.time() - start_time, 2),
             }
+    
+    async def process_pdf(
+        self,
+        pdf_path: str,
+        rulebook_name: str,
+        system: str,
+        source_type: str = "rulebook",
+        enable_adaptive_learning: bool = True,
+        skip_size_check: bool = False,
+        user_confirmed: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Process a PDF file through the complete pipeline.
+        
+        This method is maintained for backward compatibility.
+        It delegates to process_document().
+
+        Args:
+            pdf_path: Path to PDF file
+            rulebook_name: Name of the rulebook
+            system: Game system (e.g., "D&D 5e")
+            source_type: Type of source ("rulebook" or "flavor")
+            enable_adaptive_learning: Whether to use adaptive learning
+            skip_size_check: Skip file size validation
+            user_confirmed: Whether user has already confirmed large file processing
+
+        Returns:
+            Processing results and statistics
+        """
+        # Backward compatibility: delegate to process_document
+        return await self.process_document(
+            pdf_path,
+            rulebook_name,
+            system,
+            source_type,
+            enable_adaptive_learning,
+            skip_size_check,
+            user_confirmed,
+        )
 
     def _is_duplicate(self, file_hash: str) -> bool:
         """
@@ -576,8 +630,39 @@ class PDFProcessingPipeline:
         else:
             return EmbeddingGenerator()
     
+    def _validate_document_inputs(self, document_path: str, rulebook_name: str, system: str, source_type: str):
+        """Validate and sanitize input parameters for any document type."""
+        try:
+            document_path_obj = validate_path(document_path, must_exist=True)
+            supported_formats = ['.pdf', '.epub', '.mobi', '.azw', '.azw3']
+            if document_path_obj.suffix.lower() not in supported_formats:
+                raise ValueError(
+                    f"File must be a supported document format. "
+                    f"Supported: {', '.join(supported_formats)}. "
+                    f"Got: {document_path_obj.suffix}"
+                )
+        except Exception as e:
+            logger.error(f"Path validation failed: {e}")
+            raise ValueError(f"Invalid document path: {e}") from e
+
+        sanitizer = InputSanitizer()
+        try:
+            rulebook_name = sanitizer.validate_system_name(rulebook_name)
+            system = sanitizer.validate_system_name(system)
+        except InputValidationError as e:
+            logger.error(f"Input validation failed: {e}")
+            raise ValueError(f"Invalid input: {e}") from e
+
+        if not rulebook_name or not system:
+            raise ValueError("rulebook_name and system are required")
+
+        if source_type not in ["rulebook", "flavor"]:
+            raise ValueError("source_type must be 'rulebook' or 'flavor'")
+            
+        return document_path_obj
+    
     def _validate_inputs(self, pdf_path: str, rulebook_name: str, system: str, source_type: str):
-        """Validate and sanitize input parameters."""
+        """Legacy validation method for PDFs only. Maintained for backward compatibility."""
         try:
             pdf_path_obj = validate_path(pdf_path, must_exist=True)
             if pdf_path_obj.suffix.lower() != ".pdf":
@@ -686,3 +771,7 @@ class PDFProcessingPipeline:
             error_msg = f"Failed to learn from document: {str(e)}"
             logger.error(error_msg, system=system, exc_info=True)
             return Result.err(error_msg)
+
+
+# Backward compatibility alias
+PDFProcessingPipeline = DocumentProcessingPipeline

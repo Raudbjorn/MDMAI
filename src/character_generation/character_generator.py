@@ -7,13 +7,18 @@ from typing import List, Optional, Union
 from .models import (
     Backstory,
     Character,
+    CharacterBackground,
     CharacterClass,
+    CharacterMotivation,
     CharacterRace,
     CharacterStats,
+    CharacterTrait,
     Equipment,
     ExtendedCharacter,
     GenreSpecificData,
+    ItemType,
     TTRPGGenre,
+    WeaponType,
     CyberpunkAugmentation,
     SciFiTechnology,
     CosmicHorrorSanity,
@@ -44,6 +49,23 @@ class CharacterGenerator:
         CharacterRace.HALF_ELF: {"charisma": 2, "any_two": 1},
         CharacterRace.HALF_ORC: {"strength": 2, "constitution": 1},
     }
+    
+    # Class-specific goals
+    _CLASS_GOALS = {
+        CharacterClass.FIGHTER: "Master legendary combat techniques",
+        CharacterClass.WIZARD: "Uncover lost magical secrets",
+        CharacterClass.CLERIC: "Spread the faith and heal the world",
+        CharacterClass.ROGUE: "Pull off the heist of the century",
+        CharacterClass.RANGER: "Protect the natural world",
+        CharacterClass.PALADIN: "Uphold justice and righteousness",
+        CharacterClass.BARBARIAN: "Prove strength to ancestors",
+        CharacterClass.SORCERER: "Control wild magical power",
+        CharacterClass.WARLOCK: "Fulfill pact obligations",
+        CharacterClass.DRUID: "Maintain natural balance",
+        CharacterClass.MONK: "Achieve inner peace",
+        CharacterClass.BARD: "Become legendary performer",
+        CharacterClass.ARTIFICER: "Create revolutionary inventions",
+    }
 
     # Class primary stats (for stat array assignment)
     CLASS_PRIMARY_STATS = {
@@ -62,22 +84,22 @@ class CharacterGenerator:
         CharacterClass.ARTIFICER: ["intelligence", "constitution"],
     }
 
-    # Starting equipment by class
+    # Starting equipment by class with enriched content
     CLASS_EQUIPMENT = {
         CharacterClass.FIGHTER: {
-            "weapons": ["Longsword", "Shield"],
-            "armor": ["Chain Mail"],
-            "items": ["Backpack", "Bedroll", "Rations (10 days)"],
+            "weapons": [WeaponType.LONGSWORD.value, WeaponType.HANDAXE.value],
+            "armor": ["Chain Mail", "Shield"],
+            "items": [ItemType.BACKPACK.value, ItemType.BEDROLL.value, ItemType.RATIONS.value, ItemType.ROPE.value],
         },
         CharacterClass.WIZARD: {
-            "weapons": ["Quarterstaff"],
+            "weapons": [WeaponType.QUARTERSTAFF.value],
             "armor": [],
-            "items": ["Spellbook", "Component Pouch", "Scholar's Pack"],
+            "items": [ItemType.SPELLBOOK.value, ItemType.COMPONENT_POUCH.value, ItemType.BACKPACK.value, ItemType.ARCANE_FOCUS.value],
         },
         CharacterClass.ROGUE: {
-            "weapons": ["Shortsword", "Dagger (2)"],
+            "weapons": [WeaponType.SHORTSWORD.value, WeaponType.DAGGER.value],
             "armor": ["Leather Armor"],
-            "items": ["Thieves' Tools", "Burglar's Pack"],
+            "items": [ItemType.THIEVES_TOOLS.value, ItemType.BACKPACK.value, ItemType.ROPE.value, ItemType.LOCKPICKS.value],
         },
         CharacterClass.CLERIC: {
             "weapons": ["Mace"],
@@ -283,10 +305,13 @@ class CharacterGenerator:
         else:
             return TTRPGGenre.FANTASY
 
-    def _select_class(self, class_name: Optional[str], genre: TTRPGGenre) -> CharacterClass:
+    def _select_class(self, class_name: Optional[Union[str, CharacterClass]], genre: TTRPGGenre) -> CharacterClass:
         """Select a character class based on genre."""
         if class_name:
-            # Try to find matching enum value
+            # If it's already a CharacterClass enum, return it
+            if isinstance(class_name, CharacterClass):
+                return class_name
+            # Try to find matching enum value from string
             normalized = class_name.lower().replace(" ", "_").replace("-", "_")
             for cls in CharacterClass:
                 if cls.value == normalized:
@@ -339,10 +364,13 @@ class CharacterGenerator:
         class_pool = genre_classes.get(genre, genre_classes[TTRPGGenre.FANTASY])
         return random.choice(class_pool)
 
-    def _select_race(self, race_name: Optional[str], genre: TTRPGGenre) -> CharacterRace:
+    def _select_race(self, race_name: Optional[Union[str, CharacterRace]], genre: TTRPGGenre) -> CharacterRace:
         """Select a character race based on genre."""
         if race_name:
-            # Try to find matching enum value
+            # If it's already a CharacterRace enum, return it
+            if isinstance(race_name, CharacterRace):
+                return race_name
+            # Try to find matching enum value from string
             normalized = race_name.lower().replace(" ", "_").replace("-", "_")
             for race in CharacterRace:
                 if race.value == normalized:
@@ -898,7 +926,91 @@ class CharacterGenerator:
         # Basic motivation
         backstory.motivation = f"Seeking adventure as a {character.get_class_name()}"
 
-        # Basic goals
-        backstory.goals = ["Find fortune and glory", "Master my abilities"]
+        # Basic goals with option for enriched content
+        backstory.goals = self._get_character_goals(character) if hasattr(self, '_get_character_goals') else ["Find fortune and glory", "Master my abilities"]
 
         return backstory
+    
+    def _get_character_goals(self, character: Character) -> List[str]:
+        """Generate character goals using enriched content."""
+        goals = []
+        
+        # Add class-specific goals
+        if character.character_class:
+            goals.append(self._CLASS_GOALS.get(character.character_class, "Achieve greatness"))
+        
+        # Add motivation-based goal
+        motivations = [CharacterMotivation.ADVENTURE, CharacterMotivation.KNOWLEDGE, CharacterMotivation.POWER]
+        selected = random.choice(motivations)
+        goals.append(f"Pursue {selected.value.replace('_', ' ')}")
+        
+        return goals
+    
+    def apply_enriched_content(self, character: Character) -> None:
+        """Apply enriched traits and equipment to a character."""
+        # Apply enriched traits
+        self._apply_enriched_traits(character)
+        
+        # Upgrade equipment with enriched items
+        if character.equipment:
+            self._enhance_equipment_with_enriched_items(character.equipment, character.stats.level)
+    
+    def _apply_enriched_traits(self, character: Character) -> None:
+        """Apply enriched character traits."""
+        # Select diverse traits
+        trait_types = {
+            'physical': [CharacterTrait.STRONG, CharacterTrait.AGILE, CharacterTrait.TOUGH],
+            'mental': [CharacterTrait.INTELLIGENT, CharacterTrait.WISE, CharacterTrait.CLEVER],
+            'social': [CharacterTrait.CHARISMATIC, CharacterTrait.DIPLOMATIC, CharacterTrait.PERSUASIVE]
+        }
+        
+        # Apply one trait from each category
+        for category, traits in trait_types.items():
+            if traits and random.random() > 0.3:  # 70% chance for each category
+                trait = random.choice(traits)
+                
+                # Add as feature
+                character.features.append(f"Trait: {trait.value.replace('_', ' ').title()}")
+                
+                # Apply stat bonus
+                if trait == CharacterTrait.STRONG:
+                    character.stats.strength += 1
+                elif trait == CharacterTrait.AGILE:
+                    character.stats.dexterity += 1
+                elif trait == CharacterTrait.TOUGH:
+                    character.stats.constitution += 1
+                elif trait == CharacterTrait.INTELLIGENT:
+                    character.stats.intelligence += 1
+                elif trait == CharacterTrait.WISE:
+                    character.stats.wisdom += 1
+                elif trait in [CharacterTrait.CHARISMATIC, CharacterTrait.DIPLOMATIC, CharacterTrait.PERSUASIVE]:
+                    character.stats.charisma += 1
+    
+    def _enhance_equipment_with_enriched_items(self, equipment: Equipment, level: int) -> None:
+        """Enhance equipment with enriched item types."""
+        # Add utility items based on level
+        if level >= 2:
+            utility_items = [
+                ItemType.ROPE.value,
+                ItemType.TORCH.value,
+                ItemType.HEALERS_KIT.value,
+                ItemType.GRAPPLING_HOOK.value,
+            ]
+            items_to_add = random.sample(utility_items, min(2, level // 2))
+            for item in items_to_add:
+                if item not in equipment.items:
+                    equipment.items.append(item)
+        
+        # Add specialized tools for higher levels
+        if level >= 5:
+            specialized = [
+                ItemType.THIEVES_TOOLS.value,
+                ItemType.CLIMBING_KIT.value,
+                ItemType.DISGUISE_KIT.value,
+            ]
+            equipment.items.append(random.choice(specialized))
+        
+        # Upgrade weapons for higher levels
+        if level >= 7 and equipment.weapons:
+            # Add masterwork quality
+            equipment.weapons[0] = f"Masterwork {equipment.weapons[0]}"

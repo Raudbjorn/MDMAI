@@ -40,7 +40,7 @@ This is a Model Context Protocol (MCP) server for assisting with Tabletop Role-P
 
 ## Project Structure
 ```
-/home/svnbjrn/MDMAI/
+./MDMAI/
 ├── requirements.md     # Detailed functional and non-functional requirements
 ├── design.md          # Technical design and architecture
 ├── tasks.md           # Implementation tasks with requirement mappings

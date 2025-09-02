@@ -11,7 +11,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - Provides interior mutability with read-write locks
 - Implements `Clone` for shared ownership
 - Thread-safe concurrent access
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/data_manager_commands.rs` (lines 25-65)
+- **File**: `./frontend/src-tauri/src/data_manager_commands.rs` (lines 25-65)
 
 ### 2. Memory Leak Prevention (Issue 2) ✅
 **Problem**: Using `.leak()` to create `&'static str` from formatted strings caused memory leaks.
@@ -20,7 +20,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - Used `to_string()` and `into_owned()` for string conversion
 - Implemented streaming operations for system data collection
 - Added proper RAII patterns for resource cleanup
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/native_features.rs`
+- **File**: `./frontend/src-tauri/src/native_features.rs`
 
 ### 3. O(1) Cache Performance (Issue 3) ✅
 **Problem**: O(N) lookup performance due to linear BTreeMap scans for cache entry removal.
@@ -29,7 +29,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - `HashMap<String, Instant>` for O(1) access time lookups
 - `BTreeMap<Instant, Vec<String>>` for efficient LRU eviction
 - DashMap for concurrent cache entry storage
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/data_manager/cache.rs`
+- **File**: `./frontend/src-tauri/src/data_manager/cache.rs`
 
 ### 4. Memory-Efficient File Processing (Issue 4) ✅
 **Problem**: File integrity checks loaded entire files into memory.
@@ -38,7 +38,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - 64KB chunk size for consistent memory usage
 - Streaming Blake3 and SHA-256 hash calculation
 - Parallel processing for multiple file verification
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/data_manager/integrity.rs`
+- **File**: `./frontend/src-tauri/src/data_manager/integrity.rs`
 
 ### 5. Streaming Duplicate Detection (Issue 5) ✅
 **Problem**: Duplicate file detection loaded entire files into memory.
@@ -47,7 +47,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - Memory-efficient streaming file processing
 - Parallel hash calculation using Rayon
 - O(1) duplicate lookup using hash indexes
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/data_manager/file_manager.rs`
+- **File**: `./frontend/src-tauri/src/data_manager/file_manager.rs`
 
 ### 6. Type-Safe SQL Operations (Issue 6) ✅
 **Problem**: Database export tried to read all columns as `Option<String>`, corrupting binary/numeric data.
@@ -57,7 +57,7 @@ I have successfully implemented robust, memory-efficient, and type-safe solution
 - `TypedColumnValue` struct preserving original data types
 - Base64 encoding for binary data preservation
 - Round-trip conversion validation
-- **File**: `/home/svnbjrn/code/mbdings/MDMAI/frontend/src-tauri/src/data_manager/backup.rs`
+- **File**: `./frontend/src-tauri/src/data_manager/backup.rs`
 
 ## 🏗️ Architecture Overview
 
@@ -127,7 +127,7 @@ source $HOME/.cargo/env
 
 ### Building
 ```bash
-cd /home/svnbjrn/code/mbdings/MDMAI/frontend
+cd ./frontend
 
 # Install frontend dependencies
 npm install
