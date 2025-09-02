@@ -103,7 +103,7 @@ npm run tauri:build -- --target x86_64-pc-windows-msvc
 ```
 
 **Windows-Specific Configuration:**
-```toml
+```json
 # src-tauri/tauri.conf.json
 {
   "tauri": {
