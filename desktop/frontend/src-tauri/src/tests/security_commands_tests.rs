@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::security_commands::*;
+    use crate::security_commands::*;
     use std::collections::HashMap;
     use std::sync::{Arc, atomic::{AtomicBool, AtomicU32, Ordering}};
     use std::time::{SystemTime, Duration};
