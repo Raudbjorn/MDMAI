@@ -972,7 +972,8 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 24.1: PDF Content Analysis Script
 **Requirements:** REQ-012, REQ-011
-**Status:** PLANNED
+**Status:** IN PROGRESS
+**Branch:** task-24-1-pdf-content-analysis
 - [ ] Create script to batch process TTRPG PDFs
 - [ ] Implement genre classification based on content and filename
 - [ ] Build pattern matching for races, classes, and NPCs
