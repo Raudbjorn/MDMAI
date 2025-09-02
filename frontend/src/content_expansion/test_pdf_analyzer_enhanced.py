@@ -11,7 +11,10 @@ This module provides comprehensive tests for:
 - Progress tracking
 """
 
+import io
 import json
+import shutil
+import sys
 import tempfile
 import unittest
 from datetime import datetime
@@ -22,7 +25,6 @@ from unittest.mock import MagicMock, patch, mock_open
 from returns.result import Failure, Success
 
 # Add parent directories to path
-import sys
 parent_dir = Path(__file__).parent.parent.parent
 if parent_dir.exists():
     sys.path.insert(0, str(parent_dir))
@@ -118,7 +120,6 @@ class TestEnhancedPDFAnalyzer(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test fixtures."""
-        import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_analyzer_initialization(self):
@@ -435,7 +436,6 @@ class TestBatchProcessing(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test fixtures."""
-        import shutil
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
     def test_process_batch_invalid_directory(self):

@@ -303,6 +303,121 @@ class ExtractedContent:
             "errors": self.errors,
         }
     
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ExtractedContent":
+        """Create ExtractedContent from dictionary (for safe deserialization)."""
+        from pathlib import Path
+        
+        # Convert genre string back to enum
+        genre = TTRPGGenre[data["genre"]] if isinstance(data["genre"], str) else data["genre"]
+        
+        # Create instance
+        content = cls(
+            pdf_path=Path(data["pdf_path"]),
+            pdf_name=data["pdf_name"],
+            genre=genre
+        )
+        
+        # Reconstruct races
+        for race_data in data.get("races", []):
+            race = ExtendedCharacterRace(
+                name=race_data["name"],
+                genre=TTRPGGenre[race_data["genre"]],
+                description=race_data["description"],
+                traits=race_data.get("traits", []),
+                abilities=race_data.get("abilities", {}),
+                stat_modifiers=race_data.get("stat_modifiers", {}),
+                size=race_data.get("size", "Medium"),
+                speed=race_data.get("speed", "30 ft"),
+                languages=race_data.get("languages", []),
+                subraces=race_data.get("subraces", []),
+                special_features=race_data.get("special_features", []),
+                restrictions=race_data.get("restrictions", []),
+                tags=set(race_data.get("tags", []))
+            )
+            content.races.append(race)
+        
+        # Reconstruct classes
+        for class_data in data.get("classes", []):
+            char_class = ExtendedCharacterClass(
+                name=class_data["name"],
+                genre=TTRPGGenre[class_data["genre"]],
+                description=class_data["description"],
+                hit_dice=class_data.get("hit_dice"),
+                primary_ability=class_data.get("primary_ability"),
+                saves=class_data.get("saves", []),
+                skills=class_data.get("skills", []),
+                equipment=class_data.get("equipment", []),
+                features={int(k): v for k, v in class_data.get("features", {}).items()},
+                subclasses=class_data.get("subclasses", []),
+                spell_casting=class_data.get("spell_casting"),
+                prerequisites=class_data.get("prerequisites", []),
+                progression_table={int(k): v for k, v in class_data["progression_table"].items()} 
+                    if class_data.get("progression_table") else None,
+                tags=set(class_data.get("tags", []))
+            )
+            content.classes.append(char_class)
+        
+        # Reconstruct NPCs
+        for npc_data in data.get("npcs", []):
+            npc = ExtendedNPCRole(
+                name=npc_data["name"],
+                genre=TTRPGGenre[npc_data["genre"]],
+                description=npc_data["description"],
+                role_type=npc_data["role_type"],
+                challenge_rating=npc_data.get("challenge_rating"),
+                abilities=npc_data.get("abilities", {}),
+                stats=npc_data.get("stats", {}),
+                skills=npc_data.get("skills", []),
+                traits=npc_data.get("traits", []),
+                actions=npc_data.get("actions", []),
+                reactions=npc_data.get("reactions", []),
+                legendary_actions=npc_data.get("legendary_actions", []),
+                equipment=npc_data.get("equipment", []),
+                motivation=npc_data.get("motivation"),
+                tactics=npc_data.get("tactics"),
+                loot=npc_data.get("loot", []),
+                tags=set(npc_data.get("tags", []))
+            )
+            content.npcs.append(npc)
+        
+        # Reconstruct equipment
+        for equip_data in data.get("equipment", []):
+            equipment = ExtendedEquipment(
+                name=equip_data["name"],
+                genre=TTRPGGenre[equip_data["genre"]],
+                equipment_type=equip_data["equipment_type"],
+                description=equip_data["description"],
+                cost=equip_data.get("cost"),
+                weight=equip_data.get("weight"),
+                properties=equip_data.get("properties", []),
+                damage=equip_data.get("damage"),
+                armor_class=equip_data.get("armor_class"),
+                requirements=equip_data.get("requirements", []),
+                special_abilities=equip_data.get("special_abilities", []),
+                tech_level=equip_data.get("tech_level"),
+                rarity=equip_data.get("rarity"),
+                attunement=equip_data.get("attunement", False),
+                tags=set(equip_data.get("tags", []))
+            )
+            content.equipment.append(equipment)
+        
+        # Reconstruct other content
+        other_content_dict = data.get("other_content", {})
+        for content_type_str, items in other_content_dict.items():
+            try:
+                content_type = ContentType[content_type_str.upper()]
+                content.other_content[content_type] = items
+            except KeyError:
+                # Skip unknown content types
+                pass
+        
+        # Copy metadata and errors
+        content.extraction_metadata = data.get("extraction_metadata", {})
+        content.errors = data.get("errors", [])
+        
+        return content
+    
     def get_summary(self) -> Dict[str, int]:
         """Get a summary of extracted content counts."""
         summary = {

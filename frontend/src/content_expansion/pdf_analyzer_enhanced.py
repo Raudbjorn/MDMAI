@@ -17,7 +17,6 @@ import json
 import logging
 import multiprocessing as mp
 import os
-import pickle
 import sys
 import time
 import traceback
@@ -64,6 +63,9 @@ from frontend.src.content_expansion.models import (
 )
 from frontend.src.content_expansion.genre_classifier import GenreClassifier
 from frontend.src.content_expansion.content_extractor import ContentExtractor
+from frontend.src.content_expansion.processing_helpers import (
+    CacheManager, BatchProcessor, ReportGenerator
+)
 
 
 # Configure logging with more detail
@@ -91,6 +93,7 @@ class ProcessingConfig:
     ocr_timeout: int = 300  # seconds per page
     min_text_length: int = 100
     sample_size: int = 10000  # characters for genre classification
+    chars_per_page: int = 3000  # characters per page for text splitting
     save_intermediate: bool = True
     verbose: bool = False
     retry_failed: bool = True
@@ -109,6 +112,7 @@ class ProcessingConfig:
             "ocr_timeout": self.ocr_timeout,
             "min_text_length": self.min_text_length,
             "sample_size": self.sample_size,
+            "chars_per_page": self.chars_per_page,
             "save_intermediate": self.save_intermediate,
             "verbose": self.verbose,
             "retry_failed": self.retry_failed,
@@ -153,6 +157,9 @@ class EnhancedPDFAnalyzer:
         self.genre_classifier = GenreClassifier()
         self.processing_state: Optional[ProcessingState] = None
         
+        # Initialize helper classes
+        self.cache_manager = CacheManager(self.config.cache_dir)
+        
         # Statistics tracking
         self.stats = {
             "total_processed": 0,
@@ -174,6 +181,10 @@ class EnhancedPDFAnalyzer:
         # Progress tracking
         self.start_time: Optional[datetime] = None
         self.processed_sizes: List[Tuple[float, int]] = []  # (time, bytes)
+        
+        # Initialize batch processor and report generator with stats
+        self.batch_processor = BatchProcessor(self.config, self.stats)
+        self.report_generator = ReportGenerator(self.config, self.stats)
         
         logger.info(f"Initialized PDFAnalyzer with config: {self.config.to_dict()}")
     
@@ -315,7 +326,7 @@ class EnhancedPDFAnalyzer:
                 pdf_path,
                 dpi=self.config.ocr_dpi,
                 first_page=1,
-                last_page=min(self.config.ocr_max_pages, 50),
+                last_page=self.config.ocr_max_pages,
                 thread_count=2  # Limit thread usage
             )
             
@@ -363,7 +374,8 @@ class EnhancedPDFAnalyzer:
         start_time = time.time()
         
         # Check cache first
-        cache_result = self._check_cache(pdf_path)
+        cache_key = self.cache_manager.get_cache_key(pdf_path, self.config.to_dict())
+        cache_result = self.cache_manager.load(cache_key)
         if isinstance(cache_result, Success):
             cached_content = cache_result.unwrap()
             if cached_content:
@@ -406,7 +418,8 @@ class EnhancedPDFAnalyzer:
         
         # Cache the results
         if self.config.save_intermediate:
-            cache_save_result = self._save_to_cache(pdf_path, extracted)
+            cache_key = self.cache_manager.get_cache_key(pdf_path, self.config.to_dict())
+            cache_save_result = self.cache_manager.save(cache_key, extracted)
             if isinstance(cache_save_result, Failure):
                 logger.warning(f"Failed to cache results: {cache_save_result.failure()}")
         
@@ -501,7 +514,7 @@ class EnhancedPDFAnalyzer:
         
         return extracted
     
-    def _split_into_pages(self, text: str, chars_per_page: int = 3000) -> List[str]:
+    def _split_into_pages(self, text: str, chars_per_page: Optional[int] = None) -> List[str]:
         """Split text into page-like chunks."""
         # Try to split by common page markers first
         page_markers = ['\f', '\n\n\n\n', 'Page ', '- Page ']
@@ -513,6 +526,9 @@ class EnhancedPDFAnalyzer:
                     return pages
         
         # Fallback to character-based splitting
+        if chars_per_page is None:
+            chars_per_page = self.config.chars_per_page
+        
         pages = []
         for i in range(0, len(text), chars_per_page):
             pages.append(text[i:i + chars_per_page])
@@ -530,31 +546,6 @@ class EnhancedPDFAnalyzer:
         else:
             return ExtractionConfidence.MEDIUM
     
-    @with_result(error_kind=ErrorKind.DATABASE)
-    def _check_cache(self, pdf_path: Path) -> Optional[ExtractedContent]:
-        """Check cache for existing extraction."""
-        cache_file = self._get_cache_file(pdf_path)
-        
-        if cache_file.exists():
-            try:
-                with open(cache_file, 'rb') as f:
-                    return pickle.load(f)
-            except Exception as e:
-                logger.warning(f"Cache read error: {e}")
-                # Remove corrupted cache file
-                cache_file.unlink(missing_ok=True)
-        
-        return None
-    
-    @with_result(error_kind=ErrorKind.DATABASE)
-    def _save_to_cache(self, pdf_path: Path, content: ExtractedContent) -> None:
-        """Save extraction to cache."""
-        cache_file = self._get_cache_file(pdf_path)
-        
-        with open(cache_file, 'wb') as f:
-            pickle.dump(content, f)
-        
-        logger.debug(f"Cached results for {pdf_path.name}")
     
     @with_result(error_kind=ErrorKind.DATABASE)
     def _save_extracted_content(self, content: ExtractedContent) -> None:
@@ -566,11 +557,6 @@ class EnhancedPDFAnalyzer:
         
         logger.debug(f"Saved extracted content to {output_file}")
     
-    def _get_cache_file(self, pdf_path: Path) -> Path:
-        """Get cache file path for a PDF."""
-        file_stats = f"{pdf_path.absolute()}_{pdf_path.stat().st_mtime}_{self.config.to_dict()}"
-        file_hash = hashlib.md5(file_stats.encode()).hexdigest()
-        return self.config.cache_dir / f"{file_hash}.pkl"
     
     def process_batch(
         self,
@@ -615,14 +601,31 @@ class EnhancedPDFAnalyzer:
         
         # Process PDFs
         self.start_time = datetime.utcnow()
+        self.batch_processor.set_start_time(self.start_time)
+        self.batch_processor.set_processing_state(self.processing_state)
         
         if self.config.use_multiprocessing and len(pdf_files) > 1:
-            results = self._process_batch_parallel(pdf_files)
+            results = self.batch_processor.process_parallel(
+                pdf_files,
+                self._analyze_pdf_worker,
+                self.report_generator.update_stats
+            )
         else:
-            results = self._process_batch_sequential(pdf_files)
+            results = self.batch_processor.process_sequential(
+                pdf_files,
+                self.analyze_single_pdf,
+                self.report_generator.update_stats
+            )
         
         # Update statistics and generate report
-        report = self._finalize_processing(results)
+        report = self.report_generator.generate_report(
+            results,
+            self.processing_state,
+            self.start_time
+        )
+        
+        # Save final state
+        self._save_processing_state()
         
         return Success(report)
     
@@ -653,105 +656,6 @@ class EnhancedPDFAnalyzer:
         )
         return [p for p in pdf_files if p.name not in processed_names]
     
-    def _process_batch_sequential(
-        self,
-        pdf_files: List[Path]
-    ) -> List[Tuple[Path, Optional[ExtractedContent]]]:
-        """Process PDFs sequentially with progress tracking."""
-        results = []
-        
-        for i, pdf_path in enumerate(pdf_files, 1):
-            logger.info(f"Processing {i}/{len(pdf_files)}: {pdf_path.name}")
-            self.processing_state.current_pdf = pdf_path.name
-            
-            # Process with retries
-            extracted = None
-            for attempt in range(self.config.max_retries):
-                try:
-                    result = self.analyze_single_pdf(pdf_path)
-                    if isinstance(result, Success):
-                        extracted = result.unwrap()
-                        break
-                    elif attempt < self.config.max_retries - 1:
-                        logger.warning(f"Attempt {attempt + 1} failed, retrying...")
-                        time.sleep(2 ** attempt)  # Exponential backoff
-                except Exception as e:
-                    logger.error(f"Error processing {pdf_path.name}: {e}")
-                    if attempt < self.config.max_retries - 1:
-                        time.sleep(2 ** attempt)
-            
-            results.append((pdf_path, extracted))
-            
-            # Update state
-            if extracted:
-                self.processing_state.successful_pdfs.append(pdf_path.name)
-                self._update_stats(extracted)
-            else:
-                self.processing_state.failed_pdfs.append(pdf_path.name)
-            
-            self.processing_state.processed_pdfs += 1
-            
-            # Show progress with ETA
-            self._show_progress_with_eta(i, len(pdf_files), pdf_path)
-            
-            # Save state periodically
-            if i % 5 == 0:
-                self._save_processing_state()
-        
-        return results
-    
-    def _process_batch_parallel(
-        self,
-        pdf_files: List[Path]
-    ) -> List[Tuple[Path, Optional[ExtractedContent]]]:
-        """Process PDFs in parallel with progress tracking."""
-        results = []
-        max_workers = self.config.max_workers or mp.cpu_count()
-        
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_pdf = {
-                executor.submit(
-                    self._analyze_pdf_worker,
-                    pdf_path,
-                    self.config
-                ): pdf_path
-                for pdf_path in pdf_files
-            }
-            
-            # Process completed tasks
-            completed = 0
-            for future in as_completed(future_to_pdf):
-                pdf_path = future_to_pdf[future]
-                completed += 1
-                
-                try:
-                    extracted = future.result(timeout=600)  # 10 minute timeout
-                    results.append((pdf_path, extracted))
-                    
-                    if extracted:
-                        self.processing_state.successful_pdfs.append(pdf_path.name)
-                        self._update_stats(extracted)
-                    else:
-                        self.processing_state.failed_pdfs.append(pdf_path.name)
-                    
-                    logger.info(f"Completed {pdf_path.name} ({completed}/{len(pdf_files)})")
-                
-                except Exception as e:
-                    logger.error(f"Failed to process {pdf_path.name}: {e}")
-                    results.append((pdf_path, None))
-                    self.processing_state.failed_pdfs.append(pdf_path.name)
-                
-                self.processing_state.processed_pdfs = completed
-                
-                # Show progress with ETA
-                self._show_progress_with_eta(completed, len(pdf_files), pdf_path)
-                
-                # Save state periodically
-                if completed % 5 == 0:
-                    self._save_processing_state()
-        
-        return results
     
     @staticmethod
     def _analyze_pdf_worker(
@@ -772,68 +676,6 @@ class EnhancedPDFAnalyzer:
             logger.error(f"Worker exception for {pdf_path.name}: {e}")
             return None
     
-    def _show_progress_with_eta(
-        self,
-        current: int,
-        total: int,
-        current_file: Path
-    ) -> None:
-        """Display progress bar with ETA calculation."""
-        progress = current / total
-        
-        # Calculate ETA
-        if self.start_time and current > 0:
-            elapsed = (datetime.utcnow() - self.start_time).total_seconds()
-            rate = current / elapsed
-            remaining = (total - current) / rate if rate > 0 else 0
-            eta = datetime.utcnow() + timedelta(seconds=remaining)
-            eta_str = eta.strftime("%H:%M:%S")
-        else:
-            eta_str = "calculating..."
-        
-        # Build progress bar
-        bar_length = 40
-        filled = int(bar_length * progress)
-        bar = '█' * filled + '░' * (bar_length - filled)
-        
-        # File size for rate calculation
-        file_size = current_file.stat().st_size / (1024 * 1024)  # MB
-        
-        status = (
-            f'\r[{bar}] {current}/{total} ({progress*100:.1f}%) | '
-            f'ETA: {eta_str} | Current: {current_file.name} ({file_size:.1f}MB)'
-        )
-        
-        print(status, end='', flush=True)
-        
-        if current == total:
-            print()  # New line when complete
-    
-    def _update_stats(self, content: ExtractedContent) -> None:
-        """Update statistics with extracted content."""
-        self.stats["successful"] += 1
-        self.stats["total_races"] += len(content.races)
-        self.stats["total_classes"] += len(content.classes)
-        self.stats["total_npcs"] += len(content.npcs)
-        self.stats["total_equipment"] += len(content.equipment)
-        self.stats["genres_found"].add(content.genre.name)
-        
-        # Track extraction method
-        method = content.extraction_metadata.get("extraction_method", "unknown")
-        if method in self.stats["extraction_methods"]:
-            self.stats["extraction_methods"][method] += 1
-        
-        # Track pages
-        self.stats["total_pages"] += content.extraction_metadata.get("pages_processed", 0)
-        
-        # Track confidence
-        confidence = content.extraction_metadata.get("genre_confidence", 0)
-        if confidence > 0:
-            current_avg = self.stats["average_confidence"]
-            count = self.stats["successful"]
-            self.stats["average_confidence"] = (
-                (current_avg * (count - 1) + confidence) / count
-            )
     
     def _save_processing_state(self) -> None:
         """Save current processing state."""
@@ -846,120 +688,10 @@ class EnhancedPDFAnalyzer:
             
             logger.debug("Saved processing state checkpoint")
     
-    def _finalize_processing(
-        self,
-        results: List[Tuple[Path, Optional[ExtractedContent]]]
-    ) -> Dict[str, Any]:
-        """Finalize processing and generate comprehensive report."""
-        # Calculate final statistics
-        end_time = datetime.utcnow()
-        self.stats["processing_time"] = (end_time - self.start_time).total_seconds()
-        self.stats["failed"] = len(self.processing_state.failed_pdfs)
-        
-        # Categorize results
-        full_success = []
-        partial_success = []
-        failures = []
-        
-        for pdf_path, content in results:
-            if content:
-                summary = content.get_summary()
-                total_items = sum(summary.values())
-                if total_items > 0:
-                    full_success.append(pdf_path.name)
-                else:
-                    partial_success.append(pdf_path.name)
-                    self.stats["partial"] += 1
-            else:
-                failures.append(pdf_path.name)
-        
-        # Generate detailed report
-        report = {
-            "processing_summary": {
-                "total_processed": self.processing_state.processed_pdfs,
-                "successful": len(full_success),
-                "partial": len(partial_success),
-                "failed": len(failures),
-                "processing_time_seconds": self.stats["processing_time"],
-                "average_time_per_pdf": (
-                    self.stats["processing_time"] / self.processing_state.processed_pdfs
-                    if self.processing_state.processed_pdfs > 0 else 0
-                ),
-                "start_time": self.start_time.isoformat(),
-                "end_time": end_time.isoformat()
-            },
-            "content_extracted": {
-                "total_races": self.stats["total_races"],
-                "total_classes": self.stats["total_classes"],
-                "total_npcs": self.stats["total_npcs"],
-                "total_equipment": self.stats["total_equipment"],
-                "total_pages": self.stats["total_pages"],
-                "average_confidence": round(self.stats["average_confidence"], 3)
-            },
-            "extraction_methods": self.stats["extraction_methods"],
-            "genres_found": list(self.stats["genres_found"]),
-            "quality_metrics": {
-                "full_extraction_rate": (
-                    len(full_success) / self.processing_state.processed_pdfs
-                    if self.processing_state.processed_pdfs > 0 else 0
-                ),
-                "partial_extraction_rate": (
-                    len(partial_success) / self.processing_state.processed_pdfs
-                    if self.processing_state.processed_pdfs > 0 else 0
-                ),
-                "failure_rate": (
-                    len(failures) / self.processing_state.processed_pdfs
-                    if self.processing_state.processed_pdfs > 0 else 0
-                ),
-                "ocr_usage_rate": (
-                    self.stats["extraction_methods"].get("ocr", 0) /
-                    self.processing_state.processed_pdfs
-                    if self.processing_state.processed_pdfs > 0 else 0
-                )
-            },
-            "file_lists": {
-                "full_success": full_success[:20],  # First 20 for brevity
-                "partial_success": partial_success[:20],
-                "failures": failures
-            },
-            "configuration": self.config.to_dict()
-        }
-        
-        # Save report
-        report_file = self.config.output_dir / (
-            f"extraction_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        )
-        with open(report_file, 'w') as f:
-            json.dump(report, f, indent=2)
-        
-        logger.info(f"Processing complete. Report saved to {report_file}")
-        
-        # Save final state
-        self._save_processing_state()
-        
-        return report
     
     def clear_cache(self) -> Result[int, AppError]:
         """Clear the extraction cache."""
-        try:
-            cache_files = list(self.config.cache_dir.glob("*.pkl"))
-            count = 0
-            
-            for cache_file in cache_files:
-                cache_file.unlink()
-                count += 1
-            
-            # Also clear state file
-            state_file = self.config.cache_dir / "processing_state.json"
-            if state_file.exists():
-                state_file.unlink()
-                count += 1
-            
-            logger.info(f"Cleared {count} cache files")
-            return Success(count)
-        
-        except Exception as e:
-            return Failure(database_error(f"Failed to clear cache: {e}"))
+        return self.cache_manager.clear()
 
 
 def main():
