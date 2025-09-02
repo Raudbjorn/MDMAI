@@ -1176,15 +1176,21 @@ class BaseAIProvider(ABC):
 #### 2. Secure Credential Management
 ```python
 # src/ai_providers/credential_manager.py
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 import os
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 class CredentialManager:
     def __init__(self):
-        # Use environment variable or generate key
-        key = os.environ.get('ENCRYPTION_KEY', Fernet.generate_key())
-        self.cipher = Fernet(key)
+        # The encryption key MUST be loaded from a secure, persistent source.
+        # Generating a key on the fly is insecure as it makes previously encrypted data unrecoverable on restart.
+        key = os.environ.get('ENCRYPTION_KEY')
+        if not key:
+            raise ValueError("ENCRYPTION_KEY environment variable must be set for secure operation.")
+        self.cipher = Fernet(key.encode())
         
     def encrypt_api_key(self, api_key: str, user_id: str) -> str:
         """Encrypt API key for secure storage"""
@@ -1199,7 +1205,9 @@ class CredentialManager:
             stored_id, api_key = decrypted.split(':', 1)
             if stored_id == user_id:
                 return api_key
-        except Exception:
+        except (InvalidToken, TypeError, ValueError) as e:
+            # In a real implementation, this should be logged for debugging.
+            # logger.warning(f"API key decryption failed for user {user_id}: {e}")
             pass
         return None
 ```
@@ -1262,6 +1270,11 @@ class AnthropicProvider(BaseAIProvider):
         Your role is to create immersive narratives, manage game mechanics, 
         and ensure all players have an engaging experience. You have deep 
         knowledge of various TTRPG systems and can adapt to different playstyles."""
+    
+    def _convert_messages(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        """Convert generic message format to Anthropic's specific format.
+        Anthropic uses 'user' and 'assistant' roles."""
+        return [{"role": msg.get("role", "user"), "content": msg["content"]} for msg in messages]
 ```
 
 ##### OpenAI Provider
@@ -1306,15 +1319,30 @@ class OpenAIProvider(BaseAIProvider):
                     yield chunk.choices[0].delta.content
         else:
             yield response.choices[0].message.content
+    
+    def _convert_tools_to_functions(self, tools: List[Dict]) -> List[Dict]:
+        """Convert generic tool format to OpenAI's function calling format.
+        OpenAI uses 'functions' with specific schema requirements."""
+        functions = []
+        for tool in tools:
+            functions.append({
+                "name": tool.get("name"),
+                "description": tool.get("description"),
+                "parameters": tool.get("parameters", {})
+            })
+        return functions
 ```
 
 #### 4. Provider Selection and Routing
 ```python
 # src/ai_providers/provider_router.py
+import logging
 from typing import Dict, Optional
 from .base_provider import BaseAIProvider, ProviderType
 from .anthropic_provider import AnthropicProvider
 from .openai_provider import OpenAIProvider
+
+logger = logging.getLogger(__name__)
 
 class ProviderRouter:
     def __init__(self):
@@ -1344,10 +1372,12 @@ class ProviderRouter:
             provider_key = f"{user_id}:{preferred_provider.value}"
             if provider_key in self.providers:
                 try:
-                    async for response in self.providers[provider_key].complete(messages):
-                        return response
+                    # Aggregate all chunks from the stream to get complete response
+                    full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
+                    return full_response
                 except Exception as e:
                     # Log error and fall through to fallback
+                    logger.warning(f"Provider {preferred_provider.value} failed: {e}")
                     pass
         
         # Try fallback providers
@@ -1355,9 +1385,11 @@ class ProviderRouter:
             provider_key = f"{user_id}:{provider_type.value}"
             if provider_key in self.providers:
                 try:
-                    async for response in self.providers[provider_key].complete(messages):
-                        return response
-                except Exception:
+                    # Aggregate all chunks from the stream to get complete response
+                    full_response = "".join([chunk async for chunk in self.providers[provider_key].complete(messages)])
+                    return full_response
+                except Exception as e:
+                    logger.warning(f"Fallback provider {provider_type.value} failed: {e}")
                     continue
         
         raise Exception("No available providers")
@@ -1367,9 +1399,12 @@ class ProviderRouter:
 ```python
 # src/ai_providers/usage_tracker.py
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List
 import asyncio
+
+class SpendingLimitExceededException(Exception):
+    """Raised when a user exceeds their spending limit."""
 
 @dataclass
 class UsageRecord:
@@ -1384,6 +1419,8 @@ class UsageRecord:
     
 class UsageTracker:
     def __init__(self):
+        # Note: In production, usage_records and user_limits should be persisted
+        # in a database (e.g., PostgreSQL, Redis) to survive application restarts
         self.usage_records: List[UsageRecord] = []
         self.user_limits: Dict[str, float] = {}
         self.cost_calculators = {
@@ -1392,22 +1429,27 @@ class UsageTracker:
         }
         
     def _calculate_anthropic_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Calculate Anthropic API costs"""
+        """Calculate Anthropic API costs
+        Note: In production, pricing should be loaded from a configuration file
+        or fetched from provider APIs to stay current with pricing changes."""
         pricing = {
             'claude-3-haiku': {'input': 0.25, 'output': 1.25},      # per 1M tokens
             'claude-3-5-sonnet': {'input': 3.0, 'output': 15.0},
             'claude-3-opus': {'input': 15.0, 'output': 75.0}
         }
         
-        model_key = model.split('-20')[0]  # Remove date suffix
-        if model_key in pricing:
+        # Find the best match in the pricing dictionary keys
+        model_key = next((key for key in pricing if key in model), None)
+        if model_key:
             input_cost = (input_tokens / 1_000_000) * pricing[model_key]['input']
             output_cost = (output_tokens / 1_000_000) * pricing[model_key]['output']
             return input_cost + output_cost
         return 0.0
     
     def _calculate_openai_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Calculate OpenAI API costs"""
+        """Calculate OpenAI API costs
+        Note: In production, pricing should be loaded from a configuration file
+        or fetched from provider APIs to stay current with pricing changes."""
         pricing = {
             'gpt-4o-mini': {'input': 0.15, 'output': 0.60},     # per 1M tokens
             'gpt-4o': {'input': 2.50, 'output': 10.00},
@@ -1449,9 +1491,19 @@ class UsageTracker:
         if user_id in self.user_limits:
             daily_cost = self.get_daily_cost(user_id)
             if daily_cost > self.user_limits[user_id]:
-                raise Exception(f"Daily spending limit exceeded: ${daily_cost:.2f}")
+                raise SpendingLimitExceededException(f"Daily spending limit exceeded: ${daily_cost:.2f}")
         
         return record
+    
+    def get_daily_cost(self, user_id: str) -> float:
+        """Calculate the total cost for a user for the current day."""
+        today = datetime.utcnow().date()
+        daily_cost = sum(
+            record.cost for record in self.usage_records
+            if record.user_id == user_id 
+            and record.timestamp.date() == today
+        )
+        return daily_cost
 ```
 
 ### Frontend Integration (TypeScript/SvelteKit)
@@ -1485,7 +1537,8 @@ export async function saveProviderConfig(
     provider: ProviderType,
     config: ProviderConfig
 ): Promise<void> {
-    // Send encrypted to backend
+    // Note: In production, consider client-side encryption before transmission
+    // or use a secure key exchange mechanism to avoid exposing keys in logs
     const response = await fetch('/api/providers/configure', {
         method: 'POST',
         headers: {
@@ -1494,9 +1547,9 @@ export async function saveProviderConfig(
         },
         body: JSON.stringify({
             provider,
-            apiKey: config.apiKey,  // Will be encrypted server-side
+            apiKey: config.apiKey,  // Should be pre-encrypted on client
             model: config.model,
-            settings: config.settings
+            settings: config.settings || {}  // Default to empty object
         })
     });
     
