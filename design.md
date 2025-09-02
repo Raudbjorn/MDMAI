@@ -2267,6 +2267,7 @@ def select_optimal_model(
 #### Security Testing
 ```python
 # tests/test_credential_security.py
+@patch.dict(os.environ, {"ENCRYPTION_KEY": Fernet.generate_key().decode('utf-8')})
 def test_api_key_encryption():
     """Ensure API keys are properly encrypted"""
     manager = CredentialManager()
