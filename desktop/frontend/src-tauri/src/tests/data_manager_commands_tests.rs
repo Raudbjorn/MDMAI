@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::data_manager_commands::*;
+    use crate::data_manager_commands::*;
     use std::sync::Arc;
     use tokio::sync::RwLock;
     use uuid::Uuid;

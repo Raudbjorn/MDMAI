@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use super::super::error_handling::*;
+    use crate::error_handling::*;
     use std::collections::HashMap;
 
     #[test]

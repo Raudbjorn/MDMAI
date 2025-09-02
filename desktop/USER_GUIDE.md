@@ -37,7 +37,7 @@ Welcome to the TTRPG Assistant Desktop Application! This powerful tool helps Dun
 
 ### Windows
 
-1. Download the `.msi` installer from the [releases page](https://github.com/Raudbjorn/MDMAI/releases)
+1. Download the `.msi` installer from the releases page
 2. Double-click the installer file
 3. Follow the installation wizard
 4. The application will be installed to `C:\Program Files\TTRPG Assistant` by default
@@ -394,7 +394,7 @@ Configure AI providers for enhanced features:
 1. Go to Settings → AI Providers
 2. Add API keys for:
    - **Claude (Anthropic)**: Best for creative content
-   - **GPT (OpenAI)**: Good all-around performance  
+   - **GPT (OpenAI)**: Good all-around performance
    - **Gemini (Google)**: Fast and cost-effective
    - **Ollama (Local)**: Privacy-focused, runs locally
 

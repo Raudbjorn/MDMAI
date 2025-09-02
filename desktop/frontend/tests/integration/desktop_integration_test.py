@@ -289,17 +289,20 @@ class TestDesktopAppIntegration:
         # Start app
         assert desktop_app.start_app(), "App should start"
         
-        # Simulate concurrent requests
-        tasks = []
-        for i in range(10):
+        # Create async tasks for concurrent execution
+        async def create_concurrent_note(i):
             task_data = {"name": f"Concurrent Test {i}"}
-            # In real implementation, this would be async
-            response = desktop_app.send_ipc_message("create_note", task_data)
-            tasks.append(response)
+            return desktop_app.send_ipc_message("create_note", task_data)
+        
+        # Run all tasks concurrently using asyncio.gather
+        tasks = [create_concurrent_note(i) for i in range(10)]
+        responses = await asyncio.gather(*tasks, return_exceptions=True)
         
         # All operations should succeed
-        for response in tasks:
-            assert response["success"], "Concurrent operation should succeed"
+        for i, response in enumerate(responses):
+            if isinstance(response, Exception):
+                pytest.fail(f"Concurrent operation {i} failed with exception: {response}")
+            assert response["success"], f"Concurrent operation {i} should succeed"
     
     @pytest.mark.integration
     def test_large_data_handling(self, desktop_app):
