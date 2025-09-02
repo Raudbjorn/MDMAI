@@ -80,7 +80,7 @@ python pdf_analyzer_enhanced.py ./pdfs --pattern "D&D*.pdf"
 
 ```python
 from pathlib import Path
-from src.content_expansion.pdf_analyzer_enhanced import (
+from frontend.src.content_expansion.pdf_analyzer_enhanced import (
     EnhancedPDFAnalyzer, ProcessingConfig
 )
 
