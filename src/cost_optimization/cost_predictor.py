@@ -220,8 +220,8 @@ class PatternRecognizer:
                 variance = sum((v - mean_val) ** 2 for v in values) / len(values)
                 # Check for zero variance to prevent division by zero
                 if variance > 1e-10:  # Use small epsilon instead of exact zero check
+                if variance > 0:
                     correlation /= variance
-                    
                     # Strong correlation indicates periodicity
                     if correlation > 0.5:
                         return True
