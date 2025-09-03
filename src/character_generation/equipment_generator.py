@@ -269,15 +269,15 @@ class EquipmentGenerator:
         equipment = Equipment()
         
         # Generate weapons
-        weapons = cls._generate_weapons(genre, character_class, npc_role, level, wealth_level)
+        weapons = cls._generate_weapons(genre, character_class, npc_role, level, wealth_level, tech_level)
         equipment.weapons = [w.get_display_name() for w in weapons]
         
         # Generate armor
-        armor = cls._generate_armor(genre, character_class, npc_role, level, wealth_level)
+        armor = cls._generate_armor(genre, character_class, npc_role, level, wealth_level, tech_level)
         equipment.armor = [a.get_display_name() for a in armor]
         
         # Generate items
-        items = cls._generate_items(genre, character_class, npc_role, level, wealth_level)
+        items = cls._generate_items(genre, character_class, npc_role, level, wealth_level, tech_level)
         equipment.items = [i.get_display_name() for i in items]
         
         # Generate magical items if appropriate
@@ -343,7 +343,8 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole],
         level: int,
-        wealth_level: str
+        wealth_level: str,
+        tech_level: Optional[TechLevel] = None
     ) -> List[EquipmentItem]:
         """Generate weapons based on context."""
         weapons = []
@@ -368,7 +369,7 @@ class EquipmentGenerator:
                 genre=genre,
                 quality=quality
             )
-            cls._add_weapon_properties(weapon, genre, primary_category)
+            cls._add_weapon_properties(weapon, genre, primary_category, tech_level)
             weapons.append(weapon)
         
         # Generate secondary weapon if needed
@@ -384,7 +385,7 @@ class EquipmentGenerator:
                     genre=genre,
                     quality=quality
                 )
-                cls._add_weapon_properties(weapon, genre, secondary_category)
+                cls._add_weapon_properties(weapon, genre, secondary_category, tech_level)
                 weapons.append(weapon)
         
         return weapons
@@ -396,7 +397,8 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole],
         level: int,
-        wealth_level: str
+        wealth_level: str,
+        tech_level: Optional[TechLevel] = None
     ) -> List[EquipmentItem]:
         """Generate armor based on context."""
         armor_items = []
@@ -415,7 +417,7 @@ class EquipmentGenerator:
                 genre=genre,
                 quality=quality
             )
-            cls._add_armor_properties(armor, genre, armor_category)
+            cls._add_armor_properties(armor, genre, armor_category, tech_level)
             armor_items.append(armor)
         
         # Add shield if appropriate
@@ -439,7 +441,8 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole],
         level: int,
-        wealth_level: str
+        wealth_level: str,
+        tech_level: Optional[TechLevel] = None
     ) -> List[EquipmentItem]:
         """Generate miscellaneous items based on context."""
         items = []
@@ -734,6 +737,35 @@ class EquipmentGenerator:
         
         return category
     
+    # Data-driven armor category mappings
+    ARMOR_CATEGORY_MAP = {
+        TTRPGGenre.FANTASY: {
+            CharacterClass.FIGHTER: "heavy",
+            CharacterClass.PALADIN: "heavy",
+            CharacterClass.RANGER: "light",
+            CharacterClass.ROGUE: "light",
+            CharacterClass.WIZARD: None,  # No armor
+            CharacterClass.SORCERER: None,  # No armor
+            NPCRole.GUARD: "medium",
+            NPCRole.NOBLE: "light",
+            "default": "light"
+        },
+        TTRPGGenre.SCI_FI: {
+            CharacterClass.MARINE: "heavy",
+            "default": "medium"
+        },
+        TTRPGGenre.CYBERPUNK: {
+            NPCRole.CRIMINAL: "clothing",
+            "default": "armor"
+        },
+        TTRPGGenre.POST_APOCALYPTIC: {
+            "default": ["light", "medium", "makeshift"]
+        },
+        TTRPGGenre.WESTERN: {
+            "default": "clothing"
+        }
+    }
+
     @classmethod
     def _get_armor_category(
         cls,
@@ -741,33 +773,25 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole]
     ) -> Optional[str]:
-        """Determine armor category based on class/role."""
-        if genre == TTRPGGenre.FANTASY:
-            if character_class in [CharacterClass.FIGHTER, CharacterClass.PALADIN]:
-                return "heavy"
-            elif character_class in [CharacterClass.RANGER, CharacterClass.ROGUE]:
-                return "light"
-            elif character_class in [CharacterClass.WIZARD, CharacterClass.SORCERER]:
-                return None  # No armor
-            elif npc_role == NPCRole.GUARD:
-                return "medium"
-            elif npc_role == NPCRole.NOBLE:
-                return "light"
-        elif genre == TTRPGGenre.SCI_FI:
-            if character_class == CharacterClass.MARINE:
-                return "heavy"
-            return "medium"
-        elif genre == TTRPGGenre.CYBERPUNK:
-            if npc_role == NPCRole.CRIMINAL:
-                return "clothing"
-            return "armor"
-        elif genre == TTRPGGenre.POST_APOCALYPTIC:
-            return random.choice(["light", "medium", "makeshift"])
-        elif genre == TTRPGGenre.WESTERN:
-            return "clothing"
+        """Determine armor category based on class/role using data-driven approach."""
+        if genre not in cls.ARMOR_CATEGORY_MAP:
+            return "light"  # Fallback default
         
-        # Default to light armor
-        return "light"
+        genre_map = cls.ARMOR_CATEGORY_MAP[genre]
+        
+        # Check character class first
+        if character_class and character_class in genre_map:
+            category = genre_map[character_class]
+            return random.choice(category) if isinstance(category, list) else category
+        
+        # Check NPC role next
+        if npc_role and npc_role in genre_map:
+            category = genre_map[npc_role]
+            return random.choice(category) if isinstance(category, list) else category
+        
+        # Use default for genre
+        default_category = genre_map.get("default", "light")
+        return random.choice(default_category) if isinstance(default_category, list) else default_category
     
     @classmethod
     def _should_have_shield(
@@ -825,7 +849,8 @@ class EquipmentGenerator:
         cls,
         weapon: EquipmentItem,
         genre: TTRPGGenre,
-        category: str
+        category: str,
+        tech_level: Optional[TechLevel] = None
     ) -> None:
         """Add properties to a weapon based on its type."""
         if genre == TTRPGGenre.FANTASY:
@@ -842,7 +867,7 @@ class EquipmentGenerator:
             if category == "energy":
                 weapon.damage = f"{random.randint(2, 4)}d6 energy"
                 weapon.properties.extend(["Energy", "Rechargeable"])
-                weapon.tech_level = TechLevel.HIGH_TECH
+                weapon.tech_level = tech_level or TechLevel.HIGH_TECH
             elif category == "kinetic":
                 weapon.damage = f"{random.randint(2, 3)}d8 kinetic"
                 weapon.properties.extend(["Kinetic", "Armor Piercing"])
@@ -856,7 +881,8 @@ class EquipmentGenerator:
         cls,
         armor: EquipmentItem,
         genre: TTRPGGenre,
-        category: str
+        category: str,
+        tech_level: Optional[TechLevel] = None
     ) -> None:
         """Add properties to armor based on its type."""
         ac_values = {
@@ -877,7 +903,7 @@ class EquipmentGenerator:
         
         if genre == TTRPGGenre.SCI_FI:
             armor.properties.append("Powered")
-            armor.tech_level = TechLevel.HIGH_TECH
+            armor.tech_level = tech_level or TechLevel.HIGH_TECH
         elif genre == TTRPGGenre.POST_APOCALYPTIC:
             armor.properties.append("Makeshift")
     
