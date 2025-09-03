@@ -93,7 +93,7 @@ class Alert:
 class AlertRule:
     """Alert rule configuration."""
     rule_id: str
-    name: str
+    condition: Dict[str, Any]  # e.g., {'metric': 'latency', 'operator': '>', 'value': 2000}
     alert_type: AlertType
     condition: Dict[str, Any]  # Structured condition parameters (e.g., {'metric': 'latency', 'operator': '>', 'value': 2000})
     severity: AlertSeverity
