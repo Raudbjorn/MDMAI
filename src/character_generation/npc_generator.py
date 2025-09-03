@@ -1,11 +1,13 @@
-"""NPC generation system for TTRPG Assistant."""
+"""NPC generation system for TTRPG Assistant with genre support."""
 
 import logging
 import random
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
+from .equipment_generator import EquipmentGenerator, EquipmentQuality, TechLevel
+from .name_generator import NameGenerator, NameStyle
 from .models import (
     NPC,
     CharacterBackground,
@@ -19,6 +21,7 @@ from .models import (
     NPCRole,
     PersonalityTrait,
     StoryHook,
+    TTRPGGenre,
     WeaponType,
     WorldElement,
 )
@@ -279,9 +282,10 @@ class NPCGenerator:
         importance: str = "minor",  # "minor", "supporting", "major"
         party_level: Optional[int] = None,
         backstory_depth: str = "simple",  # "simple", "standard", "detailed"
+        genre: Optional[Union[str, TTRPGGenre]] = None,  # Genre override
     ) -> NPC:
         """
-        Generate a complete NPC.
+        Generate a complete NPC with genre support.
 
         Args:
             system: Game system
@@ -292,6 +296,7 @@ class NPCGenerator:
             importance: NPC importance level
             party_level: Party level for scaling
             backstory_depth: Level of backstory detail
+            genre: Optional genre override
 
         Returns:
             Complete NPC object
@@ -302,13 +307,39 @@ class NPCGenerator:
             if param_errors:
                 raise ValidationError(f"Invalid parameters: {'; '.join(param_errors)}")
 
-        logger.info(f"Generating {importance} NPC with role {role} for {system}")
+        # Determine genre
+        if genre:
+            if isinstance(genre, str):
+                try:
+                    genre_enum = TTRPGGenre(genre.lower())
+                except ValueError:
+                    genre_enum = TTRPGGenre.FANTASY
+            else:
+                genre_enum = genre
+        else:
+            genre_enum = self._determine_genre_from_system(system)
+
+        logger.info(f"Generating {importance} NPC with role {role} for {system} (Genre: {genre_enum.value})")
+
+        # Generate genre-appropriate name if not provided
+        if not name:
+            gender = random.choice(["male", "female", "neutral"])
+            generated_name, name_components = NameGenerator.generate_name(
+                genre=genre_enum,
+                gender=gender,
+                role=NPCRole(role.lower()) if role else None,
+                style=NameStyle.FORMAL if importance == "major" else NameStyle.CASUAL,
+                include_title=importance in ["supporting", "major"],
+                include_nickname=role in ["criminal", "adventurer", "assassin"] if role else False
+            )
+            name = generated_name
 
         # Create base NPC
         npc = NPC(
             system=system,
-            name=name or self._generate_npc_name(role),
+            name=name,
             importance=importance.capitalize(),
+            genre=genre_enum,
         )
 
         # Set role
@@ -345,8 +376,15 @@ class NPCGenerator:
         if importance in ["supporting", "major"]:
             npc.secrets = self._generate_secrets(npc.role, importance)
 
-        # Generate equipment
-        npc.equipment = self._generate_npc_equipment(npc.role, level)
+        # Generate genre-appropriate equipment using the new generator
+        wealth_level = self._determine_wealth_level(npc.role, importance)
+        npc.equipment = EquipmentGenerator.generate_equipment(
+            genre=genre_enum,
+            npc_role=npc.role,
+            level=level,
+            wealth_level=wealth_level,
+            include_magical=importance == "major" and level >= 5
+        )
 
         # Generate skills and proficiencies
         self._generate_npc_skills(npc)
@@ -874,37 +912,63 @@ class NPCGenerator:
 
         return languages
 
-    def _generate_npc_name(self, role: Optional[str]) -> str:
-        """Generate a name appropriate for the NPC role."""
-        # Role-based name styles
-        first_names = {
-            "common": ["Tom", "Mary", "Jack", "Sarah", "Will", "Anne"],
-            "noble": ["Lord Marcus", "Lady Elena", "Sir Reginald", "Dame Victoria"],
-            "criminal": ["Snake", "Whisper", "Red", "Shadow", "Blade"],
-            "scholarly": ["Aldric", "Minerva", "Thaddeus", "Cordelia"],
-        }
-
-        last_names = {
-            "common": ["Miller", "Smith", "Cooper", "Fletcher", "Baker"],
-            "noble": ["Blackstone", "Goldshire", "Ravencrest", "Winterhold"],
-            "criminal": ["the Quick", "One-Eye", "the Silent", "Fingers"],
-            "scholarly": ["the Wise", "of the Tower", "Scrollkeeper", "the Learned"],
-        }
-
-        # Determine name style based on role
-        if role and "noble" in role.lower():
-            style = "noble"
-        elif role and any(x in role.lower() for x in ["criminal", "thief", "assassin"]):
-            style = "criminal"
-        elif role and any(x in role.lower() for x in ["scholar", "mage", "wizard"]):
-            style = "scholarly"
+    def _determine_genre_from_system(self, system: str) -> TTRPGGenre:
+        """Determine genre based on system name."""
+        system_lower = system.lower()
+        
+        if any(term in system_lower for term in ["d&d", "pathfinder", "dungeon", "dragon"]):
+            return TTRPGGenre.FANTASY
+        elif any(term in system_lower for term in ["cyberpunk", "shadowrun", "chrome"]):
+            return TTRPGGenre.CYBERPUNK
+        elif any(term in system_lower for term in ["traveller", "stars", "space", "galaxy"]):
+            return TTRPGGenre.SCI_FI
+        elif any(term in system_lower for term in ["cthulhu", "delta green", "horror"]):
+            return TTRPGGenre.COSMIC_HORROR
+        elif any(term in system_lower for term in ["apocalypse", "fallout", "wasteland"]):
+            return TTRPGGenre.POST_APOCALYPTIC
+        elif any(term in system_lower for term in ["masks", "hero", "super", "marvel", "dc"]):
+            return TTRPGGenre.SUPERHERO
+        elif any(term in system_lower for term in ["deadlands", "western", "frontier"]):
+            return TTRPGGenre.WESTERN
         else:
-            style = "common"
+            return TTRPGGenre.FANTASY
+    
+    def _determine_wealth_level(self, role: NPCRole, importance: str) -> str:
+        """Determine wealth level based on role and importance."""
+        wealthy_roles = [NPCRole.NOBLE, NPCRole.MERCHANT]
+        poor_roles = [NPCRole.COMMONER, NPCRole.CRIMINAL]
+        
+        if role in wealthy_roles:
+            if importance == "major":
+                return "noble"
+            elif importance == "supporting":
+                return "wealthy"
+            else:
+                return "standard"
+        elif role in poor_roles:
+            if importance == "major":
+                return "standard"
+            else:
+                return "poor"
+        else:
+            if importance == "major":
+                return "wealthy"
+            elif importance == "supporting":
+                return "standard"
+            else:
+                return "standard"
 
-        first = random.choice(first_names[style])
-        last = random.choice(last_names[style])
-
-        return f"{first} {last}"
+    def _generate_npc_name(self, role: Optional[str]) -> str:
+        """Legacy method for backward compatibility - use NameGenerator instead."""
+        # This method is kept for backward compatibility but delegates to NameGenerator
+        gender = random.choice(["male", "female", "neutral"])
+        name, _ = NameGenerator.generate_name(
+            genre=TTRPGGenre.FANTASY,
+            gender=gender,
+            role=NPCRole(role.lower()) if role else None,
+            style=NameStyle.FORMAL
+        )
+        return name
 
     def _generate_location(self, role: NPCRole) -> str:
         """Generate an appropriate location for the NPC."""
