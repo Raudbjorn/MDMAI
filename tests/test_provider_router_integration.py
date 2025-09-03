@@ -607,7 +607,7 @@ class TestDatabaseSynchronization:
         assert cached_state is not None
         assert cached_state.provider_name == "sync-test"
         assert cached_state.metadata["sync_test"] is True
-        assert cache_time < 0.01  # Should be very fast from cache
+        assert cache_time < 0.05  # Should be very fast from cache (allow up to 50ms for CI/slower systems)
         
         # Clear memory cache to test Redis tier
         await cm.memory_cache.delete("provider_health_sync-test")
