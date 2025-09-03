@@ -1363,7 +1363,7 @@ class BudgetManager:
                 
                 # Check various limits
                 violation, reason = await self._check_budget_limits(
-                    budget, estimated_cost.total_cost, provider, model
+                    budget, estimated_cost.total_cost, provider, model, user_id, tenant_id
                 )
                 
                 if violation:
@@ -1383,6 +1383,8 @@ class BudgetManager:
         estimated_cost: Decimal,
         provider: ProviderType,
         model: str,
+        user_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> Tuple[bool, Optional[str]]:
         """Check specific budget limits."""
         now = datetime.now(timezone.utc)
@@ -1415,9 +1417,22 @@ class BudgetManager:
         # Provider-specific limits
         provider_key = provider.value
         if provider_key in budget.provider_limits:
-            current_provider = self._usage_tracker._provider_usage.get(provider, Decimal("0"))
+            # Check appropriate provider usage based on budget scope
+            if budget.user_id and user_id:
+                # Per-user provider limit
+                current_provider = self._usage_tracker._user_provider_usage[user_id].get(provider_key, Decimal("0"))
+                scope_desc = f"user {user_id}"
+            elif budget.tenant_id and tenant_id:
+                # Per-tenant provider limit  
+                current_provider = self._usage_tracker._tenant_provider_usage[tenant_id].get(provider_key, Decimal("0"))
+                scope_desc = f"tenant {tenant_id}"
+            else:
+                # Global provider limit
+                current_provider = self._usage_tracker._provider_usage.get(provider, Decimal("0"))
+                scope_desc = "global"
+            
             if current_provider + estimated_cost > budget.provider_limits[provider_key]:
-                return True, f"Provider budget exceeded for {provider_key}"
+                return True, f"Provider budget exceeded for {provider_key} ({scope_desc}): ${current_provider + estimated_cost:.4f} > ${budget.provider_limits[provider_key]:.4f}"
         
         # Model-specific limits
         if model in budget.model_limits:

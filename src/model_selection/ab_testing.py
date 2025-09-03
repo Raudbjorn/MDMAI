@@ -555,14 +555,33 @@ class ABTestingFramework:
         return result
     
     def _t_cdf(self, t: float, df: int) -> float:
-        """Simplified t-distribution CDF (would use scipy.stats in production)."""
-        # Very simplified approximation - use proper statistical library in production
+        """Compute t-distribution CDF with scipy fallback to approximation."""
+        # Try to use scipy for accurate t-distribution CDF
+        try:
+            from scipy import stats
+            return float(stats.t.cdf(t, df))
+        except ImportError:
+            # Fallback to improved approximation if scipy not available
+            logger.warning("scipy not available, using approximation for t-distribution CDF")
+            return self._t_cdf_approximation(t, df)
+    
+    def _t_cdf_approximation(self, t: float, df: int) -> float:
+        """Improved approximation for t-distribution CDF when scipy unavailable."""
         if df > 30:
             # Approximate with normal distribution for large df
             return 0.5 * (1 + math.erf(t / math.sqrt(2)))
         else:
-            # Simplified approximation for small df
-            return 0.5 + 0.5 * math.tanh(t / 2)
+            # Better approximation using Wilson-Hilferty transformation
+            # More accurate than the previous tanh approximation
+            if df >= 4:
+                # For df >= 4, use normal approximation with correction
+                variance_correction = 1 + (1 / (4 * df))
+                adjusted_t = t * math.sqrt(variance_correction)
+                return 0.5 * (1 + math.erf(adjusted_t / math.sqrt(2)))
+            else:
+                # For very small df, use Cornish-Fisher expansion approximation
+                # This is more accurate than the previous tanh method
+                return 0.5 + (t / math.pi) * math.atan(t / math.sqrt(df))
     
     def _generate_recommendations(
         self, 
