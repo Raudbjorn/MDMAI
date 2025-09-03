@@ -288,7 +288,6 @@ class AdvancedTokenCounter:
         except ImportError:
             logger.debug("Anthropic SDK not available")
     
-    @lru_cache(maxsize=1024)
     def _get_cache_key(self, content: str, provider: ProviderType, model: str) -> str:
         """Generate cache key for token counting."""
         # Use first 100 and last 100 chars for key to handle large content
@@ -775,6 +774,10 @@ class EnhancedUsageTracker:
         self._monthly_usage: Dict[str, Decimal] = defaultdict(Decimal)
         self._provider_usage: Dict[ProviderType, Decimal] = defaultdict(Decimal)
         
+        # Per-user/tenant provider usage tracking
+        self._user_provider_usage: Dict[str, Dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        self._tenant_provider_usage: Dict[str, Dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+        
         # Thread safety
         self._lock = asyncio.Lock()
         self._thread_lock = threading.RLock()
@@ -1004,10 +1007,16 @@ class EnhancedUsageTracker:
             if user_id:
                 self._user_usage[user_id]["total"] += cost_breakdown.total_cost
                 self._user_usage[user_id][day_key] += cost_breakdown.total_cost
+                # Track per-user provider usage
+                provider_key = provider.value
+                self._user_provider_usage[user_id][provider_key] += cost_breakdown.total_cost
             
             if tenant_id:
                 self._tenant_usage[tenant_id]["total"] += cost_breakdown.total_cost
                 self._tenant_usage[tenant_id][day_key] += cost_breakdown.total_cost
+                # Track per-tenant provider usage
+                provider_key = provider.value
+                self._tenant_provider_usage[tenant_id][provider_key] += cost_breakdown.total_cost
             
             # Persist periodically
             if len(self._usage_records) % 100 == 0:

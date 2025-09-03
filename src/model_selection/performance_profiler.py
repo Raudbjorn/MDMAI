@@ -239,7 +239,7 @@ class PerformanceBenchmark:
         
         if latencies:
             profile.avg_latency = statistics.mean(latencies)
-            profile.p95_latency = statistics.quantiles(latencies, n=20)[18] if len(latencies) > 20 else max(latencies)
+            profile.p95_latency = statistics.quantiles(latencies, n=20)[19] if len(latencies) > 20 else max(latencies)
         
         if throughputs:
             profile.avg_throughput = statistics.mean(throughputs)

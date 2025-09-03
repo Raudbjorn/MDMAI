@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import aiohttp
@@ -282,19 +283,77 @@ class ProviderPricingConfig:
 class PricingEngine:
     """Main pricing engine coordinating all providers."""
     
-    def __init__(self):
+    def __init__(self, config_path: Optional[Path] = None):
         self.provider_configs = {}  # ProviderType -> ProviderPricingConfig
         self.currency_rates = {'USD': Decimal('1.0')}  # Base currency rates
         self.pricing_cache = {}  # Cache for calculated prices
         self.cache_ttl = 300  # 5 minutes cache TTL
         
-        # Initialize with default pricing
-        self._initialize_default_pricing()
+        # Initialize pricing from configuration file
+        self._load_pricing_from_config(config_path)
         
         logger.info("Pricing Engine initialized")
     
+    def _load_pricing_from_config(self, config_path: Optional[Path] = None) -> None:
+        """Load pricing configuration from JSON file."""
+        if config_path is None:
+            config_path = Path(__file__).parent.parent.parent / "config" / "pricing.json"
+        
+        try:
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+            
+            self._initialize_pricing_from_data(config_data)
+            logger.info("Loaded pricing configuration from file", config_path=str(config_path))
+            
+        except FileNotFoundError:
+            logger.warning("Pricing config file not found, falling back to default pricing", 
+                         config_path=str(config_path))
+            self._initialize_default_pricing()
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse pricing config file", error=str(e))
+            self._initialize_default_pricing()
+    
+    def _initialize_pricing_from_data(self, config_data: Dict[str, Any]) -> None:
+        """Initialize pricing from configuration data."""
+        provider_name_mapping = {
+            'openai': ProviderType.OPENAI,
+            'anthropic': ProviderType.ANTHROPIC,
+            'google': ProviderType.GOOGLE
+        }
+        
+        for provider_name, provider_data in config_data.get('providers', {}).items():
+            provider_type = provider_name_mapping.get(provider_name.lower())
+            if not provider_type:
+                logger.warning("Unknown provider in config", provider=provider_name)
+                continue
+            
+            provider_config = ProviderPricingConfig(provider_type)
+            
+            for model_id, model_data in provider_data.get('models', {}).items():
+                model_pricing = ModelPricingInfo(model_id, provider_type)
+                
+                # Set base prices
+                if 'input_tokens' in model_data:
+                    model_pricing.set_base_price(CostComponent.INPUT_TOKENS, Decimal(model_data['input_tokens']))
+                if 'output_tokens' in model_data:
+                    model_pricing.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal(model_data['output_tokens']))
+                if 'image_processing' in model_data:
+                    model_pricing.set_base_price(CostComponent.IMAGE_PROCESSING, Decimal(model_data['image_processing']))
+                
+                # Add volume discounts
+                for discount in model_data.get('volume_discounts', []):
+                    threshold = Decimal(discount['threshold'])
+                    multiplier = discount['multiplier']
+                    model_pricing.add_volume_discount(threshold, multiplier)
+                
+                provider_config.add_model(model_pricing)
+            
+            self.provider_configs[provider_type] = provider_config
+    
     def _initialize_default_pricing(self) -> None:
-        """Initialize with default pricing for all providers."""
+        """Initialize with default pricing for all providers (fallback)."""
+        logger.info("Initializing default pricing configuration")
         
         # OpenAI Pricing
         openai_config = ProviderPricingConfig(ProviderType.OPENAI)
@@ -303,70 +362,10 @@ class PricingEngine:
         gpt4_turbo = ModelPricingInfo("gpt-4-turbo", ProviderType.OPENAI)
         gpt4_turbo.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.01"))
         gpt4_turbo.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.03"))
-        gpt4_turbo.add_volume_discount(Decimal("1000"), 0.95)  # 5% discount after $1000
-        gpt4_turbo.add_volume_discount(Decimal("5000"), 0.9)   # 10% discount after $5000
+        gpt4_turbo.add_volume_discount(Decimal("1000"), 0.95)
         openai_config.add_model(gpt4_turbo)
         
-        # GPT-4
-        gpt4 = ModelPricingInfo("gpt-4", ProviderType.OPENAI)
-        gpt4.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.03"))
-        gpt4.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.06"))
-        gpt4.add_volume_discount(Decimal("1000"), 0.95)
-        openai_config.add_model(gpt4)
-        
-        # GPT-3.5 Turbo
-        gpt35_turbo = ModelPricingInfo("gpt-3.5-turbo", ProviderType.OPENAI)
-        gpt35_turbo.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.0015"))
-        gpt35_turbo.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.002"))
-        gpt35_turbo.add_volume_discount(Decimal("500"), 0.9)   # 10% discount after $500
-        openai_config.add_model(gpt35_turbo)
-        
         self.provider_configs[ProviderType.OPENAI] = openai_config
-        
-        # Anthropic Pricing
-        anthropic_config = ProviderPricingConfig(ProviderType.ANTHROPIC)
-        
-        # Claude 3 Opus
-        claude_opus = ModelPricingInfo("claude-3-opus-20240229", ProviderType.ANTHROPIC)
-        claude_opus.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.015"))
-        claude_opus.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.075"))
-        claude_opus.add_volume_discount(Decimal("2000"), 0.92)  # 8% discount after $2000
-        anthropic_config.add_model(claude_opus)
-        
-        # Claude 3 Sonnet
-        claude_sonnet = ModelPricingInfo("claude-3-sonnet-20240229", ProviderType.ANTHROPIC)
-        claude_sonnet.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.003"))
-        claude_sonnet.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.015"))
-        claude_sonnet.add_volume_discount(Decimal("1000"), 0.95)
-        anthropic_config.add_model(claude_sonnet)
-        
-        # Claude 3 Haiku
-        claude_haiku = ModelPricingInfo("claude-3-haiku-20240307", ProviderType.ANTHROPIC)
-        claude_haiku.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.00025"))
-        claude_haiku.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.00125"))
-        claude_haiku.add_volume_discount(Decimal("500"), 0.9)
-        anthropic_config.add_model(claude_haiku)
-        
-        self.provider_configs[ProviderType.ANTHROPIC] = anthropic_config
-        
-        # Google Pricing
-        google_config = ProviderPricingConfig(ProviderType.GOOGLE)
-        
-        # Gemini Pro
-        gemini_pro = ModelPricingInfo("gemini-pro", ProviderType.GOOGLE)
-        gemini_pro.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.0005"))
-        gemini_pro.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.0015"))
-        gemini_pro.add_volume_discount(Decimal("1000"), 0.9)   # 10% discount after $1000
-        google_config.add_model(gemini_pro)
-        
-        # Gemini Pro Vision
-        gemini_pro_vision = ModelPricingInfo("gemini-pro-vision", ProviderType.GOOGLE)
-        gemini_pro_vision.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.00025"))
-        gemini_pro_vision.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.0005"))
-        gemini_pro_vision.set_base_price(CostComponent.IMAGE_PROCESSING, Decimal("0.0025"))  # per image
-        google_config.add_model(gemini_pro_vision)
-        
-        self.provider_configs[ProviderType.GOOGLE] = google_config
     
     def register_provider_config(self, config: ProviderPricingConfig) -> None:
         """Register a provider pricing configuration."""

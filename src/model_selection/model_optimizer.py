@@ -787,35 +787,47 @@ class ModelOptimizer:
         recommendation: ModelRecommendation,
         context: Dict[str, Any]
     ) -> bool:
-        """Evaluate if a rule condition is met."""
-        try:
-            # Simple condition evaluation - in production, use a proper expression evaluator
-            # For security, only allow specific patterns
-            
-            if "latency >" in condition:
-                threshold = float(condition.split(">")[1].strip())
-                return recommendation.expected_performance.get("latency", 0) > threshold
-            
-            elif "error_rate >" in condition:
-                threshold = float(condition.split(">")[1].strip())
-                return recommendation.expected_performance.get("error_rate", 0) > threshold
-            
-            elif "cost_per_hour >" in condition and "user_budget" in condition:
-                user_budget = context.get("user_budget", float('inf'))
-                hourly_cost = recommendation.cost_estimate * 60  # Estimate requests per hour
-                return hourly_cost > user_budget
-            
-            elif "provider_health <" in condition:
-                threshold = float(condition.split("<")[1].strip())
-                provider_health = self.provider_health.get(recommendation.provider_type, 1.0)
-                return provider_health < threshold
-            
-            elif "quality_score <" in condition:
-                threshold = float(condition.split("<")[1].strip())
-                return recommendation.expected_performance.get("quality", 0) < threshold
+        """Evaluate if a rule condition is met using safe pattern matching."""
+        import re
         
-        except (ValueError, IndexError, KeyError):
-            logger.warning("Failed to evaluate rule condition", condition=condition)
+        try:
+            # Secure condition evaluation using regex patterns
+            # Only allow predefined safe patterns to prevent injection attacks
+            
+            # Pattern: "metric_name > threshold"
+            gt_pattern = r"^(\w+)\s*>\s*([0-9]+\.?[0-9]*)$"
+            gt_match = re.match(gt_pattern, condition.strip())
+            if gt_match:
+                metric_name, threshold_str = gt_match.groups()
+                threshold = float(threshold_str)
+                
+                if metric_name == "latency":
+                    return recommendation.expected_performance.get("latency", 0) > threshold
+                elif metric_name == "error_rate":
+                    return recommendation.expected_performance.get("error_rate", 0) > threshold
+                elif metric_name == "cost_per_hour":
+                    user_budget = context.get("user_budget", float('inf'))
+                    hourly_cost = recommendation.cost_estimate * 60
+                    return hourly_cost > threshold
+            
+            # Pattern: "metric_name < threshold"
+            lt_pattern = r"^(\w+)\s*<\s*([0-9]+\.?[0-9]*)$"
+            lt_match = re.match(lt_pattern, condition.strip())
+            if lt_match:
+                metric_name, threshold_str = lt_match.groups()
+                threshold = float(threshold_str)
+                
+                if metric_name == "provider_health":
+                    provider_health = self.provider_health.get(recommendation.provider_type, 1.0)
+                    return provider_health < threshold
+                elif metric_name == "quality_score":
+                    return recommendation.expected_performance.get("quality", 0) < threshold
+            
+            logger.warning("Unsupported or invalid rule condition", condition=condition)
+            return False
+        
+        except (ValueError, re.error) as e:
+            logger.warning("Failed to evaluate rule condition", condition=condition, error=str(e))
             return False
         
         return False

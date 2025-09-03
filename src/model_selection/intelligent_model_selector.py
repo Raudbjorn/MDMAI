@@ -22,6 +22,11 @@ from ..ai_providers.models import ProviderType, ModelSpec
 logger = structlog.get_logger(__name__)
 
 
+def format_provider_model(result: 'SelectionResult') -> str:
+    """Helper function to format provider:model consistently."""
+    return f"{result.selected_provider.value}:{result.selected_model}"
+
+
 class SelectionMode(Enum):
     """Model selection modes."""
     
@@ -432,10 +437,6 @@ class IntelligentModelSelector:
         provider, model, score, method = best_candidate
         
         # Build comprehensive reasoning
-        def format_provider_model(result: SelectionResult) -> str:
-            """Helper method to format provider:model consistently."""
-            return f"{result.selected_provider.value}:{result.selected_model}"
-        
         reasoning = [
             f"Hybrid selection using {method} approach",
             f"Context-aware suggested: {format_provider_model(context_result)}",
@@ -541,14 +542,17 @@ class IntelligentModelSelector:
         
         # Check if default is available
         if f"{default_provider.value}:{default_model}" not in self.available_models:
-            # Find any available model
-            if self.available_models:
-                first_model = next(iter(self.available_models.values()))
-                default_provider = first_model.provider_type
-                default_model = first_model.model_id
-            else:
-                # No models available - this shouldn't happen
-                logger.error("No models available for fallback", request_id=request.request_id)
+            # Find any available model with safe iteration
+            try:
+                if self.available_models:
+                    first_model = next(iter(self.available_models.values()))
+                    default_provider = first_model.provider_type
+                    default_model = first_model.model_id
+                else:
+                    raise StopIteration("No models available")
+            except (StopIteration, KeyError, AttributeError) as e:
+                # No models available - this shouldn't happen in normal operation
+                logger.error("No models available for fallback", request_id=request.request_id, error=str(e))
                 default_provider = ProviderType.ANTHROPIC
                 default_model = "claude-3-5-sonnet"
         

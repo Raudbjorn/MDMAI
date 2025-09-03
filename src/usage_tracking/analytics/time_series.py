@@ -14,7 +14,7 @@ import logging
 import math
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 from collections import defaultdict, deque
 from dataclasses import dataclass
 import statistics
@@ -366,7 +366,7 @@ class TimeSeriesAggregator:
     
     def _create_time_series_point(
         self,
-        record: 'UsageRecord',
+        record: UsageRecord,
         metric: str,
         value: float
     ) -> TimeSeriesPoint:

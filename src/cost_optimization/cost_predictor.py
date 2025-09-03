@@ -218,7 +218,8 @@ class PatternRecognizer:
                 correlation /= count
                 # Normalize
                 variance = sum((v - mean_val) ** 2 for v in values) / len(values)
-                if variance > 0:
+                # Check for zero variance to prevent division by zero
+                if variance > 1e-10:  # Use small epsilon instead of exact zero check
                     correlation /= variance
                     
                     # Strong correlation indicates periodicity
@@ -509,7 +510,7 @@ class CostPredictor:
         
         return features
     
-    def train_model(self, user_id: str, horizon: str) -> bool:
+    async def train_model(self, user_id: str, horizon: str) -> bool:
         """Train prediction model for a user and horizon."""
         if user_id not in self.training_data:
             logger.warning(f"No training data for user {user_id}")
@@ -540,17 +541,22 @@ class CostPredictor:
         else:
             model = RandomForestRegressor(n_estimators=100, random_state=42)
         
-        # Train model
-        model.fit(X_scaled, y)
-        self.models[user_id][horizon] = model
+        # Train model in executor to prevent blocking
+        def train_model_sync():
+            model.fit(X_scaled, y)
+            return model
+        
+        loop = asyncio.get_event_loop()
+        trained_model = await loop.run_in_executor(None, train_model_sync)
+        self.models[user_id][horizon] = trained_model
         
         # Evaluate model performance
-        self._evaluate_model_performance(user_id, horizon, X_scaled, y, model)
+        await self._evaluate_model_performance(user_id, horizon, X_scaled, y, trained_model)
         
         logger.info(f"Trained {type(model).__name__} for {user_id} - {horizon} with {len(X)} samples")
         return True
     
-    def _evaluate_model_performance(
+    async def _evaluate_model_performance(
         self,
         user_id: str,
         horizon: str,
@@ -559,19 +565,26 @@ class CostPredictor:
         model
     ) -> None:
         """Evaluate and store model performance metrics."""
-        predictions = model.predict(X)
+        # Run predictions in executor for CPU-intensive operation
+        def evaluate_sync():
+            predictions = model.predict(X)
+            
+            mae = mean_absolute_error(y, predictions)
+            mse = mean_squared_error(y, predictions)
+            rmse = math.sqrt(mse)
+            
+            # MAPE (Mean Absolute Percentage Error)
+            mape = np.mean(np.abs((y - predictions) / np.where(y != 0, y, 1))) * 100
+            
+            # R² score
+            ss_res = np.sum((y - predictions) ** 2)
+            ss_tot = np.sum((y - np.mean(y)) ** 2)
+            r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+            
+            return mae, mse, rmse, mape, r2
         
-        mae = mean_absolute_error(y, predictions)
-        mse = mean_squared_error(y, predictions)
-        rmse = math.sqrt(mse)
-        
-        # MAPE (Mean Absolute Percentage Error)
-        mape = np.mean(np.abs((y - predictions) / np.where(y != 0, y, 1))) * 100
-        
-        # R² score
-        ss_res = np.sum((y - predictions) ** 2)
-        ss_tot = np.sum((y - np.mean(y)) ** 2)
-        r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
+        loop = asyncio.get_event_loop()
+        mae, mse, rmse, mape, r2 = await loop.run_in_executor(None, evaluate_sync)
         
         if user_id not in self.model_performance:
             self.model_performance[user_id] = {}
@@ -610,7 +623,7 @@ class CostPredictor:
             horizon not in self.scalers[user_id]):
             
             # Try to train model
-            if not self.train_model(user_id, horizon):
+            if not await self.train_model(user_id, horizon):
                 return None
         
         model = self.models[user_id][horizon]
@@ -752,7 +765,7 @@ class CostPredictor:
         """Get model performance metrics for a user."""
         return self.model_performance.get(user_id, {})
     
-    def retrain_models_if_needed(self, user_id: str) -> None:
+    async def retrain_models_if_needed(self, user_id: str) -> None:
         """Retrain models if performance has degraded or data is stale."""
         if user_id not in self.model_performance:
             return
@@ -766,12 +779,12 @@ class CostPredictor:
             last_trained = datetime.fromisoformat(performance['last_trained'])
             if (current_time - last_trained).days > 7:
                 logger.info(f"Retraining stale model for {user_id} - {horizon}")
-                self.train_model(user_id, horizon)
+                await self.train_model(user_id, horizon)
             
             # Check if performance is poor (MAPE > 50%)
             elif performance.get('mape', 0) > 50:
                 logger.info(f"Retraining poorly performing model for {user_id} - {horizon}")
-                self.train_model(user_id, horizon)
+                await self.train_model(user_id, horizon)
     
     def get_prediction_insights(self, user_id: str, forecast: CostForecast) -> Dict[str, Any]:
         """Generate insights from cost predictions."""
