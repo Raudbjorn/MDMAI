@@ -128,12 +128,12 @@ The implementation is designed for easy extension:
 ## Files Created/Modified
 
 ### Created:
-- `/home/svnbjrn/code/providers/MDMAI/src/character_generation/name_generator.py` (971 lines)
-- `/home/svnbjrn/code/providers/MDMAI/src/character_generation/equipment_generator.py` (985 lines)
-- `/home/svnbjrn/code/providers/MDMAI/test_genre_generation.py` (283 lines)
+- `src/character_generation/name_generator.py` (971 lines)
+- `src/character_generation/equipment_generator.py` (985 lines)
+- `tests/test_genre_generation.py` (283 lines)
 
 ### Modified:
-- `/home/svnbjrn/code/providers/MDMAI/src/character_generation/npc_generator.py`
+- `src/character_generation/npc_generator.py`
   - Added genre support
   - Integrated new generators
   - Added helper methods
