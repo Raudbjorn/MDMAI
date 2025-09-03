@@ -2,7 +2,7 @@
 
 import logging
 import random
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
@@ -62,6 +62,57 @@ class NPCGenerator:
                 selected.append(trait)
         
         return selected[:count]
+    
+    def _determine_genre(self, system: str, genre_override: Optional[str] = None) -> TTRPGGenre:
+        """Determine the TTRPG genre from system name or override."""
+        if genre_override:
+            try:
+                return TTRPGGenre(genre_override.lower())
+            except ValueError:
+                logger.warning(f"Unknown genre '{genre_override}', falling back to system detection")
+        
+        # System to genre mapping
+        system_lower = system.lower()
+        
+        # Fantasy systems
+        if any(keyword in system_lower for keyword in ['d&d', 'pathfinder', 'fantasy', 'dungeon', 'dragon']):
+            return TTRPGGenre.FANTASY
+        
+        # Sci-Fi systems
+        elif any(keyword in system_lower for keyword in ['traveller', 'star wars', 'starfinder', 'sci-fi', 'science fiction', 'space']):
+            return TTRPGGenre.SCI_FI
+        
+        # Cyberpunk systems
+        elif any(keyword in system_lower for keyword in ['cyberpunk', 'shadowrun', 'cyber']):
+            return TTRPGGenre.CYBERPUNK
+        
+        # Cosmic Horror systems
+        elif any(keyword in system_lower for keyword in ['call of cthulhu', 'cthulhu', 'cosmic horror', 'lovecraft']):
+            return TTRPGGenre.COSMIC_HORROR
+        
+        # Post-Apocalyptic systems
+        elif any(keyword in system_lower for keyword in ['fallout', 'gamma world', 'apocalypse', 'wasteland']):
+            return TTRPGGenre.POST_APOCALYPTIC
+        
+        # Western systems
+        elif any(keyword in system_lower for keyword in ['deadlands', 'western', 'wild west', 'cowboy']):
+            return TTRPGGenre.WESTERN
+        
+        # Superhero systems
+        elif any(keyword in system_lower for keyword in ['mutants & masterminds', 'champions', 'superhero', 'hero']):
+            return TTRPGGenre.SUPERHERO
+        
+        # Modern systems
+        elif any(keyword in system_lower for keyword in ['modern', 'contemporary', 'urban']):
+            return TTRPGGenre.MODERN
+        
+        # Horror systems
+        elif any(keyword in system_lower for keyword in ['horror', 'world of darkness', 'vampire']):
+            return TTRPGGenre.HORROR
+        
+        # Default to generic if no match
+        else:
+            return TTRPGGenre.GENERIC
     
     @classmethod
     def get_npc_motivation(cls, role: NPCRole) -> CharacterMotivation:
@@ -296,7 +347,7 @@ class NPCGenerator:
             importance: NPC importance level
             party_level: Party level for scaling
             backstory_depth: Level of backstory detail
-            genre: Optional genre override
+            genre: Optional genre override (inferred from system if not provided)
 
         Returns:
             Complete NPC object
@@ -728,85 +779,28 @@ class NPCGenerator:
 
         return secrets
 
-    def _generate_npc_equipment(self, role: NPCRole, level: int) -> Equipment:
-        """Generate equipment appropriate for the NPC."""
+    def _generate_npc_equipment(self, role: NPCRole, level: int, genre: TTRPGGenre = TTRPGGenre.FANTASY) -> Equipment:
+        """Generate equipment appropriate for the NPC and genre."""
         equipment = Equipment()
 
-        # Role-specific equipment
-        role_equipment = {
-            NPCRole.GUARD: {
-                "weapons": ["Spear", "Shortsword"],
-                "armor": ["Chain Shirt", "Shield"],
-                "items": ["Guard whistle", "Manacles"],
-            },
-            NPCRole.MERCHANT: {
-                "weapons": ["Dagger"],
-                "armor": [],
-                "items": ["Ledger", "Merchant scales", "Sample goods"],
-            },
-            NPCRole.CRIMINAL: {
-                "weapons": ["Dagger", "Shortsword"],
-                "armor": ["Leather Armor"],
-                "items": ["Thieves' tools", "Dark cloak"],
-            },
-            NPCRole.NOBLE: {
-                "weapons": ["Ornate dagger"],
-                "armor": ["Fine clothes"],
-                "items": ["Signet ring", "Perfume", "Letter of introduction"],
-            },
-            NPCRole.PRIEST: {
-                "weapons": ["Mace"],
-                "armor": ["Robes"],
-                "items": ["Holy symbol", "Prayer book", "Healing herbs"],
-            },
-            NPCRole.SCHOLAR: {
-                "weapons": [],
-                "armor": ["Robes"],
-                "items": ["Books", "Ink and quill", "Magnifying glass"],
-            },
-            NPCRole.INNKEEPER: {
-                "weapons": ["Club"],
-                "armor": ["Apron"],
-                "items": ["Keys", "Coin purse", "Guest ledger"],
-            },
-            NPCRole.SOLDIER: {
-                "weapons": ["Longsword", "Crossbow"],
-                "armor": ["Chain Mail", "Shield"],
-                "items": ["Military insignia", "Rations"],
-            },
-            NPCRole.ADVENTURER: {
-                "weapons": ["Longsword", "Shortbow"],
-                "armor": ["Studded Leather"],
-                "items": ["Rope", "Torch", "Adventuring gear"],
-            },
-            NPCRole.MAGE: {
-                "weapons": ["Staff"],
-                "armor": ["Robes"],
-                "items": ["Spellbook", "Component pouch", "Arcane focus"],
-            },
-            NPCRole.ASSASSIN: {
-                "weapons": ["Poisoned dagger", "Hand crossbow"],
-                "armor": ["Dark leather"],
-                "items": ["Poison vials", "Disguise kit", "Smoke bombs"],
-            },
-            NPCRole.HEALER: {
-                "weapons": ["Staff"],
-                "armor": ["Robes"],
-                "items": ["Healer's kit", "Herbs", "Bandages"],
-            },
-            NPCRole.ARTISAN: {
-                "weapons": ["Hammer"],
-                "armor": ["Leather apron"],
-                "items": ["Artisan's tools", "Raw materials", "Finished goods"],
-            },
-            NPCRole.COMMONER: {
-                "weapons": ["Club", "Knife"],
-                "armor": ["Common clothes"],
-                "items": ["Random trinket", "Family heirloom"],
-            },
+        # Genre-specific base equipment templates
+        genre_equipment_base = {
+            TTRPGGenre.FANTASY: self._get_fantasy_equipment(),
+            TTRPGGenre.SCI_FI: self._get_scifi_equipment(),
+            TTRPGGenre.CYBERPUNK: self._get_cyberpunk_equipment(),
+            TTRPGGenre.WESTERN: self._get_western_equipment(),
+            TTRPGGenre.COSMIC_HORROR: self._get_cosmic_horror_equipment(),
+            TTRPGGenre.POST_APOCALYPTIC: self._get_postapoc_equipment(),
         }
 
-        gear = role_equipment.get(role, role_equipment[NPCRole.COMMONER])
+        # Get genre-appropriate equipment or fall back to fantasy
+        role_equipment = genre_equipment_base.get(genre, self._get_fantasy_equipment())
+
+        gear = role_equipment.get(role, role_equipment.get(NPCRole.COMMONER, {
+            "weapons": ["Knife"],
+            "armor": ["Common clothes"],
+            "items": ["Personal effects"]
+        }))
         equipment.weapons = gear["weapons"].copy()
         equipment.armor = gear["armor"].copy()
         equipment.items = gear["items"].copy()
@@ -1138,3 +1132,263 @@ class NPCGenerator:
         if primary_motivation in fear_map:
             fear = fear_map[primary_motivation]
             npc.backstory.fears.append(f"Fear of {fear.value.replace('_', ' ')}")
+    
+    def _get_fantasy_equipment(self) -> Dict:
+        """Get fantasy-themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Spear", "Shortsword"],
+                "armor": ["Chain Shirt", "Shield"],
+                "items": ["Guard whistle", "Manacles"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Dagger"],
+                "armor": [],
+                "items": ["Ledger", "Merchant scales", "Sample goods"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Dagger", "Shortsword"],
+                "armor": ["Leather Armor"],
+                "items": ["Thieves' tools", "Dark cloak"],
+            },
+            NPCRole.NOBLE: {
+                "weapons": ["Ornate dagger"],
+                "armor": ["Fine clothes"],
+                "items": ["Signet ring", "Perfume", "Letter of introduction"],
+            },
+            NPCRole.PRIEST: {
+                "weapons": ["Mace"],
+                "armor": ["Robes"],
+                "items": ["Holy symbol", "Prayer book", "Healing herbs"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": [],
+                "armor": ["Robes"],
+                "items": ["Books", "Ink and quill", "Magnifying glass"],
+            },
+            NPCRole.INNKEEPER: {
+                "weapons": ["Club"],
+                "armor": ["Apron"],
+                "items": ["Keys", "Coin purse", "Guest ledger"],
+            },
+            NPCRole.SOLDIER: {
+                "weapons": ["Longsword", "Crossbow"],
+                "armor": ["Chain Mail", "Shield"],
+                "items": ["Military insignia", "Rations"],
+            },
+            NPCRole.ADVENTURER: {
+                "weapons": ["Longsword", "Shortbow"],
+                "armor": ["Studded Leather"],
+                "items": ["Rope", "Torch", "Adventuring gear"],
+            },
+            NPCRole.MAGE: {
+                "weapons": ["Staff"],
+                "armor": ["Robes"],
+                "items": ["Spellbook", "Component pouch", "Arcane focus"],
+            },
+            NPCRole.ASSASSIN: {
+                "weapons": ["Poisoned dagger", "Hand crossbow"],
+                "armor": ["Dark leather"],
+                "items": ["Poison vials", "Disguise kit", "Smoke bombs"],
+            },
+            NPCRole.HEALER: {
+                "weapons": ["Staff"],
+                "armor": ["Robes"],
+                "items": ["Healer's kit", "Herbs", "Bandages"],
+            },
+            NPCRole.ARTISAN: {
+                "weapons": ["Hammer"],
+                "armor": ["Leather apron"],
+                "items": ["Artisan's tools", "Raw materials", "Finished goods"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Club", "Knife"],
+                "armor": ["Common clothes"],
+                "items": ["Random trinket", "Family heirloom"],
+            },
+        }
+    
+    def _get_scifi_equipment(self) -> Dict:
+        """Get sci-fi themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Plasma rifle", "Stun baton"],
+                "armor": ["Combat suit", "Energy shield"],
+                "items": ["Comlink", "Restraint cuffs", "Scanner"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Laser pistol"],
+                "armor": ["Civilian clothes"],
+                "items": ["Datapad", "Credit scanner", "Product samples"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Pulse pistol", "Vibroblade"],
+                "armor": ["Stealth suit"],
+                "items": ["Hacking tools", "Fake IDs", "Encrypted comms"],
+            },
+            NPCRole.NOBLE: {
+                "weapons": ["Ceremonial plasma sword"],
+                "armor": ["Noble attire", "Personal shield"],
+                "items": ["House sigil", "Holo-jewelry", "Diplomatic credentials"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": [],
+                "armor": ["Lab coat", "Protective suit"],
+                "items": ["Research datapad", "Scanner", "Sample containers"],
+            },
+            NPCRole.SOLDIER: {
+                "weapons": ["Assault rifle", "Grenades"],
+                "armor": ["Power armor", "Tactical helmet"],
+                "items": ["Military comm", "Field rations", "Med kit"],
+            },
+            NPCRole.ADVENTURER: {  # Using existing role for pilot
+                "weapons": ["Sidearm"],
+                "armor": ["Flight suit", "Helmet"],
+                "items": ["Navigation tools", "Ship keys", "Emergency beacon"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Tool", "Kitchen knife"],
+                "armor": ["Work clothes"],
+                "items": ["Personal comm", "ID card", "Credits"],
+            },
+        }
+    
+    def _get_cyberpunk_equipment(self) -> Dict:
+        """Get cyberpunk themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Smart gun", "Shock baton"],
+                "armor": ["Kevlar vest", "Tactical gear"],
+                "items": ["AR display", "Zip ties", "Neural scanner"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Street pistol", "Mono-knife"],
+                "armor": ["Armored jacket"],
+                "items": ["Hacking deck", "Fake SIN", "Encrypted phone"],
+            },
+            NPCRole.CORPORATE_EXEC: {
+                "weapons": ["Executive pistol"],
+                "armor": ["Business suit", "Subdermal armor"],
+                "items": ["Corporate ID", "Encrypted tablet", "Expense account"],
+            },
+            NPCRole.CRIMINAL: {  # Generic for netrunner
+                "weapons": ["Light pistol"],
+                "armor": ["Street clothes"],
+                "items": ["Cyberdeck", "Data chips", "Ice breakers"],
+            },
+            NPCRole.STREET_SAMURAI: {  # Using existing role for solo
+                "weapons": ["Assault rifle", "Combat knife"],
+                "armor": ["Combat armor"],
+                "items": ["Tactical gear", "Medkit", "Comm unit"],
+            },
+            NPCRole.INFO_BROKER: {  # Using existing role for fixer
+                "weapons": ["Hidden pistol"],
+                "armor": ["Stylish clothes"],
+                "items": ["Contact list", "Burner phones", "Information"],
+            },
+        }
+    
+    def _get_western_equipment(self) -> Dict:
+        """Get western themed equipment by role."""
+        return {
+            NPCRole.GUARD: {  # Using guard for lawman
+                "weapons": ["Six-shooter", "Rifle"],
+                "armor": ["Duster coat", "Badge"],
+                "items": ["Handcuffs", "Wanted posters", "Horse"],
+            },
+            NPCRole.CRIMINAL: {  # Using criminal for outlaw
+                "weapons": ["Pistols", "Shotgun"],
+                "armor": ["Bandana", "Hat"],
+                "items": ["Rope", "Lockpicks", "Horse", "Stolen goods"],
+            },
+            NPCRole.ADVENTURER: {  # Using adventurer for gunslinger
+                "weapons": ["Custom revolvers"],
+                "armor": ["Long coat", "Hat"],
+                "items": ["Gun maintenance kit", "Bullets", "Horse"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Derringer"],
+                "armor": ["Suit"],
+                "items": ["Ledger", "Scale", "Goods", "Wagon"],
+            },
+            NPCRole.PRIEST: {  # Using priest for preacher
+                "weapons": ["Bible"],
+                "armor": ["Black clothes"],
+                "items": ["Bible", "Cross", "Traveling bag"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Shotgun", "Knife"],
+                "armor": ["Work clothes"],
+                "items": ["Tools", "Personal effects", "Horse"],
+            },
+        }
+    
+    def _get_cosmic_horror_equipment(self) -> Dict:
+        """Get cosmic horror themed equipment by role."""
+        return {
+            NPCRole.PRIVATE_INVESTIGATOR: {  # Using existing role
+                "weapons": ["Revolver", "Knife"],
+                "armor": ["Coat", "Hat"],
+                "items": ["Notebook", "Camera", "Magnifying glass", "Flashlight"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": ["Letter opener"],
+                "armor": ["Tweed jacket"],
+                "items": ["Ancient texts", "Translation notes", "Lantern"],
+            },
+            NPCRole.GUARD: {  # Using guard for detective
+                "weapons": ["Police revolver"],
+                "armor": ["Trench coat"],
+                "items": ["Badge", "Handcuffs", "Evidence bag"],
+            },
+            NPCRole.SCHOLAR: {  # Duplicate scholar, but that's OK
+                "weapons": [],
+                "armor": ["Academic robes"],
+                "items": ["Research papers", "Occult books", "Artifacts"],
+            },
+            NPCRole.MERCHANT: {  # Using merchant for journalist
+                "weapons": ["Pistol"],
+                "armor": ["Press badge"],
+                "items": ["Camera", "Notebook", "Press credentials"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Kitchen knife", "Poker"],
+                "armor": ["Common clothes"],
+                "items": ["Personal belongings", "Family photos"],
+            },
+        }
+    
+    def _get_postapoc_equipment(self) -> Dict:
+        """Get post-apocalyptic themed equipment by role."""
+        return {
+            NPCRole.ADVENTURER: {  # Using adventurer for survivor
+                "weapons": ["Makeshift rifle", "Machete"],
+                "armor": ["Scavenged armor", "Gas mask"],
+                "items": ["Radiation detector", "Water purifier", "Scrap"],
+            },
+            NPCRole.CRIMINAL: {  # Using criminal for raider
+                "weapons": ["Sawed-off shotgun", "Spiked bat"],
+                "armor": ["Leather jacket", "Helmet"],
+                "items": ["Loot bag", "Drugs", "Vehicle keys"],
+            },
+            NPCRole.MERCHANT: {  # Using merchant for trader
+                "weapons": ["Pistol"],
+                "armor": ["Caravan gear"],
+                "items": ["Trade goods", "Scales", "Bottlecaps", "Pack brahmin"],
+            },
+            NPCRole.HEALER: {  # Using healer for medic
+                "weapons": ["Scalpel"],
+                "armor": ["Coat", "Gloves"],
+                "items": ["Medical supplies", "Stimpaks", "Surgery tools"],
+            },
+            NPCRole.ARTISAN: {  # Using artisan for mechanic
+                "weapons": ["Wrench", "Rivet gun"],
+                "armor": ["Coveralls"],
+                "items": ["Tools", "Spare parts", "Oil", "Welding gear"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Pipe rifle", "Knife"],
+                "armor": ["Patched clothes"],
+                "items": ["Food", "Water", "Personal trinkets"],
+            },
+        }
