@@ -807,7 +807,7 @@ class ConcurrencyManager:
                 
                 if attempt == operation.max_retries:
                     with self.metrics_lock:
-                        self.metrics["failed_operations"] += 1
+                        self.operation_metrics["failed_operations"] += 1
                     logger.error(f"Operation {operation.operation_id} failed after {attempt + 1} attempts: {e}")
                     raise
                 
@@ -816,7 +816,7 @@ class ConcurrencyManager:
                 await asyncio.sleep(backoff_time)
         
         with self.metrics_lock:
-            self.metrics["successful_operations"] += 1
+            self.operation_metrics["successful_operations"] += 1
         
         return None
     

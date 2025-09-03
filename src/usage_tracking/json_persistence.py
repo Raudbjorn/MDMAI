@@ -311,7 +311,7 @@ class JsonPersistenceManager:
                 final_data = compressed_bytes
                 compression_savings = 1.0 - (len(compressed_bytes) / len(json_bytes))
             elif self.config.compression_type == CompressionType.PICKLE:
-                pickled_data = pickle.dumps(data_to_write)
+                pickled_data = pickle.dumps(records_to_write)
                 final_data = pickled_data
                 compression_savings = 1.0 - (len(pickled_data) / len(json_bytes))
             else:
