@@ -479,8 +479,6 @@ class ComprehensiveUsageSystem:
         await self.metrics_collector.collect_metric("budget_enforcements", float(enforcement_stats["total_checks"]))
         
         # Memory usage (simplified)
-        import psutil
-        import os
         process = psutil.Process(os.getpid())
         memory_usage = process.memory_info().rss / 1024 / 1024  # MB
         await self.metrics_collector.collect_metric("system_memory_usage_mb", memory_usage)
