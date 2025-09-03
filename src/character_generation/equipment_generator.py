@@ -4,15 +4,13 @@ import logging
 import random
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 from .models import (
     CharacterClass,
     Equipment,
-    ItemType,
     NPCRole,
     TTRPGGenre,
-    WeaponType,
 )
 
 logger = logging.getLogger(__name__)
@@ -312,8 +310,12 @@ class EquipmentGenerator:
         else:
             item_pool = cls._get_item_pool(genre)
         
-        # Select random item from pool
-        category = random.choice(list(item_pool.keys()))
+        # Select random item from pool, filtering for non-empty categories
+        valid_categories = [k for k, v in item_pool.items() if v]
+        if not valid_categories:
+            logger.warning(f"No item categories with items found for genre {genre.value}")
+            return EquipmentItem(name="Default Item", item_type=item_type, genre=genre, quality=quality, magical=magical)
+        category = random.choice(valid_categories)
         name = random.choice(item_pool[category])
         
         # Create item
@@ -643,6 +645,36 @@ class EquipmentGenerator:
         
         return EquipmentQuality.COMMON
     
+    # Data-driven weapon category mappings
+    WEAPON_CATEGORY_MAP = {
+        TTRPGGenre.FANTASY: {
+            CharacterClass.FIGHTER: "melee",
+            CharacterClass.PALADIN: "melee",
+            CharacterClass.RANGER: ["light", "ranged"],
+            CharacterClass.ROGUE: ["light", "ranged"],
+            CharacterClass.WIZARD: "simple",
+            CharacterClass.SORCERER: "simple",
+            NPCRole.GUARD: "melee",
+            NPCRole.CRIMINAL: "light",
+            "default": ["melee", "light", "ranged", "simple"]
+        },
+        TTRPGGenre.SCI_FI: {
+            CharacterClass.MARINE: "kinetic",
+            CharacterClass.TECH_SPECIALIST: "energy",
+            "default": ["kinetic", "energy"]
+        },
+        TTRPGGenre.CYBERPUNK: {
+            NPCRole.CRIMINAL: "firearms",
+            "default": ["firearms", "smart"]
+        },
+        TTRPGGenre.POST_APOCALYPTIC: {
+            "default": ["firearms", "melee"]
+        },
+        TTRPGGenre.WESTERN: {
+            "default": ["pistols", "rifles"]
+        }
+    }
+
     @classmethod
     def _get_primary_weapon_category(
         cls,
@@ -650,50 +682,57 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole]
     ) -> Optional[str]:
-        """Determine primary weapon category based on class/role."""
-        if genre == TTRPGGenre.FANTASY:
-            if character_class in [CharacterClass.FIGHTER, CharacterClass.PALADIN]:
-                return "melee"
-            elif character_class in [CharacterClass.RANGER, CharacterClass.ROGUE]:
-                return random.choice(["light", "ranged"])
-            elif character_class in [CharacterClass.WIZARD, CharacterClass.SORCERER]:
-                return "simple"
-            elif npc_role == NPCRole.GUARD:
-                return "melee"
-            elif npc_role == NPCRole.CRIMINAL:
-                return "light"
-        elif genre == TTRPGGenre.SCI_FI:
-            if character_class == CharacterClass.MARINE:
-                return "kinetic"
-            elif character_class == CharacterClass.TECH_SPECIALIST:
-                return "energy"
-        elif genre == TTRPGGenre.CYBERPUNK:
-            if npc_role == NPCRole.CRIMINAL:
-                return "firearms"
-            return random.choice(["firearms", "smart"])
-        elif genre == TTRPGGenre.POST_APOCALYPTIC:
-            return random.choice(["firearms", "melee"])
-        elif genre == TTRPGGenre.WESTERN:
-            return random.choice(["pistols", "rifles"])
+        """Determine primary weapon category based on class/role using data-driven approach."""
+        if genre not in cls.WEAPON_CATEGORY_MAP:
+            # Fallback to first available category from pool
+            weapon_pool = cls._get_weapon_pool(genre)
+            return list(weapon_pool.keys())[0] if weapon_pool else None
         
-        # Default to first available category
+        genre_map = cls.WEAPON_CATEGORY_MAP[genre]
+        
+        # Check character class first
+        if character_class and character_class in genre_map:
+            category = genre_map[character_class]
+            return random.choice(category) if isinstance(category, list) else category
+        
+        # Check NPC role next
+        if npc_role and npc_role in genre_map:
+            category = genre_map[npc_role]
+            return random.choice(category) if isinstance(category, list) else category
+        
+        # Use default for genre
+        default_categories = genre_map.get("default", [])
+        if default_categories:
+            return random.choice(default_categories)
+        
+        # Final fallback
         weapon_pool = cls._get_weapon_pool(genre)
         return list(weapon_pool.keys())[0] if weapon_pool else None
     
+    # Data-driven secondary weapon category mappings
+    SECONDARY_WEAPON_MAP = {
+        TTRPGGenre.FANTASY: "light",
+        TTRPGGenre.SCI_FI: "melee", 
+        TTRPGGenre.CYBERPUNK: "melee",
+        TTRPGGenre.POST_APOCALYPTIC: ["melee", "explosive"],  # weighted choice
+        TTRPGGenre.WESTERN: "melee"
+    }
+
     @classmethod
     def _get_secondary_weapon_category(cls, genre: TTRPGGenre) -> Optional[str]:
-        """Determine secondary weapon category."""
-        if genre == TTRPGGenre.FANTASY:
-            return "light"
-        elif genre == TTRPGGenre.SCI_FI:
-            return "melee"
-        elif genre == TTRPGGenre.CYBERPUNK:
-            return "melee"
-        elif genre == TTRPGGenre.POST_APOCALYPTIC:
-            return "melee" if random.random() < 0.7 else "explosive"
-        elif genre == TTRPGGenre.WESTERN:
-            return "melee"
-        return None
+        """Determine secondary weapon category using data-driven approach."""
+        if genre not in cls.SECONDARY_WEAPON_MAP:
+            return None
+        
+        category = cls.SECONDARY_WEAPON_MAP[genre]
+        if isinstance(category, list):
+            # For POST_APOCALYPTIC, use weighted choice (70% melee, 30% explosive)
+            if genre == TTRPGGenre.POST_APOCALYPTIC:
+                return "melee" if random.random() < 0.7 else "explosive"
+            else:
+                return random.choice(category)
+        
+        return category
     
     @classmethod
     def _get_armor_category(

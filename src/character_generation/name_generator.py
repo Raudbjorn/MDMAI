@@ -354,8 +354,8 @@ class NameGenerator:
         # Apply race modifications if applicable
         if race and race in cls.RACE_NAME_MODIFIERS:
             modifiers = cls.RACE_NAME_MODIFIERS[race]
-                if "suffixes" in modifiers:
-                    name = name + random.choice(modifiers["suffixes"])
+            if "suffixes" in modifiers:
+                name = name + random.choice(modifiers["suffixes"])
         
         return name
     

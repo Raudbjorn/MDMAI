@@ -311,6 +311,7 @@ class NPCGenerator:
         if genre:
             if isinstance(genre, str):
                 try:
+                    genre_enum = TTRPGGenre(genre.upper())
                 except ValueError:
                     logger.warning(f"Invalid genre string '{genre}'. Defaulting to FANTASY.")
                     genre_enum = TTRPGGenre.FANTASY
