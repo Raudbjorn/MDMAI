@@ -432,14 +432,18 @@ class IntelligentModelSelector:
         provider, model, score, method = best_candidate
         
         # Build comprehensive reasoning
+        def format_provider_model(result: SelectionResult) -> str:
+            """Helper method to format provider:model consistently."""
+            return f"{result.selected_provider.value}:{result.selected_model}"
+        
         reasoning = [
             f"Hybrid selection using {method} approach",
-            f"Context-aware suggested: {context_result.selected_provider.value}:{context_result.selected_model}",
-            f"Optimization suggested: {optimization_result.selected_provider.value}:{optimization_result.selected_model}"
+            f"Context-aware suggested: {format_provider_model(context_result)}",
+            f"Optimization suggested: {format_provider_model(optimization_result)}"
         ]
         
         if decision_tree_result:
-            reasoning.append(f"Decision tree suggested: {decision_tree_result.selected_provider.value}:{decision_tree_result.selected_model}")
+            reasoning.append(f"Decision tree suggested: {format_provider_model(decision_tree_result)}")
         
         return SelectionResult(
             request_id=request.request_id,

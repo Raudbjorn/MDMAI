@@ -243,8 +243,8 @@ class UsagePredictor:
             'output_tokens': record.get('output_tokens', 0),
             'cost': record.get('cost', 0.0),
             'latency': record.get('latency_ms', 0.0),
-            'hour': datetime.fromtimestamp(record.get('timestamp', time.time())).hour,
-            'day_of_week': datetime.fromtimestamp(record.get('timestamp', time.time())).weekday(),
+            'hour': record.get('timestamp', datetime.now()).hour,
+            'day_of_week': record.get('timestamp', datetime.now()).weekday(),
             'success': record.get('success', True)
         })
         

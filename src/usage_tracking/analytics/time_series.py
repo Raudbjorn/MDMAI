@@ -364,6 +364,19 @@ class TimeSeriesAggregator:
         
         return dict(groups)
     
+    def _create_time_series_point(
+        self,
+        record: 'UsageRecord',
+        metric: str,
+        value: float
+    ) -> TimeSeriesPoint:
+        """Helper method to create time series points with common parameters."""
+        return TimeSeriesPoint(
+            timestamp=record.timestamp,
+            value=value,
+            metadata={"metric": metric, "record_id": record.record_id}
+        )
+    
     async def _distribute_records_to_buckets(
         self, 
         records: List[UsageRecord], 
@@ -371,24 +384,10 @@ class TimeSeriesAggregator:
     ) -> None:
         """Distribute records into appropriate time buckets."""
         for record in records:
-            # Create time series points for different metrics
-            cost_point = TimeSeriesPoint(
-                timestamp=record.timestamp,
-                value=record.cost_usd,
-                metadata={"metric": "cost", "record_id": record.record_id}
-            )
-            
-            token_point = TimeSeriesPoint(
-                timestamp=record.timestamp,
-                value=record.token_count,
-                metadata={"metric": "tokens", "record_id": record.record_id}
-            )
-            
-            request_point = TimeSeriesPoint(
-                timestamp=record.timestamp,
-                value=1,  # Count of requests
-                metadata={"metric": "requests", "record_id": record.record_id}
-            )
+            # Create time series points for different metrics using helper
+            cost_point = self._create_time_series_point(record, "cost", record.cost_usd)
+            token_point = self._create_time_series_point(record, "tokens", record.token_count)
+            request_point = self._create_time_series_point(record, "requests", 1)
             
             # Find appropriate bucket
             for bucket in buckets:

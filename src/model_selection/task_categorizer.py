@@ -384,7 +384,7 @@ class TaskCategorizer:
     def categorize_task(
         self,
         user_input: str,
-        context: Optional[Dict[str, any]] = None
+        context: Optional[Dict[str, Any]] = None
     ) -> Tuple[TTRPGTaskType, float]:
         """Categorize a user input into a TTRPG task type.
         
@@ -436,7 +436,7 @@ class TaskCategorizer:
     def _apply_context_adjustments(
         self,
         scores: Dict[TTRPGTaskType, float],
-        context: Dict[str, any]
+        context: Dict[str, Any]
     ) -> Dict[TTRPGTaskType, float]:
         """Apply context-based adjustments to task scores."""
         adjusted_scores = scores.copy()

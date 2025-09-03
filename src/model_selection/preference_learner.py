@@ -217,8 +217,9 @@ class PreferenceLearner:
         
         # Infer preferences from response characteristics
         if feedback.response_text:
-            response_length = len(feedback.response_text.split())
-            creativity_indicators = len([word for word in feedback.response_text.lower().split() 
+            words = feedback.response_text.lower().split()
+            response_length = len(words)
+            creativity_indicators = len([word for word in words
                                        if word in ["creative", "imaginative", "unique", "innovative", "original"]])
             
             # Update detail preference based on response length and feedback

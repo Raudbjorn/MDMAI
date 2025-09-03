@@ -336,8 +336,15 @@ class SemanticCache:
                 # Vectorizer is already fitted
                 embedding = self.tfidf_vectorizer.transform([combined_text])
             else:
-                # Fit vectorizer with current text (not ideal but fallback)
-                embedding = self.tfidf_vectorizer.fit_transform([combined_text])
+                # Use a minimal corpus for initial fitting to avoid single-document issues
+                sample_corpus = [
+                    combined_text,
+                    "sample text for better vectorization",
+                    "another example to improve vocabulary",
+                    "additional content for TF-IDF training"
+                ]
+                self.tfidf_vectorizer.fit(sample_corpus)
+                embedding = self.tfidf_vectorizer.transform([combined_text])
             
             return embedding.toarray()[0]
             

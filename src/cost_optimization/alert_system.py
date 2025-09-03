@@ -153,7 +153,11 @@ class TrendAnalyzer:
         sum_xy = sum(x * y for x, y in zip(x_values, y_values))
         sum_x2 = sum(x * x for x in x_values)
         
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x)
+        denominator = (n * sum_x2 - sum_x * sum_x)
+        if denominator == 0:
+            return TrendDirection.STABLE
+        
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
         
         # Calculate coefficient of variation for volatility
         if len(y_values) > 1:

@@ -664,12 +664,14 @@ class CostCalculationEngine:
         # Direct match
         if model in provider_pricing:
             return provider_pricing[model]
-        
-        # Partial match
-        for model_key, pricing in provider_pricing.items():
-            if model_key in model or model in model_key:
-                return pricing
-        
+
+        # Partial match (e.g., "gpt-4-turbo" for "gpt-4-turbo-2024-04-09")
+        # Sort keys by length descending to match more specific names first.
+        sorted_keys = sorted(provider_pricing.keys(), key=len, reverse=True)
+        for model_key in sorted_keys:
+            if model.startswith(model_key):
+                return provider_pricing[model_key]
+
         return {}
     
     def _apply_discounts(
@@ -771,6 +773,7 @@ class EnhancedUsageTracker:
         self._hourly_usage: Dict[str, Decimal] = defaultdict(Decimal)
         self._daily_usage: Dict[str, Decimal] = defaultdict(Decimal)
         self._monthly_usage: Dict[str, Decimal] = defaultdict(Decimal)
+        self._provider_usage: Dict[ProviderType, Decimal] = defaultdict(Decimal)
         
         # Thread safety
         self._lock = asyncio.Lock()
@@ -995,6 +998,7 @@ class EnhancedUsageTracker:
             self._hourly_usage[hour_key] += cost_breakdown.total_cost
             self._daily_usage[day_key] += cost_breakdown.total_cost
             self._monthly_usage[month_key] += cost_breakdown.total_cost
+            self._provider_usage[provider] += cost_breakdown.total_cost
             
             # Update user/tenant usage
             if user_id:
