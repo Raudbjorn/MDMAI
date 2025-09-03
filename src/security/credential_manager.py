@@ -25,7 +25,7 @@ from structlog import get_logger
 from returns.result import Result, Success, Failure
 
 # Import our security components
-from .credential_encryption import CredentialEncryptionService, EncryptedCredential, EncryptionConfig, SecureMemory
+from .credential_encryption import CredentialEncryption, EncryptedCredential, EncryptionConfig, SecureMemory
 from .credential_storage import CredentialStorageManager, CredentialMetadata, StorageConfig
 from .credential_validator import CredentialValidationService, ValidationResult
 from .credential_rotation import CredentialRotationService, RotationPolicy, RotationReason, RotationRecord
@@ -110,7 +110,7 @@ class SecureCredentialManager:
         self.config = config
         
         # Initialize core components
-        self.encryption_service = CredentialEncryptionService(config.encryption_config)
+        self.encryption_service = CredentialEncryption(config.encryption_config)
         self.storage_manager = CredentialStorageManager(config.storage_backend, config.storage_config)
         
         # Initialize optional components
@@ -248,7 +248,7 @@ class SecureCredentialManager:
             credential_id = f"{provider_type.value}_{user_id}_{secrets.token_hex(8)}"
             
             # Encrypt the credential
-            encrypt_result = self.encryption_service.encrypt_credential(
+            encrypt_result = self.encryption_service.encrypt(
                 api_key, user_id, provider_type.value
             )
             

@@ -113,7 +113,7 @@ if api_key_result.is_success():
     )
 ```
 
-### 4. List and Search Credentials
+### 4. List Credentials
 
 ```python
 # List all credentials for a user
@@ -240,13 +240,6 @@ Get provider configuration for AI system integration.
 
 **Returns:** `Result[ProviderConfig, str]` - Provider configuration or error
 
-#### `get_all_provider_configs(user_id)`
-Get configurations for all providers a user has credentials for.
-
-**Parameters:**
-- `user_id` (str): User identifier
-
-**Returns:** `Result[List[ProviderConfig], str]` - List of configurations
 
 ### Advanced Methods
 
@@ -456,19 +449,6 @@ class CustomProviderRule(ValidationRule):
 
 ### Performance Optimization
 
-#### Batch Operations
-
-```python
-# Batch credential storage
-credentials_to_store = [
-    ("api_key_1", ProviderType.ANTHROPIC, "user1"),
-    ("api_key_2", ProviderType.OPENAI, "user2"),
-    # ... more credentials
-]
-
-results = await manager.batch_store_credentials(credentials_to_store)
-```
-
 #### Caching
 
 ```python
@@ -487,12 +467,13 @@ config = CredentialManagerConfig(
 ```python
 from src.ai_providers.manager import AIProviderManager
 
-# Get all provider configs for a user
-provider_configs = await credential_manager.get_all_provider_configs(user_id)
+# Get provider config for specific provider
+config_result = await credential_manager.get_provider_config(ProviderType.ANTHROPIC, user_id)
 
-# Initialize AI provider manager
+# Initialize AI provider manager with retrieved config
 ai_manager = AIProviderManager()
-await ai_manager.initialize(provider_configs.unwrap())
+if config_result.is_success():
+    await ai_manager.initialize(config_result.unwrap())
 
 # Use AI providers as normal
 response = await ai_manager.generate_text(

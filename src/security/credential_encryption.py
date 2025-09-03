@@ -329,6 +329,39 @@ class SecureMemory:
         return secrets.token_bytes(length)
 
 
+def calculate_password_entropy(password: str) -> float:
+    """
+    Calculate the Shannon entropy of a password in bits.
+    
+    Args:
+        password: Password string to evaluate
+        
+    Returns:
+        Entropy in bits (higher is better, 60+ bits recommended)
+    """
+    import math
+    
+    if not password:
+        return 0.0
+    
+    # Count character frequencies
+    char_counts = {}
+    for char in password:
+        char_counts[char] = char_counts.get(char, 0) + 1
+    
+    # Calculate Shannon entropy
+    entropy = 0.0
+    length = len(password)
+    
+    for count in char_counts.values():
+        probability = count / length
+        if probability > 0:
+            entropy -= probability * math.log2(probability)
+    
+    # Return total bits of entropy (entropy per character * length)
+    return entropy * length
+
+
 class CredentialEncryption:
     """
     Production-ready credential encryption service with AES-256-GCM.
@@ -397,9 +430,17 @@ class CredentialEncryption:
             if len(password) < MIN_PASSWORD_LENGTH:
                 return Failure(f"Master password must be at least {MIN_PASSWORD_LENGTH} characters")
             
-            # Check password entropy (basic check)
-            if len(set(password)) < 6:
-                return Failure("Password has insufficient character diversity")
+            # Check password entropy using Shannon entropy calculation
+            # OWASP recommends minimum 60 bits of entropy for sensitive systems
+            min_entropy_bits = 50.0  # Slightly lower for usability, but still secure
+            actual_entropy = calculate_password_entropy(password)
+            
+            if actual_entropy < min_entropy_bits:
+                return Failure(
+                    f"Password has insufficient entropy ({actual_entropy:.1f} bits). "
+                    f"Minimum {min_entropy_bits} bits required. "
+                    "Use a longer password with mixed characters."
+                )
             
             # Generate master salt if not exists
             if self._master_salt is None:
@@ -473,7 +514,7 @@ class CredentialEncryption:
             KeyDerivationError: If key derivation fails
         """
         try:
-            if self.config.use_scrypt_for_master and password == bytes(self._master_key):
+            if self.config.use_scrypt_for_master and SecureMemory.secure_compare(password, bytes(self._master_key)):
                 # Use Scrypt for master key (memory-hard)
                 kdf = Scrypt(
                     salt=salt,
