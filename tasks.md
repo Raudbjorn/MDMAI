@@ -1018,7 +1018,7 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 24.6: Generator Integration
 **Requirements:** REQ-006, REQ-007, REQ-012
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 **Branch:** task-24-6-generator-integration
 - [x] Update character_generator.py with genre support
 - [x] Enhance backstory_generator.py with genre templates
@@ -1028,12 +1028,12 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 24.7: MCP Tool Updates
 **Requirements:** REQ-004, REQ-012
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 - [x] Add genre parameter to generate_character tool
-- [ ] Update generate_npc with genre filtering
-- [ ] Create list_available_genres tool
-- [ ] Add get_genre_content tool
-- [ ] Update search tools for genre filtering
+- [x] Update generate_npc with genre filtering
+- [x] Create list_available_genres tool
+- [x] Add get_genre_content tool
+- [x] Update search tools for genre filtering
 
 ### Task 24.8: Testing and Documentation
 **Requirements:** REQ-012, NFR-005
@@ -1144,7 +1144,7 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 25.4: Implement Usage Tracking and Cost Management
 **Requirements:** REQ-013, REQ-020
-**Status:** PLANNED
+**Status:** READY FOR DEV
 - [ ] Create token counting system for all providers
 - [ ] Build real-time cost calculation engine
 - [ ] Implement per-user usage tracking with local JSON files or ChromaDB
