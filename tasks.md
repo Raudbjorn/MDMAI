@@ -1018,21 +1018,21 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 24.6: Generator Integration
 **Requirements:** REQ-006, REQ-007, REQ-012
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 - [x] Update character_generator.py with genre support
 - [x] Enhance backstory_generator.py with genre templates
-- [ ] Modify npc_generator.py for diverse settings
-- [ ] Create genre-specific name generators
-- [ ] Build equipment selection by genre
+- [x] Modify npc_generator.py for diverse settings
+- [x] Create genre-specific name generators
+- [x] Build equipment selection by genre
 
 ### Task 24.7: MCP Tool Updates
 **Requirements:** REQ-004, REQ-012
-**Status:** IN_PROGRESS
+**Status:** COMPLETED
 - [x] Add genre parameter to generate_character tool
-- [ ] Update generate_npc with genre filtering
-- [ ] Create list_available_genres tool
-- [ ] Add get_genre_content tool
-- [ ] Update search tools for genre filtering
+- [x] Update generate_npc with genre filtering
+- [x] Create list_available_genres tool
+- [x] Add get_genre_content tool
+- [x] Update search tools for genre filtering
 
 ### Task 24.8: Testing and Documentation
 **Requirements:** REQ-012, NFR-005
