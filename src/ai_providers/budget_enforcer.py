@@ -608,8 +608,11 @@ class BudgetEnforcer:
             
             if can_process:
                 processable_requests.append((request, estimated_cost))
+                # Update local tracking AND immediately reserve in usage tracker to prevent race conditions
                 current_daily += estimated_cost
                 current_monthly += estimated_cost
+                # Reserve the cost immediately to prevent other threads from overcommitting
+                await self.usage_tracker.reserve_budget(user_id, estimated_cost)
             else:
                 remaining_requests.append((request, estimated_cost))
         

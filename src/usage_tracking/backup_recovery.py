@@ -929,7 +929,7 @@ class RecoveryEngine:
                 target_file.parent.mkdir(parents=True, exist_ok=True)
                 
                 # Copy file (would decompress if needed)
-                shutil.copy2(file_path, target_file)
+                await asyncio.to_thread(shutil.copy2, file_path, target_file)
         
         logger.debug("JSON files recovered", target_dir=str(target_dir))
     
@@ -952,7 +952,7 @@ class RecoveryEngine:
                 target_file = target_dir / relative_path
                 target_file.parent.mkdir(parents=True, exist_ok=True)
                 
-                shutil.copy2(file_path, target_file)
+                await asyncio.to_thread(shutil.copy2, file_path, target_file)
         
         logger.debug("Metadata recovered", target_dir=str(target_dir))
     

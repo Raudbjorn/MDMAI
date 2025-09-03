@@ -826,7 +826,7 @@ class DataRetentionManager:
                     # Delete file from filesystem
                     file_path = Path(item["data"]["path"])
                     if file_path.exists():
-                        file_path.unlink()
+                        await asyncio.to_thread(file_path.unlink)
                 
                 result["records_processed"] += 1
                 result["size_freed_bytes"] += item.get("size_bytes", 0)

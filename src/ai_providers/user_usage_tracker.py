@@ -152,8 +152,10 @@ class UserUsageTracker:
             # Load user profiles
             profiles_file = self.storage_path / "user_profiles.json"
             if profiles_file.exists():
-                with open(profiles_file, 'r') as f:
-                    profiles_data = json.load(f)
+                profiles_data = await asyncio.to_thread(
+                    self._read_json_file,
+                    profiles_file
+                )
                     for user_data in profiles_data.get("users", []):
                         profile = UserProfile(
                             user_id=user_data["user_id"],
@@ -171,8 +173,10 @@ class UserUsageTracker:
             # Load spending limits
             limits_file = self.storage_path / "spending_limits.json"
             if limits_file.exists():
-                with open(limits_file, 'r') as f:
-                    limits_data = json.load(f)
+                limits_data = await asyncio.to_thread(
+                    self._read_json_file,
+                    limits_file
+                )
                     for limit_data in limits_data.get("limits", []):
                         limits = UserSpendingLimits(
                             user_id=limit_data["user_id"],
@@ -206,8 +210,10 @@ class UserUsageTracker:
             # Load daily usage
             daily_file = self.storage_path / "daily_usage.json"
             if daily_file.exists():
-                with open(daily_file, 'r') as f:
-                    daily_data = json.load(f)
+                daily_data = await asyncio.to_thread(
+                    self._read_json_file,
+                    daily_file
+                )
                     for user_id, user_daily in daily_data.items():
                         if user_id not in self.daily_usage:
                             self.daily_usage[user_id] = {}
@@ -232,8 +238,10 @@ class UserUsageTracker:
             # Load monthly usage (similar structure)
             monthly_file = self.storage_path / "monthly_usage.json"
             if monthly_file.exists():
-                with open(monthly_file, 'r') as f:
-                    monthly_data = json.load(f)
+                monthly_data = await asyncio.to_thread(
+                    self._read_json_file,
+                    monthly_file
+                )
                     for user_id, user_monthly in monthly_data.items():
                         if user_id not in self.monthly_usage:
                             self.monthly_usage[user_id] = {}
@@ -513,8 +521,11 @@ class UserUsageTracker:
                 profiles_data["users"].append(user_data)
             
             profiles_file = self.storage_path / "user_profiles.json"
-            with open(profiles_file, 'w') as f:
-                json.dump(profiles_data, f, indent=2)
+            await asyncio.to_thread(
+                self._write_json_file,
+                profiles_file,
+                profiles_data
+            )
                 
         except Exception as e:
             logger.error("Failed to save user profiles", error=str(e))
@@ -545,8 +556,11 @@ class UserUsageTracker:
                 limits_data["limits"].append(limit_data)
             
             limits_file = self.storage_path / "spending_limits.json"
-            with open(limits_file, 'w') as f:
-                json.dump(limits_data, f, indent=2)
+            await asyncio.to_thread(
+                self._write_json_file,
+                limits_file,
+                limits_data
+            )
                 
         except Exception as e:
             logger.error("Failed to save spending limits", error=str(e))
@@ -571,7 +585,7 @@ class UserUsageTracker:
             logger.error("Failed to flush pending records", error=str(e))
     
     async def _save_usage_aggregations(self) -> None:
-        """Save usage aggregations to JSON files."""
+        """Save usage aggregations to JSON files using async I/O."""
         try:
             # Save daily usage
             daily_data = {}
@@ -592,9 +606,13 @@ class UserUsageTracker:
                         "unique_sessions": list(agg.unique_sessions) if isinstance(agg.unique_sessions, set) else agg.unique_sessions
                     }
             
+            # Save daily usage using async file I/O
             daily_file = self.storage_path / "daily_usage.json"
-            with open(daily_file, 'w') as f:
-                json.dump(daily_data, f, indent=2)
+            await asyncio.to_thread(
+                self._write_json_file,
+                daily_file,
+                daily_data
+            )
             
             # Save monthly usage (similar structure)
             monthly_data = {}
@@ -615,12 +633,26 @@ class UserUsageTracker:
                         "unique_sessions": list(agg.unique_sessions) if isinstance(agg.unique_sessions, set) else agg.unique_sessions
                     }
             
+            # Save monthly usage using async file I/O
             monthly_file = self.storage_path / "monthly_usage.json"
-            with open(monthly_file, 'w') as f:
-                json.dump(monthly_data, f, indent=2)
+            await asyncio.to_thread(
+                self._write_json_file,
+                monthly_file,
+                monthly_data
+            )
                 
         except Exception as e:
             logger.error("Failed to save usage aggregations", error=str(e))
+    
+    def _write_json_file(self, file_path, data):
+        """Synchronous helper method for writing JSON files."""
+        with open(file_path, 'w') as f:
+            json.dump(data, f, indent=2)
+    
+    def _read_json_file(self, file_path):
+        """Synchronous helper method for reading JSON files."""
+        with open(file_path, 'r') as f:
+            return json.load(f)
     
     async def _save_profile_to_chromadb(self, profile: UserProfile) -> None:
         """Save user profile to ChromaDB."""

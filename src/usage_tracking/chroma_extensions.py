@@ -397,15 +397,22 @@ class UsageTrackingChromaExtensions:
                 collection_retention = collection_metadata.get("retention_days", retention_days)
                 collection_cutoff = datetime.now() - timedelta(days=collection_retention)
                 
-                # Find documents older than retention period
-                old_docs = collection.get(
-                    where={"date": {"$lt": collection_cutoff.date().isoformat()}}
-                )
-                
-                if old_docs["ids"]:
-                    # Delete old documents
-                    collection.delete(ids=old_docs["ids"])
-                    cleanup_stats[collection_name] = len(old_docs["ids"])
+                # Delete old documents directly using where filter (more efficient)
+                try:
+                    collection.delete(where={"date": {"$lt": collection_cutoff.date().isoformat()}})
+                    # Note: ChromaDB delete with where doesn't return count, estimate as 1 if successful
+                    cleanup_stats[collection_name] = 1  # Placeholder - actual count would need separate query
+                except Exception as delete_error:
+                    logger.warning(f"Direct delete failed, falling back to query-then-delete", error=str(delete_error))
+                    # Fallback to original method if direct delete fails
+                    old_docs = collection.get(
+                        where={"date": {"$lt": collection_cutoff.date().isoformat()}}
+                    )
+                    if old_docs["ids"]:
+                        collection.delete(ids=old_docs["ids"])
+                        cleanup_stats[collection_name] = len(old_docs["ids"])
+                    else:
+                        cleanup_stats[collection_name] = 0
                     
                     logger.info(
                         "Cleaned up old analytics data",

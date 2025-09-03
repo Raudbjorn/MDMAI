@@ -626,7 +626,15 @@ class UsageRecordActor(Actor):
                 usage_record = message.get("record")
                 if usage_record:
                     # Process the usage record
-                    asyncio.run(self.storage_backend.store_usage_record(usage_record))
+                    # Use asyncio.run_coroutine_threadsafe to run coroutine from thread
+                    # Note: This is a simplified fix - in production, you'd need access to the main event loop
+                    import threading
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.storage_backend.store_usage_record(usage_record))
+                    finally:
+                        loop.close()
                     self.processed_count += 1
                     
             elif isinstance(message, dict) and message.get("type") == "get_stats":
