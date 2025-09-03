@@ -89,7 +89,8 @@ result = await manager.store_credential(
     api_key="sk-ant-api03-your-key-here",
     provider_type=ProviderType.ANTHROPIC,
     user_id="user123",
-    metadata={"purpose": "main_account", "project": "ttrpg_assistant"}
+    display_name="Main Anthropic API Key",
+    validate_before_storage=True
 )
 
 if result.is_success():
@@ -116,14 +117,16 @@ if api_key_result.is_success():
 
 ```python
 # List all credentials for a user
-credentials = await manager.list_user_credentials("user123")
-
-# Search by metadata
-search_result = await manager.search_credentials(
+credentials = await manager.list_credentials(
     user_id="user123",
     provider_type=ProviderType.ANTHROPIC,
-    metadata_filters={"project": "ttrpg_assistant"}
+    active_only=True
 )
+
+# Filter credentials programmatically
+if credentials.is_success():
+    filtered = [c for c in credentials.unwrap() 
+                if c.display_name == "Main Anthropic API Key"]
 ```
 
 ## Configuration
@@ -176,14 +179,15 @@ export TTRPG_ENABLE_ROTATION="true"
 
 ### Core Methods
 
-#### `store_credential(api_key, provider_type, user_id, metadata=None)`
+#### `store_credential(api_key, provider_type, user_id, display_name=None, validate_before_storage=True)`
 Store an encrypted credential with validation.
 
 **Parameters:**
 - `api_key` (str): The API key to store
 - `provider_type` (ProviderType): AI provider type
 - `user_id` (str): User identifier
-- `metadata` (dict, optional): Additional metadata
+- `display_name` (str, optional): Display name for the credential
+- `validate_before_storage` (bool, optional): Whether to validate API key before storing (default: True)
 
 **Returns:** `Result[str, str]` - Success with credential ID or failure with error
 
@@ -214,6 +218,16 @@ Rotate a credential to a new API key.
 - `user_id` (str): User identifier
 
 **Returns:** `Result[str, str]` - Success with new credential ID or error
+
+#### `list_credentials(user_id=None, provider_type=None, active_only=True)`
+List all credentials with optional filtering.
+
+**Parameters:**
+- `user_id` (str, optional): Filter by user ID
+- `provider_type` (ProviderType, optional): Filter by provider type
+- `active_only` (bool, optional): Only return active credentials (default: True)
+
+**Returns:** `Result[List[StoredCredential], str]` - List of credentials or error
 
 ### Provider Integration Methods
 
@@ -342,8 +356,9 @@ chmod 600 ~/.ttrpg_assistant/credentials/*
 
 ```python
 # Solution: Verify user_id matches storage
-credentials = await manager.list_user_credentials(user_id)
-print("Available credentials:", [c.id for c in credentials])
+credentials = await manager.list_credentials(user_id)
+if credentials.is_success():
+    print("Available credentials:", [c.credential_id for c in credentials.unwrap()])
 ```
 
 #### 4. "Validation failed" Error
@@ -516,15 +531,16 @@ async def manage_api_keys(
         }
     
     elif action == "list":
-        credentials = await credential_manager.list_user_credentials(user_id)
-        return {
-            "success": True,
-            "credentials": [
-                {
-                    "id": cred.id,
-                    "provider": cred.provider_type.value,
-                    "created_at": cred.created_at.isoformat()
-                }
+        credentials = await credential_manager.list_credentials(user_id)
+        if credentials.is_success():
+            return {
+                "success": True,
+                "credentials": [
+                    {
+                        "id": cred.credential_id,
+                        "provider": cred.provider_type.value,
+                        "created_at": cred.created_at.isoformat()
+                    }
                 for cred in credentials.unwrap()
             ]
         }
@@ -558,6 +574,20 @@ async def security_event_handler(event_type: SecurityEventType, details: dict):
 # Register event handler
 credential_manager.register_security_event_handler(security_event_handler)
 ```
+
+---
+
+## Migration Notes
+
+### API Changes from Initial Design
+
+The following changes were made to simplify the API and improve security:
+
+1. **Removed `metadata` parameter from `store_credential`**: Use `display_name` for identification instead
+2. **Renamed method**: `list_user_credentials` → `list_credentials` with optional filtering parameters
+3. **Removed `search_credentials` method**: Use `list_credentials` with filters and programmatic filtering for complex queries
+
+These changes reduce API surface area and complexity while maintaining all necessary functionality.
 
 ---
 
