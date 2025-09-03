@@ -630,8 +630,17 @@ class UsageRecordActor(Actor):
                     try:
                         loop = asyncio.get_running_loop()
                     except RuntimeError:
-                        # No running loop, create one for this thread
-                        loop = asyncio.new_event_loop()
+                        # No running loop, use asyncio.run for proper loop management
+                        def run_async_task():
+                            return asyncio.run(self.storage_backend.store_usage_record(usage_record))
+                        
+                        try:
+                            run_async_task()
+                            self.processed_count += 1
+                            continue
+                        except Exception as e:
+                            logger.error("Failed to store usage record", error=str(e))
+                            continue
                     
                     # Schedule the coroutine in the event loop
                     future = asyncio.run_coroutine_threadsafe(

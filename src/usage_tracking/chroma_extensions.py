@@ -423,7 +423,7 @@ class UsageTrackingChromaExtensions:
                         deleted_count=len(ids_to_delete),
                         cutoff_date=collection_cutoff.isoformat()
                     )
-                # Remove else clause as suggested in review - no action needed when no documents to delete
+                
                 cleanup_stats[collection_name] = cleanup_stats.get(collection_name, 0)
             
             except Exception as e:
