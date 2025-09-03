@@ -410,13 +410,12 @@ class NameGenerator:
         
         if "titles" in name_pool:
             titles = name_pool["titles"]
-            # Filter gender-appropriate titles if needed
             if gender == "female":
-                female_titles = ["Lady", "Dame", "Mistress", "Baroness", "Mother", "Sister"]
-                titles = [t for t in titles if t in female_titles or t in ["Doctor", "Professor", "Captain"]]
+                gender_specific_titles = ["Lady", "Dame", "Mistress", "Baroness", "Mother", "Sister"]
+                titles = [t for t in titles if t in gender_specific_titles or t not in ["Sir", "Lord", "Master", "Baron", "Father", "Brother"]]
             elif gender == "male":
-                male_titles = ["Sir", "Lord", "Master", "Baron", "Father", "Brother"]
-                titles = [t for t in titles if t in male_titles or t in ["Doctor", "Professor", "Captain"]]
+                gender_specific_titles = ["Sir", "Lord", "Master", "Baron", "Father", "Brother"]
+                titles = [t for t in titles if t in gender_specific_titles or t not in ["Lady", "Dame", "Mistress", "Baroness", "Mother", "Sister"]]
             
             if titles:
                 return random.choice(titles)
