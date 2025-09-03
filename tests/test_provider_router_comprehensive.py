@@ -296,7 +296,8 @@ class TestCircuitBreaker:
             await router.record_failure(provider, Exception(f"Error {i}"))
             
         # Wait for timeout (mocked)
-        with patch("time.time", return_value=time.time() + 31):
+        original_time = time.time()
+        with patch("time.time", side_effect=lambda: original_time + 31):
             state = router.get_circuit_breaker_state(provider)
             assert state == CircuitBreakerState.HALF_OPEN
             
