@@ -25,7 +25,7 @@ from structlog import get_logger
 from returns.result import Result, Success, Failure
 
 # Import our security components
-from .credential_encryption import CredentialEncryptionService, EncryptedCredential, EncryptionConfig
+from .credential_encryption import CredentialEncryptionService, EncryptedCredential, EncryptionConfig, SecureMemory
 from .credential_storage import CredentialStorageManager, CredentialMetadata, StorageConfig
 from .credential_validator import CredentialValidationService, ValidationResult
 from .credential_rotation import CredentialRotationService, RotationPolicy, RotationReason, RotationRecord
@@ -291,7 +291,8 @@ class SecureCredentialManager:
             self._cache_expires[credential_id] = datetime.utcnow() + timedelta(hours=1)
             
             # Securely delete API key from memory
-            self.encryption_service.secure_delete(api_key)
+            api_key_bytes = bytearray(api_key.encode('utf-8'))
+            SecureMemory.secure_zero(api_key_bytes)
             
             logger.info(
                 "Credential stored successfully",
@@ -333,7 +334,7 @@ class SecureCredentialManager:
             encrypted_credential = retrieve_result.unwrap()
             
             # Decrypt the credential
-            decrypt_result = self.encryption_service.decrypt_credential(encrypted_credential, user_id)
+            decrypt_result = self.encryption_service.decrypt(encrypted_credential, user_id)
             if not decrypt_result.is_success():
                 return Failure(f"Decryption failed: {decrypt_result.failure()}")
             
@@ -432,7 +433,8 @@ class SecureCredentialManager:
                 retrieve_result = await self.retrieve_credential(credential_id, user_id)
                 if retrieve_result.is_success():
                     api_key = retrieve_result.unwrap()
-                    self.encryption_service.secure_delete(api_key)
+                    api_key_bytes = bytearray(api_key.encode('utf-8'))
+                    SecureMemory.secure_zero(api_key_bytes)
             
             # Delete from storage
             delete_result = await self.storage_manager.delete_credential(credential_id)
@@ -504,7 +506,8 @@ class SecureCredentialManager:
             cached_cred.validation_status = "valid" if validation.is_valid else "invalid"
             
             # Securely delete API key from memory
-            self.encryption_service.secure_delete(api_key)
+            api_key_bytes = bytearray(api_key.encode('utf-8'))
+            SecureMemory.secure_zero(api_key_bytes)
             
             logger.info(
                 "Credential validation completed",
@@ -613,7 +616,8 @@ class SecureCredentialManager:
             )
             
             # Securely delete API key from memory after creating config
-            self.encryption_service.secure_delete(api_key)
+            api_key_bytes = bytearray(api_key.encode('utf-8'))
+            SecureMemory.secure_zero(api_key_bytes)
             
             logger.debug(
                 "Provider config created",

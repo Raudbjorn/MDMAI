@@ -507,18 +507,32 @@ class CredentialValidationService:
         
         # Create validation tasks
         tasks = []
+        provider_types = []
         for api_key, provider_type in credentials:
             task = self.validate_credential(api_key, provider_type)
-            tasks.append((task, provider_type))
+            tasks.append(task)
+            provider_types.append(provider_type)
         
-        # Execute in parallel
-        for task, provider_type in tasks:
-            try:
-                result = await task
-                if result.is_success():
+        # Execute in parallel using asyncio.gather
+        try:
+            task_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result, provider_type in zip(task_results, provider_types):
+                if isinstance(result, Exception):
+                    # Handle exceptions
+                    failed_result = ValidationResult(
+                        is_valid=False,
+                        provider_type=provider_type,
+                        key_format_valid=False,
+                        key_active=False,
+                        has_required_permissions=False
+                    )
+                    failed_result.add_issue(str(result), ValidationSeverity.CRITICAL)
+                    results[provider_type] = failed_result
+                elif result.is_success():
                     results[provider_type] = result.unwrap()
                 else:
-                    # Create failed validation result
+                    # Create failed validation result  
                     failed_result = ValidationResult(
                         is_valid=False,
                         provider_type=provider_type,
@@ -528,8 +542,8 @@ class CredentialValidationService:
                     )
                     failed_result.add_issue(result.failure(), ValidationSeverity.CRITICAL)
                     results[provider_type] = failed_result
-            except Exception as e:
-                logger.error("Failed to validate credential", provider=provider_type.value, error=str(e))
+        except Exception as e:
+            logger.error("Failed to validate credentials in parallel", error=str(e))
         
         return results
     
@@ -548,7 +562,7 @@ class CredentialValidationService:
         expired_keys = []
         
         for cache_key, (_, cached_at) in self._validation_cache.items():
-            if current_time - cached_at >= timedelta(minutes=self.cache_ttl_minutes * 2):
+            if current_time - cached_at >= timedelta(minutes=self.cache_ttl_minutes):
                 expired_keys.append(cache_key)
         
         for key in expired_keys:

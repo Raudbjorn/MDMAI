@@ -499,7 +499,7 @@ class ChromaDBCredentialStorage(CredentialStorageBackend):
                     logger.debug("Updated existing credential", credential_id=credential_id)
                 else:
                     raise ValueError("Not found")  # Will fall through to add
-            except:
+            except ValueError:
                 # Add new credential
                 self.collection.add(
                     ids=ids,
@@ -713,7 +713,7 @@ class ChromaDBCredentialStorage(CredentialStorageBackend):
                 existing = self.collection.get()
                 if existing['ids']:
                     self.collection.delete(ids=existing['ids'])
-            except:
+            except Exception:
                 pass  # Collection might be empty
             
             # Restore data

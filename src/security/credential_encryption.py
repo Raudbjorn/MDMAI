@@ -210,11 +210,13 @@ class EncryptedCredential:
         """
         try:
             # Handle both base64 and hex encoding for backwards compatibility
-            encrypted_data = (
-                base64.b64decode(data['encrypted_data'])
-                if 'encrypted_data' in data and not data['encrypted_data'].startswith('0x')
-                else bytes.fromhex(str(data.get('encrypted_data', '')))
-            )
+            encrypted_data_str = str(data.get('encrypted_data', ''))
+            if encrypted_data_str.startswith('0x'):
+                encrypted_data = bytes.fromhex(encrypted_data_str[2:])  # Remove '0x' prefix
+            elif 'encrypted_data' in data:
+                encrypted_data = base64.b64decode(data['encrypted_data'])
+            else:
+                encrypted_data = bytes()
             
             return cls(
                 encrypted_data=encrypted_data,
@@ -471,7 +473,7 @@ class CredentialEncryption:
             KeyDerivationError: If key derivation fails
         """
         try:
-            if self.config.use_scrypt_for_master and password == self._master_key:
+            if self.config.use_scrypt_for_master and password == bytes(self._master_key):
                 # Use Scrypt for master key (memory-hard)
                 kdf = Scrypt(
                     salt=salt,

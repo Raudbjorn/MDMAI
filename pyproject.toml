@@ -57,9 +57,6 @@ dependencies = [
     "returns>=0.26.0",
     "cryptography>=45.0.7",
     "httpx>=0.28.1",
-    "hypothesis>=6.138.14",
-    "pytest-asyncio>=1.1.0",
-    "pytest-mock>=3.14.1",
 ]
 
 [project.optional-dependencies]
