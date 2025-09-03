@@ -247,7 +247,7 @@ class NameGenerator:
         style: NameStyle = NameStyle.FORMAL,
         include_title: bool = False,
         include_nickname: bool = False
-    ) -> Union[str, Tuple[str, NameComponents]]:
+    ) -> Tuple[str, NameComponents]:
         """
         Generate a genre and context-appropriate name.
         
@@ -405,9 +405,11 @@ class NameGenerator:
         if role and role in cls.NPC_ROLE_PATTERNS:
             role_titles = cls.NPC_ROLE_PATTERNS[role].get("titles", [])
             if role_titles:
-                title = random.choice([t for t in role_titles if t])  # Filter empty strings
-                if title:
-                    return title
+                valid_titles = [t for t in role_titles if t]  # Filter empty strings
+                if valid_titles:
+                    title = random.choice(valid_titles)
+                    if title:
+                        return title
         
         if "titles" in name_pool:
             titles = name_pool["titles"]

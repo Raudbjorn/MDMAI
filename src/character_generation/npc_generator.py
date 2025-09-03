@@ -324,10 +324,19 @@ class NPCGenerator:
         # Generate genre-appropriate name if not provided
         if not name:
             gender = random.choice(["male", "female", "neutral"])
+            # Try to convert role to NPCRole enum, fall back to None if invalid
+            role_enum = None
+            if role:
+                try:
+                    role_enum = NPCRole(role.lower())
+                except ValueError:
+                    # Invalid role, use None as fallback
+                    role_enum = None
+            
             generated_name, name_components = NameGenerator.generate_name(
                 genre=genre_enum,
                 gender=gender,
-                role=NPCRole(role.lower()) if role else None,
+                role=role_enum,
                 style=NameStyle.FORMAL if importance == "major" else NameStyle.CASUAL,
                 include_title=importance in ["supporting", "major"],
                 include_nickname=role in ["criminal", "adventurer", "assassin"] if role else False
@@ -962,10 +971,20 @@ class NPCGenerator:
         """Legacy method for backward compatibility - use NameGenerator instead."""
         # This method is kept for backward compatibility but delegates to NameGenerator
         gender = random.choice(["male", "female", "neutral"])
+        
+        # Try to convert role to NPCRole enum, fall back to None if invalid
+        role_enum = None
+        if role:
+            try:
+                role_enum = NPCRole(role.lower())
+            except ValueError:
+                # Invalid role, use None as fallback
+                role_enum = None
+        
         name, _ = NameGenerator.generate_name(
             genre=TTRPGGenre.FANTASY,
             gender=gender,
-            role=NPCRole(role.lower()) if role else None,
+            role=role_enum,
             style=NameStyle.FORMAL
         )
         return name

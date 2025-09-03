@@ -617,7 +617,7 @@ class EquipmentGenerator:
             }
         }
         
-        chances = quality_chances.get(wealth_level, quality_chances["standard"])
+        chances = quality_chances.get(wealth_level, quality_chances["standard"]).copy()
         
         # Adjust for level
         if level >= 10:
@@ -626,6 +626,11 @@ class EquipmentGenerator:
                 chances[EquipmentQuality.MAGICAL] *= 2
             if EquipmentQuality.LEGENDARY not in chances:
                 chances[EquipmentQuality.LEGENDARY] = 0.02
+            
+            # Re-normalize probabilities to ensure they sum to 1.0
+            total_chance = sum(chances.values())
+            if total_chance > 0:
+                chances = {q: p / total_chance for q, p in chances.items()}
         
         # Select quality based on weighted random
         roll = random.random()
@@ -852,7 +857,9 @@ class EquipmentGenerator:
     def _add_magical_properties(cls, item: EquipmentItem) -> None:
         """Add magical properties to an item."""
         item.magical = True
-        item.quality = EquipmentQuality.MAGICAL
+        # Only set quality to MAGICAL if it's not already a higher quality
+        if item.quality == EquipmentQuality.COMMON or item.quality == EquipmentQuality.FINE:
+            item.quality = EquipmentQuality.MAGICAL
         
         magical_properties = [
             "+1 Enhancement",
