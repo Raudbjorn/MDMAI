@@ -726,27 +726,68 @@ class ModelOptimizer:
         return await self._optimize_balanced(candidates, task_type, task_characteristics, user_preferences)
     
     def _analyze_user_patterns(self, history: List[Dict[str, Any]]) -> Dict[str, float]:
-        """Analyze user patterns from historical data."""
-        # This is a simplified pattern analysis - in a real system, this would be more sophisticated
+        """Analyze user patterns from historical data using comprehensive pattern analysis."""
+        if not history:
+            return {"quality": 0.25, "latency": 0.25, "cost": 0.25, "suitability": 0.25}
+        
         weights = {"quality": 0.25, "latency": 0.25, "cost": 0.25, "suitability": 0.25}
         
-        # Look at the models actually selected
-        selected_models = [entry["recommendation"].provider_type.value + ":" + entry["recommendation"].model_id 
-                          for entry in history]
+        # Extract metrics for pattern analysis
+        costs = [entry["recommendation"].cost_estimate for entry in history if "recommendation" in entry]
+        latencies = [entry.get("actual_latency", 0) for entry in history if entry.get("actual_latency")]
+        quality_scores = [entry.get("quality_score", 0) for entry in history if entry.get("quality_score")]
         
-        # Analyze cost patterns
-        costs = [entry["recommendation"].cost_estimate for entry in history]
+        # Analyze cost sensitivity patterns
         if costs:
+            cost_variance = self._calculate_variance(costs)
             avg_cost = sum(costs) / len(costs)
-            if avg_cost < 0.01:  # User prefers low-cost models
-                weights["cost"] = 0.4
-                weights["quality"] = 0.2
-                weights["latency"] = 0.2
-            elif avg_cost > 0.05:  # User accepts higher costs
-                weights["quality"] = 0.4
-                weights["cost"] = 0.1
+            
+            # High cost variance suggests user is cost-flexible, low variance suggests cost-conscious
+            if cost_variance < 0.001:  # Low variance - consistent cost preferences
+                if avg_cost < 0.01:  # Consistently low cost
+                    weights["cost"] = 0.45
+                    weights["quality"] = 0.2
+                elif avg_cost > 0.05:  # Consistently high cost for quality
+                    weights["quality"] = 0.45
+                    weights["cost"] = 0.1
+            else:  # High variance - user varies cost based on context
+                weights["suitability"] = 0.35  # Context becomes more important
+        
+        # Analyze latency sensitivity patterns
+        if latencies:
+            avg_latency = sum(latencies) / len(latencies)
+            latency_variance = self._calculate_variance(latencies)
+            
+            if latency_variance < 100:  # Consistent latency preferences (ms²)
+                if avg_latency < 1000:  # Prefers fast responses
+                    weights["latency"] = 0.4
+                elif avg_latency > 5000:  # Accepts slower responses for quality
+                    weights["quality"] = max(weights["quality"], 0.35)
+        
+        # Analyze quality patterns
+        if quality_scores:
+            avg_quality = sum(quality_scores) / len(quality_scores)
+            quality_variance = self._calculate_variance(quality_scores)
+            
+            if avg_quality > 0.8 and quality_variance < 0.01:  # Consistently high quality
+                weights["quality"] = max(weights["quality"], 0.4)
+            elif avg_quality < 0.6:  # User accepts lower quality (speed/cost focused)
+                weights["latency"] = max(weights["latency"], 0.3)
+                weights["cost"] = max(weights["cost"], 0.3)
+        
+        # Normalize weights to sum to 1.0
+        total_weight = sum(weights.values())
+        if total_weight > 0:
+            weights = {k: v / total_weight for k, v in weights.items()}
         
         return weights
+    
+    def _calculate_variance(self, values: List[float]) -> float:
+        """Calculate variance of a list of values."""
+        if len(values) < 2:
+            return 0.0
+        mean = sum(values) / len(values)
+        return sum((x - mean) ** 2 for x in values) / len(values)
     
     async def _apply_optimization_rules(
         self,
