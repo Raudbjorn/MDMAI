@@ -26,7 +26,7 @@ from sklearn.preprocessing import StandardScaler
 from structlog import get_logger
 
 from ..ai_providers.models import ProviderType, CostTier, ModelSpec
-from ..usage_tracking.storage.models import UsageRecord, ProviderType as TrackingProviderType
+from ..usage_tracking.storage.models import UsageRecord
 
 logger = get_logger(__name__)
 
