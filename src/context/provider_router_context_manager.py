@@ -914,9 +914,9 @@ class StateRecoveryManager:
         
         try:
             # Get all critical state from Redis
-            state_keys = await self.redis.keys("state:*")
-            version_keys = await self.redis.keys("version:*")
-            timestamp_keys = await self.redis.keys("timestamp:*")
+            state_keys = [key async for key in self.redis.scan_iter("state:*")]
+            version_keys = [key async for key in self.redis.scan_iter("version:*")]
+            timestamp_keys = [key async for key in self.redis.scan_iter("timestamp:*")]
             
             backup_data = {
                 "backup_id": backup_id,
