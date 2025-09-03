@@ -1455,32 +1455,34 @@ class ProviderRoutingStateMachine(RuleBasedStateMachine):
     strategy=st.sampled_from(["cost", "speed", "balanced"])
 )
 @settings(max_examples=100)
-async def test_provider_selection_properties(providers, strategy):
+def test_provider_selection_properties(providers, strategy):
     """Test properties of provider selection."""
-    router = MCPProviderRouter()
-    
-    # Configure providers
-    for name, health, cost in providers:
-        await router.add_provider(name, health=health, cost_per_token=cost)
+    async def run_test():
+        router = MCPProviderRouter()
         
-    router.set_routing_strategy(strategy)
-    
-    # Select provider
-    selection = await router.select_provider(AIRequest(
-        model="gpt-4",
-        messages=[{"role": "user", "content": "test"}],
-        max_tokens=100
-    ))
-    
-    # Properties that should always hold
-    assert selection.provider in [p[0] for p in providers]
-    
-    if strategy == "cost":
-        # Should select cheapest available provider
-        available_providers = [p for p in providers if p[1] > 0.3]
-        if available_providers:
-            cheapest = min(available_providers, key=lambda p: p[2])
-            assert selection.provider == cheapest[0]
+        # Configure providers
+        for name, health, cost in providers:
+            await router.add_provider(name, health=health, cost_per_token=cost)
+        
+        router.set_routing_strategy(strategy)
+        
+        # Select provider
+        selection = await router.select_provider(AIRequest(
+            model="gpt-4",
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=100
+        ))
+        
+        # Properties that should always hold
+        assert selection.provider in [p[0] for p in providers]
+        
+        if strategy == "cost":
+            # Should select cheapest available provider
+            available_providers = [p for p in providers if p[1] > 0.3]
+            if available_providers:
+                cheapest = min(available_providers, key=lambda p: p[2])
+                assert selection.provider == cheapest[0]
+    asyncio.run(run_test())
 
 
 # ============================================================================
