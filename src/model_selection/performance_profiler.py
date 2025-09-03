@@ -240,13 +240,7 @@ class PerformanceBenchmark:
         if latencies:
             profile.avg_latency = statistics.mean(latencies)
             if len(latencies) >= 20:
-                # Use proper p95 calculation with quantiles
-                profile.p95_latency = statistics.quantiles(latencies, n=20)[18]  # 95th percentile
-            else:
-                # For small samples, sort and use percentile approximation
-                sorted_latencies = sorted(latencies)
-                p95_index = int(0.95 * len(latencies))
-                profile.p95_latency = sorted_latencies[min(p95_index, len(sorted_latencies) - 1)]
+                profile.p95_latency = sorted_latencies[max(p95_index, len(sorted_latencies) - 1)]
         
         if throughputs:
             profile.avg_throughput = statistics.mean(throughputs)
