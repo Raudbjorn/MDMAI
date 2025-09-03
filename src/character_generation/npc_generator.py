@@ -1,11 +1,13 @@
-"""NPC generation system for TTRPG Assistant."""
+"""NPC generation system for TTRPG Assistant with genre support."""
 
 import logging
 import random
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
+from .equipment_generator import EquipmentGenerator, EquipmentQuality, TechLevel
+from .name_generator import NameGenerator, NameStyle
 from .models import (
     NPC,
     CharacterBackground,
@@ -331,10 +333,10 @@ class NPCGenerator:
         importance: str = "minor",  # "minor", "supporting", "major"
         party_level: Optional[int] = None,
         backstory_depth: str = "simple",  # "simple", "standard", "detailed"
-        genre: Optional[str] = None,  # Genre for system-specific content
+        genre: Optional[Union[str, TTRPGGenre]] = None,  # Genre override
     ) -> NPC:
         """
-        Generate a complete NPC.
+        Generate a complete NPC with genre support.
 
         Args:
             system: Game system
@@ -356,16 +358,49 @@ class NPCGenerator:
             if param_errors:
                 raise ValidationError(f"Invalid parameters: {'; '.join(param_errors)}")
 
-        # Determine genre from system or use provided genre
-        npc_genre = self._determine_genre(system, genre)
-        
-        logger.info(f"Generating {importance} NPC with role {role} for {system} ({npc_genre.value})")
+        # Determine genre
+        if genre:
+            if isinstance(genre, str):
+                try:
+                    genre_enum = TTRPGGenre(genre.upper())
+                except ValueError:
+                    logger.warning(f"Invalid genre string '{genre}'. Defaulting to FANTASY.")
+                    genre_enum = TTRPGGenre.FANTASY
+            else:
+                genre_enum = genre
+        else:
+            genre_enum = self._determine_genre_from_system(system)
+
+        logger.info(f"Generating {importance} NPC with role {role} for {system} (Genre: {genre_enum.value})")
+
+        # Generate genre-appropriate name if not provided
+        if not name:
+            gender = random.choice(["male", "female", "neutral"])
+            # Try to convert role to NPCRole enum, fall back to None if invalid
+            role_enum = None
+            if role:
+                try:
+                    role_enum = NPCRole(role.lower())
+                except ValueError:
+                    # Invalid role, use None as fallback
+                    role_enum = None
+            
+            generated_name, name_components = NameGenerator.generate_name(
+                genre=genre_enum,
+                gender=gender,
+                role=role_enum,
+                style=NameStyle.FORMAL if importance == "major" else NameStyle.CASUAL,
+                include_title=importance in ["supporting", "major"],
+                include_nickname=role_enum in [NPCRole.CRIMINAL, NPCRole.ADVENTURER, NPCRole.ASSASSIN],
+            )
+            name = generated_name
 
         # Create base NPC
         npc = NPC(
             system=system,
-            name=name or self._generate_npc_name(role, npc_genre),
+            name=name,
             importance=importance.capitalize(),
+            genre=genre_enum,
         )
 
         # Set role
@@ -402,8 +437,15 @@ class NPCGenerator:
         if importance in ["supporting", "major"]:
             npc.secrets = self._generate_secrets(npc.role, importance)
 
-        # Generate equipment
-        npc.equipment = self._generate_npc_equipment(npc.role, level, npc_genre)
+        # Generate genre-appropriate equipment using the new generator
+        wealth_level = self._determine_wealth_level(npc.role, importance)
+        npc.equipment = EquipmentGenerator.generate_equipment(
+            genre=genre_enum,
+            npc_role=npc.role,
+            level=level,
+            wealth_level=wealth_level,
+            include_magical=importance == "major" and level >= 5
+        )
 
         # Generate skills and proficiencies
         self._generate_npc_skills(npc)
@@ -874,103 +916,98 @@ class NPCGenerator:
 
         return languages
 
-    def _generate_npc_name(self, role: Optional[str], genre: TTRPGGenre) -> str:
-        """Generate a name appropriate for the NPC role and genre."""
-        # Genre-specific name pools
-        genre_names = {
-            TTRPGGenre.FANTASY: {
-                "common": {
-                    "first": ["Tom", "Mary", "Jack", "Sarah", "Will", "Anne", "Gareth", "Elara", "Thorne", "Mira"],
-                    "last": ["Miller", "Smith", "Cooper", "Fletcher", "Baker", "Stoneheart", "Ironforge", "Goldleaf"]
-                },
-                "noble": {
-                    "first": ["Lord Marcus", "Lady Elena", "Sir Reginald", "Dame Victoria", "Duke Aldric", "Countess Lyanna"],
-                    "last": ["Blackstone", "Goldshire", "Ravencrest", "Winterhold", "Dragonsbane", "Starweaver"]
-                },
-                "criminal": {
-                    "first": ["Snake", "Whisper", "Red", "Shadow", "Blade", "Scar", "Vex", "Raven"],
-                    "last": ["the Quick", "One-Eye", "the Silent", "Fingers", "Shadowfoot", "Nightblade"]
-                },
-                "scholarly": {
-                    "first": ["Aldric", "Minerva", "Thaddeus", "Cordelia", "Erasmus", "Seraphina"],
-                    "last": ["the Wise", "of the Tower", "Scrollkeeper", "the Learned", "Stargazer", "Runeweaver"]
-                }
+    # Data-driven mapping for system name to genre determination
+    SYSTEM_GENRE_MAP = {
+        TTRPGGenre.FANTASY: ["d&d", "pathfinder", "dungeon", "dragon"],
+        TTRPGGenre.CYBERPUNK: ["cyberpunk", "shadowrun", "chrome"],
+        TTRPGGenre.SCI_FI: ["traveller", "stars", "space", "galaxy"],
+        TTRPGGenre.COSMIC_HORROR: ["cthulhu", "delta green", "horror"],
+        TTRPGGenre.POST_APOCALYPTIC: ["apocalypse", "fallout", "wasteland"],
+        TTRPGGenre.SUPERHERO: ["masks", "hero", "super", "marvel", "dc"],
+        TTRPGGenre.WESTERN: ["deadlands", "western", "frontier"]
+    }
+    
+    def _determine_genre_from_system(self, system: str) -> TTRPGGenre:
+        """Determine genre based on system name using data-driven approach."""
+        system_lower = system.lower()
+        
+        # Check each genre's keywords
+        for genre, keywords in self.SYSTEM_GENRE_MAP.items():
+            if any(term in system_lower for term in keywords):
+                return genre
+        
+        # Default to fantasy if no match found
+        return TTRPGGenre.FANTASY
+    
+    # Data-driven mapping for wealth determination
+    WEALTH_LEVEL_MAP = {
+        "wealthy_roles": {
+            NPCRole.NOBLE: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
             },
-            TTRPGGenre.SCI_FI: {
-                "common": {
-                    "first": ["Alex", "Jordan", "Casey", "Morgan", "Riley", "Zara", "Kai", "Nova"],
-                    "last": ["Chen", "Nakamura", "Singh", "O'Brien", "Vasquez", "Petrova", "Al-Rashid", "Okafor"]
-                },
-                "noble": {
-                    "first": ["Admiral Kane", "Commander Voss", "Director Shah", "Captain Torres"],
-                    "last": ["Starweaver", "Voidwalker", "Nebulon", "Astrum", "Cosmos", "Stellaris"]
-                },
-                "criminal": {
-                    "first": ["Zero", "Phantom", "Neon", "Cipher", "Ghost", "Binary", "Flux", "Void"],
-                    "last": ["the Hacker", "Databreaker", "the Glitch", "Netrunner", "Shadowcode", "Virusborn"]
-                },
-                "scholarly": {
-                    "first": ["Dr. Chen", "Prof. Vega", "Dr. Okafor", "Dr. Singh", "Prof. Torres"],
-                    "last": ["Quantumborn", "the Theorist", "Neuralnet", "Biosynth", "Cybermind", "Nanotech"]
-                }
-            },
-            TTRPGGenre.CYBERPUNK: {
-                "common": {
-                    "first": ["Raze", "Nyx", "Echo", "Dex", "Jin", "Kira", "Zane", "Vex"],
-                    "last": ["Chrome", "Neon", "Steel", "Wire", "Code", "Data", "Sync", "Link"]
-                },
-                "corporate": {
-                    "first": ["Mr. Tanaka", "Ms. Cross", "Executive Park", "Director Wong"],
-                    "last": ["Megacorp", "Synthetics", "Neuralware", "Biotech", "Cybersoft", "Nanotech"]
-                },
-                "criminal": {
-                    "first": ["Razorblade", "Glitch", "Phantom", "Zero", "Cipher", "Ghost", "Static"],
-                    "last": ["the Runner", "Wirefreak", "the Hack", "Netjockey", "Datastream", "the Splice"]
-                }
-            },
-            TTRPGGenre.WESTERN: {
-                "common": {
-                    "first": ["Jake", "Belle", "Hank", "Sadie", "Colt", "Annie", "Buck", "Pearl"],
-                    "last": ["Johnson", "McCready", "O'Malley", "Rodriguez", "Thompson", "Walker", "Hayes"]
-                },
-                "outlaw": {
-                    "first": ["Black Jack", "Wild Bill", "Calamity", "Doc", "Deadshot", "Iron"],
-                    "last": ["the Kid", "McGraw", "the Drifter", "Sixgun", "Longshot", "the Hawk"]
-                },
-                "lawman": {
-                    "first": ["Sheriff", "Marshal", "Deputy", "Judge", "Ranger"],
-                    "last": ["Steele", "Justice", "Lawson", "Sterling", "Ironwood", "Gunner"]
-                }
+            NPCRole.MERCHANT: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
             }
+        },
+        "poor_roles": {
+            NPCRole.COMMONER: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            },
+            NPCRole.CRIMINAL: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            }
+        },
+        "default": {
+            "major": "wealthy",
+            "supporting": "standard",
+            "minor": "standard"
         }
+    }
+    
+    def _determine_wealth_level(self, role: NPCRole, importance: str) -> str:
+        """Determine wealth level based on role and importance using data-driven approach."""
+        # Check if role is in wealthy roles
+        if role in self.WEALTH_LEVEL_MAP["wealthy_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["wealthy_roles"][role]
+            return wealth_map.get(importance, "standard")
         
-        # Default to fantasy if genre not found
-        names = genre_names.get(genre, genre_names[TTRPGGenre.FANTASY])
+        # Check if role is in poor roles
+        if role in self.WEALTH_LEVEL_MAP["poor_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["poor_roles"][role]
+            return wealth_map.get(importance, "poor")
         
-        # Determine name style based on role
+        # Use default mapping for other roles
+        return self.WEALTH_LEVEL_MAP["default"].get(importance, "standard")
+
+    def _generate_npc_name(self, role: Optional[str]) -> str:
+        """Legacy method for backward compatibility - use NameGenerator instead."""
+        # This method is kept for backward compatibility but delegates to NameGenerator
+        gender = random.choice(["male", "female", "neutral"])
+        
+        # Try to convert role to NPCRole enum, fall back to None if invalid
+        role_enum = None
         if role:
-            role_lower = role.lower()
-            if "noble" in role_lower or "lord" in role_lower or "executive" in role_lower:
-                style = "noble" if "noble" in names else "corporate" if "corporate" in names else "common"
-            elif any(x in role_lower for x in ["criminal", "thief", "assassin", "outlaw", "runner"]):
-                style = "criminal" if "criminal" in names else "outlaw" if "outlaw" in names else "common"
-            elif any(x in role_lower for x in ["scholar", "mage", "wizard", "scientist", "doctor"]):
-                style = "scholarly" if "scholarly" in names else "common"
-            elif "lawman" in role_lower or "sheriff" in role_lower or "cop" in role_lower:
-                style = "lawman" if "lawman" in names else "common"
-            else:
-                style = "common"
-        else:
-            style = "common"
+            try:
+                role_enum = NPCRole(role.lower())
+            except ValueError:
+                # Invalid role, use None as fallback
+                role_enum = None
         
-        # Use common if style not available for this genre
-        if style not in names:
-            style = "common"
-        
-        first = random.choice(names[style]["first"])
-        last = random.choice(names[style]["last"])
-        
-        return f"{first} {last}"
+        name, _ = NameGenerator.generate_name(
+            genre=TTRPGGenre.FANTASY,
+            gender=gender,
+            role=role_enum,
+            style=NameStyle.FORMAL
+        )
+        return name
 
     def _generate_location(self, role: NPCRole) -> str:
         """Generate an appropriate location for the NPC."""
