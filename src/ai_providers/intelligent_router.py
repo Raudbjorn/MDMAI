@@ -22,6 +22,13 @@ from .models import (
 )
 from .abstract_provider import AbstractProvider
 from .health_monitor import HealthMonitor, ErrorType
+from .config.model_config import get_model_config_manager, ModelConfigManager
+from .utils.cost_utils import (
+    estimate_input_tokens,
+    estimate_output_tokens,
+    estimate_request_cost,
+    assess_request_complexity,
+)
 
 logger = get_logger(__name__)
 
@@ -112,9 +119,11 @@ class IntelligentRouter:
         self,
         health_monitor: HealthMonitor,
         default_criteria: Optional[SelectionCriteria] = None,
+        config_manager: Optional[ModelConfigManager] = None,
     ):
         self.health_monitor = health_monitor
         self.default_criteria = default_criteria or SelectionCriteria()
+        self.config_manager = config_manager or get_model_config_manager()
         
         # Performance tracking
         self._performance_history: Dict[ProviderType, List[Tuple[datetime, float, float]]] = {}
@@ -276,7 +285,7 @@ class IntelligentRouter:
                 continue
             
             # Check context length requirements
-            estimated_tokens = self._estimate_input_tokens(request.messages)
+            estimated_tokens = estimate_input_tokens(request.messages)
             if estimated_tokens > model_spec.context_length:
                 continue
             
@@ -645,10 +654,8 @@ class IntelligentRouter:
         """Calculate cost score (0.0 to 1.0, higher is better)."""
         try:
             cost = await self._estimate_request_cost(provider, model_spec, request)
-            # Normalize cost score (inverse relationship - lower cost = higher score)
-            # Assuming max reasonable cost per request is $1.00
-            max_cost = 1.0
-            return max(0.0, 1.0 - (cost / max_cost))
+            # Use normalization from config manager
+            return self.config_manager.normalization_config.normalize_cost(cost)
         except Exception:
             return 0.5  # Default score
     
@@ -658,10 +665,8 @@ class IntelligentRouter:
         """Calculate speed score (0.0 to 1.0, higher is better)."""
         try:
             latency_ms = await self._estimate_request_latency(provider, model_spec)
-            # Normalize speed score (inverse relationship - lower latency = higher score)
-            # Assuming max reasonable latency is 30 seconds
-            max_latency = 30000
-            return max(0.0, 1.0 - (latency_ms / max_latency))
+            # Use normalization from config manager
+            return self.config_manager.normalization_config.normalize_latency(latency_ms)
         except Exception:
             return 0.5  # Default score
     
@@ -669,24 +674,30 @@ class IntelligentRouter:
         self, provider: AbstractProvider, model_spec: ModelSpec, request: AIRequest
     ) -> float:
         """Calculate quality score (0.0 to 1.0, higher is better)."""
-        # Base quality on model tier and capabilities
-        tier_scores = {
-            CostTier.FREE: 0.3,
-            CostTier.LOW: 0.5,
-            CostTier.MEDIUM: 0.7,
-            CostTier.HIGH: 0.9,
-            CostTier.PREMIUM: 1.0,
-        }
-        
-        base_score = tier_scores.get(model_spec.cost_tier, 0.5)
+        # Try to get quality from model profile first
+        model_profile = self.config_manager.get_model_profile(request.model)
+        if model_profile:
+            base_score = model_profile.quality_score
+        else:
+            # Fallback to tier-based scoring
+            tier_scores = {
+                CostTier.FREE: 0.3,
+                CostTier.LOW: 0.5,
+                CostTier.MEDIUM: 0.7,
+                CostTier.HIGH: 0.9,
+                CostTier.PREMIUM: 1.0,
+            }
+            base_score = tier_scores.get(model_spec.cost_tier, 0.5)
         
         # Bonus for additional capabilities
-        capability_bonus = len(model_spec.capabilities) * 0.05
+        capability_bonus = min(0.2, len(model_spec.capabilities) * 0.05)
         
         # Consider learned quality rating
         learned_rating = self._get_model_quality_rating(request.model)
         
-        return min(1.0, base_score + capability_bonus + (learned_rating * 0.2))
+        # Use normalization for final score
+        raw_score = base_score + capability_bonus + (learned_rating * 0.1)
+        return self.config_manager.normalization_config.normalize_quality(raw_score)
     
     def _calculate_reliability_score(self, provider: AbstractProvider) -> float:
         """Calculate reliability score (0.0 to 1.0, higher is better)."""
@@ -715,18 +726,17 @@ class IntelligentRouter:
         self, provider: AbstractProvider, model_spec: ModelSpec, request: AIRequest
     ) -> float:
         """Estimate request cost in USD."""
-        # Estimate input tokens
-        input_tokens = self._estimate_input_tokens(request.messages)
+        # Use centralized cost estimation
+        input_tokens = estimate_input_tokens(request.messages)
+        output_tokens = estimate_output_tokens(request, model_spec)
         
-        # Estimate output tokens
-        output_tokens = request.max_tokens or model_spec.max_output_tokens
-        output_tokens = min(output_tokens, model_spec.max_output_tokens)
-        
-        # Calculate cost
-        input_cost = (input_tokens / 1000) * model_spec.cost_per_input_token
-        output_cost = (output_tokens / 1000) * model_spec.cost_per_output_token
-        
-        return input_cost + output_cost
+        return estimate_request_cost(
+            provider.provider_type,
+            request.model,
+            input_tokens,
+            output_tokens,
+            self.config_manager
+        )
     
     async def _estimate_request_latency(
         self, provider: AbstractProvider, model_spec: ModelSpec
@@ -736,6 +746,11 @@ class IntelligentRouter:
         
         if metrics and metrics.avg_latency_ms > 0:
             return metrics.avg_latency_ms
+        
+        # Try to get latency from model profile
+        model_profile = self.config_manager.get_model_profile(model_spec.model_id)
+        if model_profile:
+            return model_profile.avg_latency_ms
         
         # Fallback estimation based on model size/complexity
         base_latency = {
@@ -748,24 +763,6 @@ class IntelligentRouter:
         
         return base_latency
     
-    def _estimate_input_tokens(self, messages: List[Dict[str, Any]]) -> int:
-        """Estimate input token count."""
-        total_chars = 0
-        
-        for message in messages:
-            content = message.get("content", "")
-            if isinstance(content, str):
-                total_chars += len(content)
-            elif isinstance(content, list):
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        total_chars += len(item.get("text", ""))
-        
-        # Add overhead for message structure
-        total_chars += len(messages) * 20
-        
-        # Rough estimation: 4 characters per token
-        return total_chars // 4
     
     def _get_model_quality_rating(self, model_id: str) -> float:
         """Get learned quality rating for a model."""

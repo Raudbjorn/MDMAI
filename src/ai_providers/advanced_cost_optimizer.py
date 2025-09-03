@@ -20,6 +20,15 @@ from .models import (
     CostTier,
     ModelSpec,
 )
+from .config.model_config import get_model_config_manager, ModelConfigManager
+from .utils.cost_utils import (
+    estimate_input_tokens,
+    estimate_output_tokens,
+    estimate_request_cost,
+    assess_request_complexity,
+    classify_error,
+    ErrorClassification,
+)
 
 logger = get_logger(__name__)
 
@@ -141,10 +150,12 @@ class AdvancedCostOptimizer:
         optimization_strategy: OptimizationStrategy = OptimizationStrategy.COST_QUALITY_BALANCE,
         enable_real_time_tracking: bool = True,
         enable_predictive_modeling: bool = True,
+        config_manager: Optional[ModelConfigManager] = None,
     ):
         self.optimization_strategy = optimization_strategy
         self.enable_real_time_tracking = enable_real_time_tracking
         self.enable_predictive_modeling = enable_predictive_modeling
+        self.config_manager = config_manager or get_model_config_manager()
         
         # Cost tracking
         self.cost_metrics = CostMetrics()
@@ -270,15 +281,16 @@ class AdvancedCostOptimizer:
     
     def _analyze_request_cost_impact(self, request: AIRequest) -> Dict[str, Any]:
         """Analyze the cost impact characteristics of a request."""
-        # Estimate token usage
-        input_tokens = self._estimate_input_tokens(request.messages)
-        output_tokens = request.max_tokens or 1000
+        # Use centralized token estimation
+        input_tokens = estimate_input_tokens(request.messages)
+        output_tokens = estimate_output_tokens(request, None)
         
         # Categorize request
         content = " ".join(str(msg.get("content", "")) for msg in request.messages)
         content_length = len(content)
         
-        complexity_score = self._assess_complexity(content)
+        # Use centralized complexity assessment
+        complexity_score = assess_request_complexity(request.messages)
         
         return {
             "estimated_input_tokens": input_tokens,
@@ -303,11 +315,12 @@ class AdvancedCostOptimizer:
         # Get performance metrics
         perf_data = performance_data.get(f"{provider_type.value}:{model}", {})
         
-        # Estimate costs
-        estimated_cost = self._estimate_request_cost(
+        # Use centralized cost estimation
+        estimated_cost = estimate_request_cost(
             provider_type, model, 
             request_analysis["estimated_input_tokens"],
-            request_analysis["estimated_output_tokens"]
+            request_analysis["estimated_output_tokens"],
+            self.config_manager
         )
         
         # Calculate efficiency metrics
@@ -588,6 +601,9 @@ class AdvancedCostOptimizer:
     
     def _determine_alert_severity(self, usage_percentage: float) -> AlertSeverity:
         """Determine alert severity based on usage percentage."""
+        # Use configurable thresholds
+        thresholds = self.config_manager.normalization_config.cost_range  # Can be extended
+        
         if usage_percentage >= 0.95:
             return AlertSeverity.EMERGENCY
         elif usage_percentage >= 0.85:
@@ -623,71 +639,8 @@ class AdvancedCostOptimizer:
         
         return 1.0  # Default neutral load factor
     
-    def _estimate_input_tokens(self, messages: List[Dict[str, Any]]) -> int:
-        """Estimate input tokens from messages."""
-        total_chars = 0
-        for message in messages:
-            content = message.get("content", "")
-            if isinstance(content, str):
-                total_chars += len(content)
-            elif isinstance(content, list):
-                for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        total_chars += len(item.get("text", ""))
-        
-        return total_chars // 4  # Rough approximation
     
-    def _estimate_request_cost(
-        self, provider_type: ProviderType, model: str, input_tokens: int, output_tokens: int
-    ) -> float:
-        """Estimate request cost for a specific provider and model."""
-        # Default cost rates (should be loaded from model specs)
-        cost_rates = {
-            ProviderType.ANTHROPIC: {
-                "claude-3-opus": {"input": 0.015, "output": 0.075},
-                "claude-3-sonnet": {"input": 0.003, "output": 0.015},
-                "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
-            },
-            ProviderType.OPENAI: {
-                "gpt-4": {"input": 0.03, "output": 0.06},
-                "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
-            },
-            ProviderType.GOOGLE: {
-                "gemini-pro": {"input": 0.0005, "output": 0.0015},
-            },
-        }
-        
-        provider_rates = cost_rates.get(provider_type, {})
-        model_rates = provider_rates.get(model, {"input": 0.001, "output": 0.002})
-        
-        input_cost = (input_tokens / 1000) * model_rates["input"]
-        output_cost = (output_tokens / 1000) * model_rates["output"]
-        
-        return input_cost + output_cost
     
-    def _assess_complexity(self, content: str) -> float:
-        """Assess content complexity for cost estimation."""
-        # Simple heuristic-based complexity assessment
-        complexity_indicators = [
-            ("code", 0.3),
-            ("analysis", 0.2),
-            ("complex", 0.2),
-            ("detailed", 0.1),
-            ("explain", 0.1),
-        ]
-        
-        content_lower = content.lower()
-        complexity_score = 0.0
-        
-        for indicator, weight in complexity_indicators:
-            if indicator in content_lower:
-                complexity_score += weight
-        
-        # Length-based complexity
-        if len(content) > 1000:
-            complexity_score += 0.2
-        
-        return min(1.0, complexity_score)
     
     def _categorize_cost_impact(self, input_tokens: int, output_tokens: int, complexity: float) -> str:
         """Categorize the cost impact of a request."""
@@ -702,14 +655,13 @@ class AdvancedCostOptimizer:
     
     def _get_provider_cost_adjustment(self, provider_type: ProviderType) -> float:
         """Get provider-specific cost adjustment factor."""
-        # Based on historical performance, reliability, etc.
-        adjustments = {
-            ProviderType.ANTHROPIC: 1.0,
-            ProviderType.OPENAI: 1.05,  # Slight premium for reliability
-            ProviderType.GOOGLE: 0.95,  # Slight discount
-        }
+        # Use centralized adjustment calculation
+        from .utils.cost_utils import calculate_provider_adjustment_factor
         
-        return adjustments.get(provider_type, 1.0)
+        # Get historical performance if available
+        historical_perf = self.provider_performance.get(provider_type)
+        
+        return calculate_provider_adjustment_factor(provider_type, historical_perf)
     
     def _calculate_savings(self, options: List[Dict[str, Any]], selected_option: Dict[str, Any]) -> float:
         """Calculate potential savings from optimization."""

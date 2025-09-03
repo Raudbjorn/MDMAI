@@ -20,6 +20,8 @@ from .models import (
 from .abstract_provider import AbstractProvider
 from .health_monitor import HealthMonitor, ErrorType
 from .intelligent_router import IntelligentRouter, SelectionStrategy, SelectionCriteria
+from .config.model_config import get_model_config_manager, ModelConfigManager
+from .utils.cost_utils import classify_error, ErrorClassification
 
 logger = get_logger(__name__)
 
@@ -110,9 +112,11 @@ class FallbackManager:
         health_monitor: HealthMonitor,
         circuit_breaker_configs: Optional[List[CircuitBreakerConfig]] = None,
         fallback_rules: Optional[List[FallbackRule]] = None,
+        config_manager: Optional[ModelConfigManager] = None,
     ):
         self.router = intelligent_router
         self.health_monitor = health_monitor
+        self.config_manager = config_manager or get_model_config_manager()
         
         # Circuit breaker management
         self.circuit_breakers: Dict[ProviderType, CircuitBreakerConfig] = {}
@@ -407,17 +411,21 @@ class FallbackManager:
         self, providers: List[AbstractProvider], tier: FallbackTier
     ) -> List[AbstractProvider]:
         """Filter providers by fallback tier assignment."""
-        # Default tier assignment logic
-        tier_mapping = {
-            FallbackTier.PRIMARY: [ProviderType.ANTHROPIC, ProviderType.OPENAI],
-            FallbackTier.SECONDARY: [ProviderType.GOOGLE, ProviderType.OPENAI],
-            FallbackTier.EMERGENCY: [ProviderType.ANTHROPIC, ProviderType.OPENAI, ProviderType.GOOGLE],
-        }
-        
         if tier == FallbackTier.LOCAL:
             return [self.local_model_provider] if self.local_model_provider else []
         
-        preferred_types = tier_mapping.get(tier, [])
+        # Get tier configuration from config manager
+        tier_config = self.config_manager.get_fallback_tier(tier.value.lower())
+        if tier_config:
+            preferred_types = tier_config.providers
+        else:
+            # Fallback to defaults if config not found
+            tier_mapping = {
+                FallbackTier.PRIMARY: [ProviderType.ANTHROPIC, ProviderType.OPENAI],
+                FallbackTier.SECONDARY: [ProviderType.GOOGLE, ProviderType.OPENAI],
+                FallbackTier.EMERGENCY: [ProviderType.ANTHROPIC, ProviderType.OPENAI, ProviderType.GOOGLE],
+            }
+            preferred_types = tier_mapping.get(tier, [])
         
         return [
             provider for provider in providers
@@ -490,6 +498,9 @@ class FallbackManager:
         breaker.failure_count += 1
         breaker.last_failure_time = datetime.now()
         
+        # Classify error using centralized classification
+        error_class = classify_error(error)
+        
         # Check if we should trip the circuit
         if (breaker.state in [CircuitState.CLOSED, CircuitState.HALF_OPEN] and
             breaker.failure_count >= breaker.failure_threshold):
@@ -500,6 +511,7 @@ class FallbackManager:
                 "Circuit breaker opened due to failures",
                 provider=provider_type.value,
                 failure_count=breaker.failure_count,
+                error_type=error_class.value,
                 error=str(error),
             )
         
@@ -510,6 +522,7 @@ class FallbackManager:
             logger.warning(
                 "Circuit breaker returned to open after half-open failure",
                 provider=provider_type.value,
+                error_type=error_class.value,
             )
     
     def _create_failed_attempt(
@@ -533,12 +546,16 @@ class FallbackManager:
         )
     
     def _create_default_fallback_rules(self) -> List[FallbackRule]:
-        """Create default fallback rules."""
+        """Create default fallback rules based on error classifications."""
+        # Use error classifications from centralized enum
         return [
             FallbackRule(
                 name="rate_limit_fallback",
                 description="Fallback when rate limited",
-                trigger_conditions=["rate_limit", "too_many_requests"],
+                trigger_conditions=[
+                    ErrorClassification.RATE_LIMIT.value,
+                    ErrorClassification.TOO_MANY_REQUESTS.value,
+                ],
                 fallback_tier=FallbackTier.SECONDARY,
                 fallback_providers=[ProviderType.GOOGLE, ProviderType.OPENAI],
                 max_retries=2,
@@ -547,7 +564,10 @@ class FallbackManager:
             FallbackRule(
                 name="timeout_fallback",
                 description="Fallback on timeout errors",
-                trigger_conditions=["timeout", "connection_timeout"],
+                trigger_conditions=[
+                    ErrorClassification.TIMEOUT.value,
+                    ErrorClassification.CONNECTION_ERROR.value,
+                ],
                 fallback_tier=FallbackTier.SECONDARY,
                 fallback_providers=[ProviderType.OPENAI, ProviderType.ANTHROPIC],
                 max_retries=3,
@@ -556,7 +576,7 @@ class FallbackManager:
             FallbackRule(
                 name="quota_exceeded_fallback",
                 description="Fallback when quota exceeded",
-                trigger_conditions=["quota_exceeded", "usage_limit"],
+                trigger_conditions=[ErrorClassification.QUOTA_EXCEEDED.value],
                 fallback_tier=FallbackTier.EMERGENCY,
                 fallback_providers=[ProviderType.ANTHROPIC, ProviderType.OPENAI, ProviderType.GOOGLE],
                 max_retries=1,
@@ -564,7 +584,12 @@ class FallbackManager:
             FallbackRule(
                 name="service_error_fallback",
                 description="Fallback on service errors",
-                trigger_conditions=["service_error", "500", "502", "503", "504"],
+                trigger_conditions=[
+                    ErrorClassification.SERVICE_UNAVAILABLE.value,
+                    ErrorClassification.INTERNAL_SERVER_ERROR.value,
+                    ErrorClassification.BAD_GATEWAY.value,
+                    ErrorClassification.GATEWAY_TIMEOUT.value,
+                ],
                 fallback_tier=FallbackTier.SECONDARY,
                 fallback_providers=[ProviderType.GOOGLE, ProviderType.ANTHROPIC],
                 max_retries=2,
