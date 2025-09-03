@@ -16,10 +16,11 @@ Key Features:
 
 import asyncio
 import logging
+import re
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Pattern, Tuple, Union
 
 from pydantic import BaseModel, Field
 from structlog import get_logger
@@ -33,6 +34,102 @@ from .mcp_protocol_schemas import (
 )
 
 logger = get_logger(__name__)
+
+
+# Error pattern classification rules
+class ErrorPatternClassifier:
+    """Robust error pattern classification using regex patterns and exception types."""
+    
+    def __init__(self):
+        """Initialize error classification patterns."""
+        self.patterns: Dict[str, Dict[str, Union[List[Pattern], List[type]]]] = {
+            'rate_limit': {
+                'patterns': [
+                    re.compile(r'rate\s+limit(?:ed)?', re.IGNORECASE),
+                    re.compile(r'quota\s+exceeded', re.IGNORECASE),
+                    re.compile(r'too\s+many\s+requests', re.IGNORECASE),
+                    re.compile(r'429', re.IGNORECASE),
+                    re.compile(r'throttl(?:ed|ing)', re.IGNORECASE),
+                ],
+                'exception_types': []
+            },
+            'authentication': {
+                'patterns': [
+                    re.compile(r'auth(?:entication|orization)?\s+(?:failed|error)', re.IGNORECASE),
+                    re.compile(r'unauthorized', re.IGNORECASE),
+                    re.compile(r'invalid\s+(?:token|key|credentials)', re.IGNORECASE),
+                    re.compile(r'401|403', re.IGNORECASE),
+                    re.compile(r'access\s+denied', re.IGNORECASE),
+                    re.compile(r'permission\s+denied', re.IGNORECASE),
+                ],
+                'exception_types': [PermissionError]
+            },
+            'network_connectivity': {
+                'patterns': [
+                    re.compile(r'connection\s+(?:refused|reset|failed|timeout)', re.IGNORECASE),
+                    re.compile(r'network\s+(?:unreachable|error)', re.IGNORECASE),
+                    re.compile(r'dns\s+resolution\s+failed', re.IGNORECASE),
+                    re.compile(r'host\s+unreachable', re.IGNORECASE),
+                ],
+                'exception_types': [ConnectionError, OSError]
+            },
+            'timeout': {
+                'patterns': [
+                    re.compile(r'timeout|timed\s+out', re.IGNORECASE),
+                    re.compile(r'request\s+timeout', re.IGNORECASE),
+                ],
+                'exception_types': [asyncio.TimeoutError, TimeoutError]
+            },
+            'validation': {
+                'patterns': [
+                    re.compile(r'validation\s+(?:failed|error)', re.IGNORECASE),
+                    re.compile(r'invalid\s+(?:input|parameter|format)', re.IGNORECASE),
+                    re.compile(r'malformed\s+request', re.IGNORECASE),
+                    re.compile(r'400\s+bad\s+request', re.IGNORECASE),
+                ],
+                'exception_types': [ValueError, TypeError]
+            }
+        }
+    
+    def classify_error_type(self, error: Exception, error_message: str = None) -> Optional[str]:
+        """
+        Classify error type using both exception type and message content.
+        
+        Args:
+            error: The exception to classify
+            error_message: Optional custom error message to analyze
+            
+        Returns:
+            String identifier of error type or None if no match
+        """
+        message = error_message or str(error)
+        error_type = type(error)
+        
+        for error_category, rules in self.patterns.items():
+            # Check exception type first (more reliable)
+            if error_type in rules['exception_types']:
+                logger.debug(f"Classified error by type: {error_category}", 
+                           error_type=error_type.__name__)
+                return error_category
+            
+            # Check base exception types
+            for exc_type in rules['exception_types']:
+                if isinstance(error, exc_type):
+                    logger.debug(f"Classified error by inheritance: {error_category}", 
+                               error_type=error_type.__name__, base_type=exc_type.__name__)
+                    return error_category
+            
+            # Check message patterns
+            for pattern in rules['patterns']:
+                if pattern.search(message):
+                    logger.debug(f"Classified error by pattern: {error_category}", 
+                               pattern=pattern.pattern, message=message[:100])
+                    return error_category
+        
+        logger.debug("No error classification match found", 
+                    error_type=error_type.__name__, 
+                    message=message[:100])
+        return None
 
 
 # Error Severity and Classification
@@ -419,6 +516,7 @@ class MCPErrorHandler:
         self.error_callbacks: List[Callable] = []
         self.dead_letter_queue: deque = deque(maxlen=1000)
         self._recovery_handlers: Dict[RecoveryStrategy, Callable] = {}
+        self.error_classifier = ErrorPatternClassifier()
         
         # Initialize recovery handlers
         self._setup_recovery_handlers()
@@ -522,10 +620,23 @@ class MCPErrorHandler:
         return mcp_error
     
     def _classify_error(self, error: Exception, context: Optional[ErrorContext] = None) -> MCPError:
-        """Classify an exception into structured MCP error."""
+        """
+        Classify an exception into structured MCP error with robust pattern matching.
+        
+        This method uses a combination of exception type checking and regex pattern matching
+        to reliably classify errors, avoiding brittle string matching.
+        
+        Args:
+            error: The exception to classify
+            context: Optional error context for additional metadata
+            
+        Returns:
+            Structured MCPError with appropriate classification
+        """
         import uuid
         
         error_id = str(uuid.uuid4())
+        error_context = context or ErrorContext()
         
         # Handle MCP router errors (already classified)
         if isinstance(error, MCPRouterError):
@@ -540,63 +651,83 @@ class MCPErrorHandler:
                 can_retry=error.can_retry
             )
         
-        # Classify standard exceptions
-        if isinstance(error, asyncio.TimeoutError):
+        # Use robust classification
+        error_type = self.error_classifier.classify_error_type(error)
+        
+        # Handle classified errors with appropriate mappings
+        if error_type == 'timeout':
             return MCPError(
                 error_id=error_id,
                 category=ErrorCategory.TIMEOUT_ERROR,
                 severity=ErrorSeverity.MEDIUM,
                 code=MCPProviderErrorCode.PROVIDER_TIMEOUT,
-                message="Operation timed out",
-                context=context or ErrorContext(),
+                message=f"Operation timed out: {str(error)}",
+                context=error_context,
                 recovery_strategy=RecoveryStrategy.BACKOFF
             )
         
-        elif isinstance(error, ConnectionError):
+        elif error_type == 'network_connectivity':
             return MCPError(
                 error_id=error_id,
                 category=ErrorCategory.NETWORK_ERROR,
                 severity=ErrorSeverity.HIGH,
                 code=MCPProviderErrorCode.PROVIDER_UNAVAILABLE,
-                message=f"Connection error: {str(error)}",
-                context=context or ErrorContext(),
+                message=f"Network connectivity error: {str(error)}",
+                context=error_context,
                 recovery_strategy=RecoveryStrategy.RETRY
             )
         
-        elif "rate limit" in str(error).lower():
+        elif error_type == 'rate_limit':
             return MCPError(
                 error_id=error_id,
                 category=ErrorCategory.RATE_LIMIT_ERROR,
                 severity=ErrorSeverity.MEDIUM,
                 code=MCPProviderErrorCode.PROVIDER_RATE_LIMITED,
                 message=f"Rate limit exceeded: {str(error)}",
-                context=context or ErrorContext(),
+                context=error_context,
                 recovery_strategy=RecoveryStrategy.BACKOFF
             )
         
-        elif "authentication" in str(error).lower() or "unauthorized" in str(error).lower():
+        elif error_type == 'authentication':
             return MCPError(
                 error_id=error_id,
                 category=ErrorCategory.AUTHENTICATION_ERROR,
                 severity=ErrorSeverity.HIGH,
                 code=MCPProviderErrorCode.CONFIGURATION_ERROR,
                 message=f"Authentication error: {str(error)}",
-                context=context or ErrorContext(),
+                context=error_context,
                 recovery_strategy=RecoveryStrategy.MANUAL_INTERVENTION,
                 can_retry=False
             )
         
-        else:
-            # Generic system error
+        elif error_type == 'validation':
             return MCPError(
                 error_id=error_id,
-                category=ErrorCategory.SYSTEM_ERROR,
-                severity=ErrorSeverity.HIGH,
-                code=MCPProviderErrorCode.PROVIDER_UNAVAILABLE,
-                message=f"System error: {str(error)}",
-                context=context or ErrorContext(),
-                recovery_strategy=RecoveryStrategy.RETRY
+                category=ErrorCategory.VALIDATION_ERROR,
+                severity=ErrorSeverity.MEDIUM,
+                code=MCPProviderErrorCode.INVALID_REQUEST,
+                message=f"Validation error: {str(error)}",
+                context=error_context,
+                recovery_strategy=RecoveryStrategy.MANUAL_INTERVENTION,
+                can_retry=False
             )
+        
+        # Fallback for unclassified errors
+        logger.warning(
+            "Error classification failed, using generic system error",
+            error_type=type(error).__name__,
+            error_message=str(error)[:200]
+        )
+        
+        return MCPError(
+            error_id=error_id,
+            category=ErrorCategory.SYSTEM_ERROR,
+            severity=ErrorSeverity.HIGH,
+            code=MCPProviderErrorCode.PROVIDER_UNAVAILABLE,
+            message=f"System error: {str(error)}",
+            context=error_context,
+            recovery_strategy=RecoveryStrategy.RETRY
+        )
     
     async def _notify_error_callbacks(self, error: MCPError):
         """Notify registered error callbacks."""

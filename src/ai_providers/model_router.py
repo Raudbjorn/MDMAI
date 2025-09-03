@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from structlog import get_logger
+from .config.config_loader import get_default_config_loader, ConfigurationError
 
 from .models import (
     AIRequest,
@@ -137,7 +138,7 @@ class ModelRouter:
     - Tool compatibility validation
     """
     
-    def __init__(self):
+    def __init__(self, config_loader=None):
         self.model_profiles: Dict[str, ModelProfile] = {}
         self.provider_model_mapping: Dict[ProviderType, List[str]] = {}
         self.routing_rules: List[RoutingRule] = []
@@ -148,9 +149,11 @@ class ModelRouter:
         # Performance tracking
         self.model_performance_history: Dict[str, List[Tuple[datetime, float, float]]] = {}
         
-        # Initialize with default profiles and rules
-        self._initialize_default_profiles()
-        self._initialize_default_routing_rules()
+        # Configuration loader for external configs
+        self.config_loader = config_loader or get_default_config_loader()
+        
+        # Initialize with external configuration first, fallback to defaults
+        self._initialize_from_external_config()
     
     def register_model(
         self,
@@ -776,6 +779,145 @@ class ModelRouter:
                 min_quality_score=0.8,
             ),
         ]
+    
+    def _initialize_from_external_config(self) -> None:
+        """Initialize model profiles and routing rules from external configuration files."""
+        try:
+            # Load external configuration
+            profiles_config = self.config_loader.load_model_profiles()
+            rules_config = self.config_loader.load_routing_rules()
+            
+            # Initialize profiles from config
+            self._load_profiles_from_config(profiles_config)
+            
+            # Initialize routing rules from config  
+            self._load_routing_rules_from_config(rules_config)
+            
+            logger.info("Successfully initialized from external configuration",
+                       profile_count=len(self.model_profiles),
+                       rule_count=len(self.routing_rules))
+            
+        except ConfigurationError as e:
+            logger.warning("Failed to load external configuration, falling back to defaults",
+                          error=str(e))
+            # Fallback to hardcoded defaults
+            self._initialize_default_profiles()
+            self._initialize_default_routing_rules()
+        except Exception as e:
+            logger.error("Unexpected error loading configuration, using defaults",
+                        error=str(e))
+            # Fallback to hardcoded defaults
+            self._initialize_default_profiles()
+            self._initialize_default_routing_rules()
+    
+    def _load_profiles_from_config(self, profiles_config: Dict[str, Any]) -> None:
+        """Load model profiles from configuration dictionary."""
+        for model_id, profile_data in profiles_config.items():
+            try:
+                # Map string values to enums
+                provider_type = ProviderType(profile_data['provider_type'].upper())
+                category = ModelCategory(profile_data['category'].upper())
+                tier = ModelTier(profile_data['tier'].upper())
+                cost_tier = CostTier(profile_data['cost_tier'].upper())
+                
+                # Extract capabilities
+                caps = profile_data['capabilities']
+                
+                # Create ModelProfile
+                profile = ModelProfile(
+                    model_id=model_id,
+                    provider_type=provider_type,
+                    category=category,
+                    tier=tier,
+                    context_length=profile_data['context_length'],
+                    max_output_tokens=profile_data['max_output_tokens'],
+                    supports_streaming=profile_data['supports_streaming'],
+                    supports_tools=profile_data['supports_tools'],
+                    supports_vision=profile_data['supports_vision'],
+                    quality_score=caps['quality_score'],
+                    reasoning_capability=caps['reasoning_capability'],
+                    creativity_capability=caps['creativity_capability'],
+                    coding_capability=caps['coding_capability'],
+                    multimodal_capability=caps['multimodal_capability'],
+                    tool_use_capability=caps['tool_use_capability'],
+                    cost_tier=cost_tier,
+                    recommended_for=profile_data['recommended_for'],
+                )
+                
+                self.model_profiles[model_id] = profile
+                
+                # Update provider mapping
+                if provider_type not in self.provider_model_mapping:
+                    self.provider_model_mapping[provider_type] = []
+                self.provider_model_mapping[provider_type].append(model_id)
+                
+                logger.debug("Loaded model profile from config",
+                           model_id=model_id, provider=provider_type.value)
+                           
+            except (KeyError, ValueError) as e:
+                logger.error("Failed to load model profile",
+                           model_id=model_id, error=str(e))
+                raise ConfigurationError(f"Invalid profile config for {model_id}: {e}")
+    
+    def _load_routing_rules_from_config(self, rules_config: List[Dict[str, Any]]) -> None:
+        """Load routing rules from configuration list."""
+        for rule_data in rules_config:
+            try:
+                # Parse categories and tiers
+                preferred_categories = []
+                if rule_data.get('preferred_categories'):
+                    for cat in rule_data['preferred_categories']:
+                        try:
+                            preferred_categories.append(ModelCategory(cat.upper()))
+                        except ValueError:
+                            logger.warning("Invalid category in routing rule",
+                                         category=cat, rule=rule_data['name'])
+                
+                preferred_tiers = []
+                if rule_data.get('preferred_tiers'):
+                    for tier in rule_data['preferred_tiers']:
+                        try:
+                            preferred_tiers.append(ModelTier(tier.upper()))
+                        except ValueError:
+                            logger.warning("Invalid tier in routing rule",
+                                         tier=tier, rule=rule_data['name'])
+                
+                # Parse required capabilities
+                required_capabilities = []
+                if rule_data.get('required_capabilities'):
+                    for cap in rule_data['required_capabilities']:
+                        try:
+                            required_capabilities.append(ProviderCapability(cap.upper()))
+                        except ValueError:
+                            logger.warning("Invalid capability in routing rule",
+                                         capability=cap, rule=rule_data['name'])
+                
+                # Create RoutingRule
+                rule = RoutingRule(
+                    name=rule_data['name'],
+                    description=rule_data['description'],
+                    priority=rule_data['priority'],
+                    request_patterns=rule_data.get('request_patterns', []),
+                    preferred_categories=preferred_categories,
+                    preferred_tiers=preferred_tiers,
+                    required_capabilities=required_capabilities,
+                    min_quality_score=rule_data.get('min_quality_score'),
+                    max_latency_ms=rule_data.get('max_latency_ms'),
+                )
+                
+                self.routing_rules.append(rule)
+                
+                logger.debug("Loaded routing rule from config",
+                           rule_name=rule_data['name'],
+                           priority=rule_data['priority'])
+                           
+            except (KeyError, ValueError) as e:
+                logger.error("Failed to load routing rule",
+                           rule=rule_data.get('name', 'unnamed'), error=str(e))
+                raise ConfigurationError(f"Invalid routing rule config: {e}")
+        
+        # Sort rules by priority (highest first)
+        self.routing_rules.sort(key=lambda r: r.priority, reverse=True)
     
     def add_routing_rule(self, rule: RoutingRule) -> None:
         """Add a custom routing rule."""

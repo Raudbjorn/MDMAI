@@ -29,6 +29,15 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
+try:
+    import redis.exceptions as redis_exceptions
+    from redis.exceptions import ConnectionError as RedisConnectionError, TimeoutError as RedisTimeoutError
+except ImportError:
+    # Fallback for testing environments without Redis
+    redis_exceptions = None
+    RedisConnectionError = ConnectionError
+    RedisTimeoutError = TimeoutError
+
 import pytest
 import pytest_asyncio
 
@@ -67,6 +76,7 @@ class FailureSimulationProvider(AbstractProvider):
         self.timeout_probability = failure_config.get("timeout_probability", 0.0)
         self.error_probability = failure_config.get("error_probability", 0.0)
         self.latency_spike_probability = failure_config.get("latency_spike_probability", 0.0)
+        self.latency_spike_multiplier = failure_config.get("latency_spike_multiplier", 5.0)  # Configurable multiplier
         self.base_latency_ms = failure_config.get("base_latency_ms", 100.0)
         self.timeout_duration_s = failure_config.get("timeout_duration_s", 30.0)
         self.rate_limit_probability = failure_config.get("rate_limit_probability", 0.0)
@@ -127,7 +137,7 @@ class FailureSimulationProvider(AbstractProvider):
         # Simulate latency spikes
         latency = self.base_latency_ms
         if random.random() < self.latency_spike_probability:
-            latency *= 5  # 5x latency spike
+            latency *= self.latency_spike_multiplier  # Configurable latency spike multiplier
         
         await asyncio.sleep(latency / 1000.0)
         
@@ -296,12 +306,12 @@ async def failure_context_manager():
     # Configure Redis to occasionally fail
     async def redis_get_with_failures(key):
         if random.random() < 0.1:  # 10% failure rate
-            raise Exception("Redis connection failed")
+            raise RedisConnectionError("Redis connection failed")
         return None
     
     async def redis_set_with_failures(key, value, *args, **kwargs):
         if random.random() < 0.05:  # 5% failure rate
-            raise Exception("Redis write failed")
+            raise RedisTimeoutError("Redis write timed out")
     
     mock_redis.get = redis_get_with_failures
     mock_redis.set = redis_set_with_failures
@@ -904,8 +914,9 @@ class TestResourceConstraintFailures:
         
         print(f"Memory growth: {memory_growth:.1f}MB, violations: {memory_violations}")
         
-        # Verify system handled memory pressure reasonably
-        assert memory_growth < 200, f"Memory growth {memory_growth:.1f}MB too high"
+        # Verify system handled memory pressure reasonably (max 50% growth)
+        max_allowed_growth = initial_memory * 0.5  # 50% of initial memory
+        assert memory_growth < max_allowed_growth, f"Memory growth {memory_growth:.1f}MB exceeds {max_allowed_growth:.1f}MB limit (50% of initial {initial_memory:.1f}MB)"
         assert successful_under_pressure > 0, "No requests succeeded under memory pressure"
         
         success_rate = successful_under_pressure / len(memory_intensive_requests)

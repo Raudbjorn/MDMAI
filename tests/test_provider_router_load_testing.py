@@ -4,7 +4,7 @@ This module implements comprehensive load testing using Locust framework
 to validate performance under various load conditions.
 
 Performance Targets:
-- Sub-100ms routing latency (P99)
+- 95ms routing latency (P99) - truly sub-100ms
 - 1000+ requests per second throughput
 - <5% error rate under peak load
 - Graceful degradation under overload
@@ -179,8 +179,8 @@ class ProviderRouterUser(FastHttpUser):
                         metrics.record_cost(data["cost_estimate"])
                         
                     # Validate response
-                    if latency_ms > 100:  # Check SLA
-                        response.failure(f"Latency {latency_ms:.2f}ms exceeds 100ms SLA")
+                    if latency_ms > 95:  # Check SLA - truly sub-100ms
+                        response.failure(f"Latency {latency_ms:.2f}ms exceeds 95ms SLA")
                     else:
                         response.success()
                         
@@ -611,10 +611,10 @@ def on_test_stop(environment, **kwargs):
     targets_missed = []
     
     # Check latency target
-    if p99_latency < 100:
-        targets_met.append(f"✓ P99 Latency: {p99_latency:.2f}ms < 100ms")
+    if p99_latency < 95:
+        targets_met.append(f"✓ P99 Latency: {p99_latency:.2f}ms < 95ms")
     else:
-        targets_missed.append(f"✗ P99 Latency: {p99_latency:.2f}ms > 100ms target")
+        targets_missed.append(f"✗ P99 Latency: {p99_latency:.2f}ms > 95ms target")
         
     # Check throughput target
     if rps > 1000:
