@@ -339,7 +339,7 @@ class NPCGenerator:
                 role=role_enum,
                 style=NameStyle.FORMAL if importance == "major" else NameStyle.CASUAL,
                 include_title=importance in ["supporting", "major"],
-                include_nickname=role in ["criminal", "adventurer", "assassin"] if role else False
+                include_nickname=role_enum in [NPCRole.CRIMINAL, NPCRole.ADVENTURER, NPCRole.ASSASSIN],
             )
             name = generated_name
 
