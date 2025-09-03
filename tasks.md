@@ -1126,7 +1126,7 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 25.4: Implement Usage Tracking and Cost Management
 **Requirements:** REQ-013, REQ-020
-**Status:** PLANNED
+**Status:** READY FOR DEV
 - [ ] Create token counting system for all providers
 - [ ] Build real-time cost calculation engine
 - [ ] Implement per-user usage tracking with local JSON files or ChromaDB
