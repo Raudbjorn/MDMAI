@@ -1136,7 +1136,7 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 25.5: Create Model Selection Strategy
 **Requirements:** REQ-013
-**Status:** PLANNED
+**Status:** READY FOR DEV
 - [ ] Implement task-based model selection
 - [ ] Create model performance profiling
 - [ ] Build automatic model optimization
