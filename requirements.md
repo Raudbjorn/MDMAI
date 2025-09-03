@@ -112,17 +112,26 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - WHEN similar concepts exist across systems THEN the system SHALL deduplicate while preserving system-specific variations
 - IF a user requests genre-specific content THEN the system SHALL filter available options by the selected genre
 
-### REQ-013: Web UI Access with AI Provider Integration
-**User Story:** As a user, I want to access the TTRPG Assistant through a web interface using my own AI provider account, so that I can use the tools without installing custom desktop applications.
+### REQ-013: LLM Provider Authentication and Integration
+**User Story:** As a user, I want to use my own LLM provider API keys (Anthropic Claude, OpenAI ChatGPT, etc.) to power the TTRPG Assistant's DM/Game Runner functionality, so that I have control over costs and provider selection.
 
 **Acceptance Criteria:**
-- WHEN a user accesses the web UI THEN they SHALL be able to authenticate with their own AI provider credentials (Anthropic, OpenAI, Google Gemini)
-- WHEN authenticated THEN the system SHALL validate and store the provider credentials securely
-- WHEN using the UI THEN the user SHALL be able to switch between different AI providers during a session
-- IF a provider fails THEN the system SHALL offer automatic fallback to alternative providers
-- WHEN multiple providers are configured THEN the system SHALL optimize for cost and performance based on user preferences
+- WHEN a user configures an LLM provider THEN they SHALL be able to securely enter their API key through the GUI
+- WHEN an API key is provided THEN the system SHALL validate it with the provider before storing
+- WHEN storing API keys THEN the system SHALL encrypt them using AES-256 encryption with user-specific salting
+- WHEN multiple providers are configured THEN the user SHALL be able to switch between them during gameplay
+- IF the primary provider fails or rate limits THEN the system SHALL automatically fallback to secondary providers
+- WHEN using providers THEN the system SHALL track token usage and estimate costs in real-time
+- WHEN selecting models THEN the system SHALL offer appropriate models for different tasks (fast/balanced/powerful)
+- IF no provider is configured THEN the system SHALL provide clear setup instructions
 
-### REQ-013: MCP Bridge Service
+**Priority Providers:**
+1. **Anthropic Claude** (Primary) - Best for long narratives and consistent roleplay
+2. **OpenAI ChatGPT** (Secondary) - Good for multimodal features and worldbuilding
+3. **Google Gemini** (Tertiary) - Alternative option for fact-based gameplay
+4. **Local Models** (Future) - Ollama support for offline play
+
+### REQ-014: MCP Bridge Service
 **User Story:** As a developer, I want a bridge service that connects the web UI to the stdio-based MCP server, so that we maintain the reliability of local operations while enabling web access.
 
 **Acceptance Criteria:**
@@ -132,7 +141,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF a process crashes THEN the bridge SHALL automatically restart it with context recovery
 - WHEN managing sessions THEN the bridge SHALL enforce resource limits and session timeouts
 
-### REQ-014: Multi-User Collaborative Sessions
+### REQ-015: Multi-User Collaborative Sessions
 **User Story:** As a Game Master, I want to run collaborative sessions where multiple players can connect and interact, so that we can play together remotely.
 
 **Acceptance Criteria:**
@@ -142,7 +151,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF a player disconnects THEN their state SHALL be preserved for reconnection
 - WHEN players interact THEN the system SHALL maintain proper turn order and permissions
 
-### REQ-015: Context Persistence and Management
+### REQ-016: Context Persistence and Management
 **User Story:** As a user, I want my conversation context and game state to persist across sessions, so that I can resume where I left off.
 
 **Acceptance Criteria:**
@@ -152,7 +161,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF context grows large THEN the system SHALL implement intelligent compression and pruning
 - WHEN accessing old sessions THEN the system SHALL provide search and filtering capabilities
 
-### REQ-016: Tool Result Visualization
+### REQ-017: Tool Result Visualization
 **User Story:** As a player, I want rich visualizations for tool results, so that I can better understand game information and state.
 
 **Acceptance Criteria:**
@@ -162,7 +171,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - WHEN displaying tables THEN the UI SHALL provide sortable, filterable data grids
 - IF visualization fails THEN the UI SHALL gracefully degrade to text representation
 
-### REQ-017: Security and Authentication
+### REQ-018: Security and Authentication
 **User Story:** As an administrator, I want robust security for the web interface, so that user data and AI credentials are protected.
 
 **Acceptance Criteria:**
@@ -172,7 +181,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - WHEN accessing tools THEN the system SHALL enforce granular permission controls
 - IF suspicious activity is detected THEN the system SHALL implement rate limiting and alerting
 
-### REQ-018: Performance Optimization and Caching
+### REQ-019: Performance Optimization and Caching
 **User Story:** As a user, I want fast response times even with multiple concurrent users, so that gameplay remains fluid.
 
 **Acceptance Criteria:**
@@ -182,7 +191,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF response time exceeds thresholds THEN the system SHALL implement predictive prefetching
 - WHEN monitoring performance THEN the system SHALL maintain < 50ms context retrieval for 95th percentile
 
-### REQ-019: Cost Optimization for AI Providers
+### REQ-020: Cost Optimization for AI Providers
 **User Story:** As a user, I want the system to optimize AI provider usage based on cost and performance, so that I can manage expenses.
 
 **Acceptance Criteria:**
@@ -192,7 +201,7 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 - IF a user sets budget limits THEN the system SHALL track and enforce spending caps
 - WHEN providing cost data THEN the system SHALL show real-time usage and projection analytics
 
-### REQ-020: Responsive Web Design
+### REQ-021: Responsive Web Design
 **User Story:** As a player, I want to access the TTRPG Assistant from any device (desktop, tablet, or mobile), so that I can play from anywhere with a consistent experience.
 
 **Acceptance Criteria:**
@@ -251,42 +260,42 @@ A Model Context Protocol (MCP) server designed to assist with Tabletop Role-Play
 
 ### Functional Requirements
 
-#### REQ-021: Desktop Application Core
+#### REQ-022: Desktop Application Core
 - The system SHALL provide a standalone desktop application for Windows, macOS, and Linux
 - The desktop app SHALL embed the Python MCP server as a subprocess
 - The desktop app SHALL reuse the existing SvelteKit frontend in a WebView
 - The desktop app SHALL operate fully offline without internet connectivity
 - The desktop app SHALL provide native file system access with appropriate sandboxing
 
-#### REQ-022: Installation and Distribution
+#### REQ-023: Installation and Distribution
 - The system SHALL provide platform-specific installers (MSI/NSIS for Windows, DMG for macOS, AppImage/deb/rpm for Linux)
 - The installer SHALL bundle all required dependencies including Python runtime
 - The application SHALL support auto-updates with user consent
 - The installation package SHALL be under 70MB total size
 - The system SHALL support portable/no-install mode for USB deployment
 
-#### REQ-023: Process Management
+#### REQ-024: Process Management
 - The desktop app SHALL manage the Python MCP server lifecycle (start, stop, restart)
 - The system SHALL handle process crashes gracefully with automatic restart
 - The app SHALL monitor resource usage and provide alerts for high consumption
 - The system SHALL support running multiple isolated sessions
 - The app SHALL clean up all resources on exit
 
-#### REQ-024: Native Integration
+#### REQ-025: Native Integration
 - The system SHALL integrate with the OS system tray for background operation
 - The app SHALL register file associations for .ttrpg project files
 - The system SHALL support drag-and-drop for PDF import
 - The app SHALL provide native file dialogs for better UX
 - The system SHALL integrate with OS notifications
 
-#### REQ-025: Data Management
+#### REQ-026: Data Management
 - The desktop app SHALL store all data locally in the user's data directory
 - The system SHALL provide data export/import functionality
 - The app SHALL support automatic backups with configurable retention
 - The system SHALL migrate data from web version if requested
 - The app SHALL encrypt sensitive data using OS keychain services
 
-#### REQ-026: Performance Requirements
+#### REQ-027: Performance Requirements
 - The desktop app SHALL start in under 2 seconds on modern hardware
 - The app SHALL use less than 150MB RAM when idle
 - The system SHALL maintain sub-5ms IPC latency between frontend and backend
