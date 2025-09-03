@@ -98,7 +98,7 @@ class TestEquipmentGeneration:
         
     def test_wealth_level_effects(self):
         """Test that wealth level affects equipment quality."""
-        wealth_levels = ["poor", "standard", "wealthy", "very_wealthy"]
+        wealth_levels = ["poor", "standard", "wealthy", "noble"]
         
         for wealth in wealth_levels:
             equipment = EquipmentGenerator.generate_equipment(
