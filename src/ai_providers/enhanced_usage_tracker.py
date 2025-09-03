@@ -543,7 +543,9 @@ class CostCalculationEngine:
     
     def _load_pricing_data(self) -> None:
         """Load pricing data from configuration."""
-        # This would typically load from a config file or API
+        # TODO: HIGH PRIORITY - Load pricing data from external config file (YAML/JSON)
+        # instead of hardcoding. Provider prices change frequently and this requires
+        # code changes and redeployments. Should load from file at startup for easier updates.
         self._pricing_data = {
             "openai": {
                 "gpt-4-turbo": {

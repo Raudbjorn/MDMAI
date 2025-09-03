@@ -123,7 +123,13 @@ class ModelOptimizer:
         self._initialize_default_rules()
     
     def _initialize_default_rules(self) -> None:
-        """Initialize default optimization rules."""
+        """Initialize default optimization rules.
+        
+        TODO: HIGH PRIORITY - Default optimization rules are hardcoded, making them
+        difficult to tune or expand upon without code changes. To improve maintainability,
+        consider loading these rules from an external configuration file (e.g., YAML or JSON).
+        This would allow for dynamic adjustments to the optimization logic.
+        """
         default_rules = [
             OptimizationRule(
                 task_type=TTRPGTaskType.COMBAT_RESOLUTION,

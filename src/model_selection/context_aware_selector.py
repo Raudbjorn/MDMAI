@@ -177,7 +177,14 @@ class ContextAwareSelector:
         self.model_performance_by_context: Dict[str, Dict[str, List[float]]] = defaultdict(lambda: defaultdict(list))
     
     def _initialize_context_rules(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize context-specific optimization rules."""
+        """Initialize context-specific optimization rules.
+        
+        TODO: HIGH PRIORITY - Context-specific optimization rules are hardcoded, making
+        it difficult to add, remove, or tune rules without modifying code. For better
+        maintainability and flexibility, load these rules from an external configuration
+        file (e.g., YAML or JSON). This allows dynamic adjustments to model selection
+        logic without requiring full deployment.
+        """
         return {
             # Combat phase rules
             f"{SessionPhase.COMBAT.value}": {

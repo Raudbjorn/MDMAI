@@ -95,7 +95,7 @@ class AlertRule:
     rule_id: str
     name: str
     alert_type: AlertType
-    condition: Dict[str, Any]  # Condition parameters
+    condition: Dict[str, Any]  # Structured condition parameters (e.g., {'metric': 'latency', 'operator': '>', 'value': 2000})
     severity: AlertSeverity
     channels: List[AlertChannel]
     enabled: bool = True

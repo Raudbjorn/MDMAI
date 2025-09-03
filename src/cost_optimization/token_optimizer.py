@@ -48,7 +48,14 @@ class CompressionStrategy:
 
 
 class TokenEstimator:
-    """Estimate token counts for different providers."""
+    """Estimate token counts for different providers.
+    
+    TODO: HIGH PRIORITY - This TokenEstimator class is a duplicate of a more advanced
+    version in src/ai_providers/enhanced_usage_tracker.py. Having two separate 
+    implementations for token estimation can lead to inconsistencies and maintenance
+    overhead. Consolidate into a single, shared utility that both the cost optimization
+    and usage tracking systems can use. The enhanced_usage_tracker.py version is more robust.
+    """
     
     # Rough token estimation ratios (chars per token)
     PROVIDER_RATIOS = {

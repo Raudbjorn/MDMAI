@@ -294,7 +294,13 @@ class PricingEngine:
         logger.info("Pricing Engine initialized")
     
     def _initialize_default_pricing(self) -> None:
-        """Initialize with default pricing for all providers."""
+        """Initialize with default pricing for all providers.
+        
+        TODO: HIGH PRIORITY - Externalize pricing configuration to separate file
+        (e.g., YAML or JSON) that can be loaded at runtime. As AI provider pricing
+        changes frequently, hardcoding requires code modifications and redeployments.
+        This improves maintainability and allows for easier updates.
+        """
         
         # OpenAI Pricing
         openai_config = ProviderPricingConfig(ProviderType.OPENAI)

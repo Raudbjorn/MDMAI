@@ -16,19 +16,19 @@ This document outlines the comprehensive implementation plan for Task 25.5: Crea
 
 ### Model Capability Matrix
 
-| Provider | Model | Cost/1K Tokens | Latency | Best For | Quality Score |
-|----------|-------|----------------|---------|----------|---------------|
-| **Anthropic** | | | | | |
-| Claude 3.5 Sonnet | $3/$15 | 200-400ms | Narrative, Characters | 95/100 |
-| Claude 3.5 Haiku | $0.25/$1.25 | 100-200ms | Rules, Quick Responses | 85/100 |
-| Claude 3 Opus | $15/$75 | 300-500ms | Complex World-building | 98/100 |
-| **OpenAI** | | | | | |
-| GPT-4o | $5/$15 | 250-450ms | Multimodal, Maps | 94/100 |
-| GPT-4o-mini | $0.15/$0.60 | 100-200ms | Simple Queries | 82/100 |
-| GPT-4-turbo | $10/$30 | 300-500ms | Long Context | 93/100 |
-| **Google** | | | | | |
-| Gemini 1.5 Pro | $3.50/$10.50 | 200-400ms | Fact-based Content | 92/100 |
-| Gemini 1.5 Flash | $0.075/$0.30 | 50-150ms | Quick Lookups | 80/100 |
+| Provider | Model | Cost/1K Input | Cost/1K Output | Latency | Best For | Quality Score |
+|----------|-------|----------------|----------------|---------|----------|---------------|
+| **Anthropic** | | | | | | |
+| Claude 3.5 Sonnet | $3 | $15 | 200-400ms | Narrative, Characters | 95/100 |
+| Claude 3.5 Haiku | $0.25 | $1.25 | 100-200ms | Rules, Quick Responses | 85/100 |
+| Claude 3 Opus | $15 | $75 | 300-500ms | Complex World-building | 98/100 |
+| **OpenAI** | | | | | | |
+| GPT-4o | $5 | $15 | 250-450ms | Multimodal, Maps | 94/100 |
+| GPT-4o-mini | $0.15 | $0.60 | 100-200ms | Simple Queries | 82/100 |
+| GPT-4-turbo | $10 | $30 | 300-500ms | Long Context | 93/100 |
+| **Google** | | | | | | |
+| Gemini 1.5 Pro | $3.50 | $10.50 | 200-400ms | Fact-based Content | 92/100 |
+| Gemini 1.5 Flash | $0.075 | $0.30 | 50-150ms | Quick Lookups | 80/100 |
 
 ### Task-Based Model Recommendations
 

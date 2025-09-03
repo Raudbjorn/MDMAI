@@ -284,7 +284,14 @@ class ModelSelectionDecisionTree:
         }
     
     def _build_default_decision_tree(self) -> DecisionTreeNode:
-        """Build the default decision tree for model selection."""
+        """Build the default decision tree for model selection.
+        
+        TODO: HIGH PRIORITY - The entire decision tree structure is hardcoded, making
+        the logic rigid and difficult to modify or extend. For a production system,
+        it would be much more maintainable to define the tree structure in an external
+        configuration file (e.g., JSON or YAML) and load it at runtime. This allows
+        easier tuning and experimentation with decision logic without code changes.
+        """
         root = DecisionTreeNode(
             name="Root",
             description="Root decision node for model selection"
