@@ -166,9 +166,10 @@ input_tokens, output_tokens = estimator.estimate_request_tokens(
 | Enterprise | 90% | 95% | 98% | 105% | 24h | $100.00 |
 
 **Model Alternatives for Downgrading**:
+*Note: Cost savings calculated based on typical usage pattern (1K input + 500 output tokens)*
 - **GPT-4** → GPT-4-Turbo (67% cost savings) → GPT-3.5-Turbo (92% cost savings) → Claude-3-Haiku (98% cost savings)
 - **Claude-3-Opus** → Claude-3-Sonnet (80% cost savings) → Claude-3-Haiku (98% cost savings) → GPT-3.5-Turbo (96% cost savings)
-- **Claude-3-Sonnet** → Claude-3-Haiku (93% cost savings) → GPT-3.5-Turbo (81% cost savings) → Gemini-Pro (89% cost savings)
+- **Claude-3-Sonnet** → Claude-3-Haiku (93% cost savings) → GPT-3.5-Turbo (76% cost savings) → Gemini-Pro (88% cost savings)
 
 ### 5. Analytics Dashboard (`analytics_dashboard.py`)
 

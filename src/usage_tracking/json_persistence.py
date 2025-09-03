@@ -1,4 +1,9 @@
-"""High-performance JSON file persistence for usage tracking with offline access."""
+"""High-performance JSON Lines file persistence for usage tracking with offline access.
+
+Uses JSON Lines (.jsonl) format where each line is a valid JSON object.
+This allows for efficient appending without reading/rewriting entire files,
+providing O(1) write operations and scalable performance for large datasets.
+"""
 
 import json
 import asyncio
@@ -368,8 +373,10 @@ class JsonPersistenceManager:
     
     async def _write_file_data(self, file_path: Path, data: bytes, compression_savings: float) -> None:
         """Write data to file and update metadata."""
-        # Write data
-        async with aiofiles.open(file_path, 'wb') as f:
+        # Use append mode for scalable JSON Lines format
+        # This prevents reading and rewriting the entire file
+        file_mode = 'ab' if file_path.exists() else 'wb'
+        async with aiofiles.open(file_path, file_mode) as f:
             await f.write(data)
         
         # Update metadata
