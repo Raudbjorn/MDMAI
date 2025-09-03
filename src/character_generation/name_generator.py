@@ -203,6 +203,24 @@ class NameGenerator:
         }
     }
     
+    # Data-driven last name pool selection mapping
+    LAST_NAME_POOL_MAP = {
+        NPCRole.NOBLE: "last_noble",
+        NPCRole.COMMONER: "last_common",
+        NPCRole.MERCHANT: "last_common",
+        "cyberpunk_criminal": "last_street"  # Special case for cyberpunk criminals
+    }
+    
+    # Data-driven suffix replacement pools
+    SUFFIX_REPLACEMENT_POOLS = {
+        "[Location]": ["Westmarch", "Eastwood", "Northshire", "Southdale", "Rivertown", 
+                       "Hillcrest", "Lakewood", "Ironhold", "Goldport", "Shadowvale"],
+        "[Ordinal]": ["First", "Second", "Third", "Fourth", "Fifth", 
+                      "Elder", "Younger", "Greater", "Lesser"],
+        "[Family]": ["Blackstone", "Goldshire", "Ravencrest", "Ironwood", "Silverleaf",
+                     "Stormwind", "Brightblade", "Shadowbane", "Moonwhisper", "Starweaver"]
+    }
+    
     # NPC Role-specific name patterns
     NPC_ROLE_PATTERNS = {
         NPCRole.MERCHANT: {
@@ -374,13 +392,19 @@ class NameGenerator:
         if role == NPCRole.CRIMINAL and random.random() < 0.4:
             return None
         
-        # Determine which last name pool to use
-        if role == NPCRole.NOBLE and "last_noble" in name_pool:
-            names = name_pool["last_noble"]
-        elif role in [NPCRole.COMMONER, NPCRole.MERCHANT] and "last_common" in name_pool:
-            names = name_pool["last_common"]
-        elif genre == TTRPGGenre.CYBERPUNK and role == NPCRole.CRIMINAL and "last_street" in name_pool:
-            names = name_pool["last_street"]
+        # Determine which last name pool to use based on mapping
+        pool_key = None
+        
+        # Check special cases first
+        if genre == TTRPGGenre.CYBERPUNK and role == NPCRole.CRIMINAL:
+            pool_key = cls.LAST_NAME_POOL_MAP.get("cyberpunk_criminal")
+        # Check role-based mapping
+        elif role and role in cls.LAST_NAME_POOL_MAP:
+            pool_key = cls.LAST_NAME_POOL_MAP[role]
+        
+        # Get the appropriate name list
+        if pool_key and pool_key in name_pool:
+            names = name_pool[pool_key]
         else:
             # Use the most appropriate default pool
             names = (name_pool.get("last_common") or 
@@ -441,10 +465,10 @@ class NameGenerator:
             role_suffixes = cls.NPC_ROLE_PATTERNS[role].get("suffixes", [])
             if role_suffixes and random.random() < 0.3:
                 suffix = random.choice(role_suffixes)
-                # Replace placeholders
-                suffix = suffix.replace("[Location]", random.choice(["Westmarch", "Eastwood", "Northshire"]))
-                suffix = suffix.replace("[Ordinal]", random.choice(["First", "Second", "Third"]))
-                suffix = suffix.replace("[Family]", random.choice(["Blackstone", "Goldshire", "Ravencrest"]))
+                # Replace placeholders using data-driven pools
+                for placeholder, replacements in cls.SUFFIX_REPLACEMENT_POOLS.items():
+                    if placeholder in suffix:
+                        suffix = suffix.replace(placeholder, random.choice(replacements))
                 return suffix
         
         # Use genre-specific nicknames

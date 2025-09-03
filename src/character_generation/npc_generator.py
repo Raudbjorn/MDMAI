@@ -916,51 +916,76 @@ class NPCGenerator:
 
         return languages
 
+    # Data-driven mapping for system name to genre determination
+    SYSTEM_GENRE_MAP = {
+        TTRPGGenre.FANTASY: ["d&d", "pathfinder", "dungeon", "dragon"],
+        TTRPGGenre.CYBERPUNK: ["cyberpunk", "shadowrun", "chrome"],
+        TTRPGGenre.SCI_FI: ["traveller", "stars", "space", "galaxy"],
+        TTRPGGenre.COSMIC_HORROR: ["cthulhu", "delta green", "horror"],
+        TTRPGGenre.POST_APOCALYPTIC: ["apocalypse", "fallout", "wasteland"],
+        TTRPGGenre.SUPERHERO: ["masks", "hero", "super", "marvel", "dc"],
+        TTRPGGenre.WESTERN: ["deadlands", "western", "frontier"]
+    }
+    
     def _determine_genre_from_system(self, system: str) -> TTRPGGenre:
-        """Determine genre based on system name."""
+        """Determine genre based on system name using data-driven approach."""
         system_lower = system.lower()
         
-        if any(term in system_lower for term in ["d&d", "pathfinder", "dungeon", "dragon"]):
-            return TTRPGGenre.FANTASY
-        elif any(term in system_lower for term in ["cyberpunk", "shadowrun", "chrome"]):
-            return TTRPGGenre.CYBERPUNK
-        elif any(term in system_lower for term in ["traveller", "stars", "space", "galaxy"]):
-            return TTRPGGenre.SCI_FI
-        elif any(term in system_lower for term in ["cthulhu", "delta green", "horror"]):
-            return TTRPGGenre.COSMIC_HORROR
-        elif any(term in system_lower for term in ["apocalypse", "fallout", "wasteland"]):
-            return TTRPGGenre.POST_APOCALYPTIC
-        elif any(term in system_lower for term in ["masks", "hero", "super", "marvel", "dc"]):
-            return TTRPGGenre.SUPERHERO
-        elif any(term in system_lower for term in ["deadlands", "western", "frontier"]):
-            return TTRPGGenre.WESTERN
-        else:
-            return TTRPGGenre.FANTASY
+        # Check each genre's keywords
+        for genre, keywords in self.SYSTEM_GENRE_MAP.items():
+            if any(term in system_lower for term in keywords):
+                return genre
+        
+        # Default to fantasy if no match found
+        return TTRPGGenre.FANTASY
+    
+    # Data-driven mapping for wealth determination
+    WEALTH_LEVEL_MAP = {
+        "wealthy_roles": {
+            NPCRole.NOBLE: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
+            },
+            NPCRole.MERCHANT: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
+            }
+        },
+        "poor_roles": {
+            NPCRole.COMMONER: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            },
+            NPCRole.CRIMINAL: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            }
+        },
+        "default": {
+            "major": "wealthy",
+            "supporting": "standard",
+            "minor": "standard"
+        }
+    }
     
     def _determine_wealth_level(self, role: NPCRole, importance: str) -> str:
-        """Determine wealth level based on role and importance."""
-        wealthy_roles = [NPCRole.NOBLE, NPCRole.MERCHANT]
-        poor_roles = [NPCRole.COMMONER, NPCRole.CRIMINAL]
+        """Determine wealth level based on role and importance using data-driven approach."""
+        # Check if role is in wealthy roles
+        if role in self.WEALTH_LEVEL_MAP["wealthy_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["wealthy_roles"][role]
+            return wealth_map.get(importance, "standard")
         
-        if role in wealthy_roles:
-            if importance == "major":
-                return "noble"
-            elif importance == "supporting":
-                return "wealthy"
-            else:
-                return "standard"
-        elif role in poor_roles:
-            if importance == "major":
-                return "standard"
-            else:
-                return "poor"
-        else:
-            if importance == "major":
-                return "wealthy"
-            elif importance == "supporting":
-                return "standard"
-            else:
-                return "standard"
+        # Check if role is in poor roles
+        if role in self.WEALTH_LEVEL_MAP["poor_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["poor_roles"][role]
+            return wealth_map.get(importance, "poor")
+        
+        # Use default mapping for other roles
+        return self.WEALTH_LEVEL_MAP["default"].get(importance, "standard")
 
     def _generate_npc_name(self, role: Optional[str]) -> str:
         """Legacy method for backward compatibility - use NameGenerator instead."""

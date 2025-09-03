@@ -765,6 +765,31 @@ class EquipmentGenerator:
             "default": "clothing"
         }
     }
+    
+    # Data-driven item category mappings
+    ITEM_CATEGORY_MAP = {
+        TTRPGGenre.FANTASY: {
+            CharacterClass.ROGUE: ["tools"],
+            CharacterClass.CLERIC: ["consumables"],
+            NPCRole.CRIMINAL: ["tools"],
+            NPCRole.PRIEST: ["consumables"],
+            "default": ["adventuring"]
+        },
+        TTRPGGenre.SCI_FI: {
+            "default": ["tools", "medical", "utility"]
+        },
+        TTRPGGenre.CYBERPUNK: {
+            CharacterClass.NETRUNNER: ["tech", "cyberware", "drugs"],
+            "default": ["cyberware", "drugs"]
+        },
+        TTRPGGenre.POST_APOCALYPTIC: {
+            "default": ["survival", "food", "chems"]
+        },
+        TTRPGGenre.WESTERN: {
+            NPCRole.CRIMINAL: ["gear", "consumables", "tools"],
+            "default": ["gear", "consumables"]
+        }
+    }
 
     @classmethod
     def _get_armor_category(
@@ -820,29 +845,26 @@ class EquipmentGenerator:
         character_class: Optional[CharacterClass],
         npc_role: Optional[NPCRole]
     ) -> List[str]:
-        """Get item categories relevant to the character."""
-        categories = []
+        """Get item categories relevant to the character using data-driven approach."""
+        if genre not in cls.ITEM_CATEGORY_MAP:
+            return []  # No items for unmapped genres
         
-        if genre == TTRPGGenre.FANTASY:
-            if character_class == CharacterClass.ROGUE or npc_role == NPCRole.CRIMINAL:
-                categories.append("tools")
-            if character_class == CharacterClass.CLERIC or npc_role == NPCRole.PRIEST:
-                categories.append("consumables")
-            categories.append("adventuring")
-        elif genre == TTRPGGenre.SCI_FI:
-            categories.extend(["tools", "medical", "utility"])
-        elif genre == TTRPGGenre.CYBERPUNK:
-            if character_class == CharacterClass.NETRUNNER:
-                categories.append("tech")
-            categories.extend(["cyberware", "drugs"])
-        elif genre == TTRPGGenre.POST_APOCALYPTIC:
-            categories.extend(["survival", "food", "chems"])
-        elif genre == TTRPGGenre.WESTERN:
-            categories.extend(["gear", "consumables"])
-            if npc_role == NPCRole.CRIMINAL:
-                categories.append("tools")
+        genre_map = cls.ITEM_CATEGORY_MAP[genre]
+        categories = set()
         
-        return categories
+        # Add character class-specific categories
+        if character_class and character_class in genre_map:
+            categories.update(genre_map[character_class])
+        
+        # Add NPC role-specific categories
+        if npc_role and npc_role in genre_map:
+            categories.update(genre_map[npc_role])
+        
+        # Always add default categories for the genre
+        if "default" in genre_map:
+            categories.update(genre_map["default"])
+        
+        return list(categories)
     
     @classmethod
     def _add_weapon_properties(
