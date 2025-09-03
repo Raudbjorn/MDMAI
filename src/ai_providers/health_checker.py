@@ -530,8 +530,10 @@ class HealthChecker:
             try:
                 if rule.condition(metrics):
                     # Trigger alert
+                    # Sanitize provider_key to prevent format string injection
+                    safe_provider_key = provider_key.replace("{", "{{").replace("}", "}}")
                     message = rule.message_template.format(
-                        provider_key=provider_key,
+                        provider_key=safe_provider_key,
                         metrics=metrics
                     )
                     

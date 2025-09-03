@@ -44,7 +44,9 @@ class MockProvider(BaseAIProvider):
                 yield "content"
             return mock_stream()
         else:
-            yield "Mock response content"
+            async def mock_non_stream():
+                yield "Mock response content"
+            return mock_non_stream()
     
     async def validate_credentials(self):
         """Mock credential validation."""

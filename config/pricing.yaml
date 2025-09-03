@@ -39,13 +39,14 @@ providers:
         context_window: 200000
         recommended_for: ["complex_narratives", "world_building", "campaign_planning"]
         
-      # Legacy models
+      # Legacy models - keeping for backward compatibility but marked as deprecated
       claude-3-haiku-20240307:
         display_name: "Claude 3 Haiku (Legacy)"
         input_price: 0.25
         output_price: 1.25
         context_window: 200000
         deprecated: true
+        replacement: "claude-3-haiku"
         
       claude-3-5-sonnet-20241022:
         display_name: "Claude 3.5 Sonnet (Legacy)"
@@ -53,6 +54,7 @@ providers:
         output_price: 15.0
         context_window: 200000
         deprecated: true
+        replacement: "claude-3-5-sonnet"
         
       claude-3-opus-20240229:
         display_name: "Claude 3 Opus (Legacy)"
@@ -60,6 +62,7 @@ providers:
         output_price: 75.0
         context_window: 200000
         deprecated: true
+        replacement: "claude-3-opus"
 
   # OpenAI GPT Models
   openai:
@@ -89,13 +92,14 @@ providers:
         context_window: 128000
         recommended_for: ["complex_scenarios", "detailed_planning", "premium_features"]
         
-      # Legacy models
+      # Legacy models - keeping for backward compatibility but marked as deprecated
       gpt-4-turbo-2024-04-09:
         display_name: "GPT-4 Turbo (Legacy)"
         input_price: 10.00
         output_price: 30.00
         context_window: 128000
         deprecated: true
+        replacement: "gpt-4-turbo"
         
       gpt-4-vision-preview:
         display_name: "GPT-4 Vision (Legacy)"
@@ -103,6 +107,7 @@ providers:
         output_price: 30.00
         context_window: 128000
         deprecated: true
+        replacement: "gpt-4o"
 
   # Google Gemini Models
   google:
@@ -124,13 +129,14 @@ providers:
         context_window: 2097152  # 2M tokens
         recommended_for: ["massive_context", "campaign_management", "world_building"]
         
-      # Legacy models
+      # Legacy models - keeping for backward compatibility but marked as deprecated
       gemini-pro:
         display_name: "Gemini Pro (Legacy)"
         input_price: 0.50
         output_price: 1.50
         context_window: 32768
         deprecated: true
+        replacement: "gemini-1.5-pro"
         
       gemini-pro-vision:
         display_name: "Gemini Pro Vision (Legacy)"
@@ -138,6 +144,7 @@ providers:
         output_price: 0.50
         context_window: 32768
         deprecated: true
+        replacement: "gemini-1.5-pro"
 
 # Cost optimization recommendations
 optimization:
@@ -209,23 +216,8 @@ cost_alerts:
   warning_threshold: 0.80  # Alert at 80% of budget
   critical_threshold: 0.95 # Critical alert at 95% of budget
   
-  daily_limits:
-    casual: 1.00
-    regular: 3.00
-    power: 10.00
-    dm: 15.00
-    
-  weekly_limits:
-    casual: 5.00
-    regular: 15.00
-    power: 50.00
-    dm: 75.00
-    
-  monthly_limits:
-    casual: 15.00
-    regular: 50.00
-    power: 150.00
-    dm: 250.00
+  # Note: Budget limits are defined in spending_guidelines section above
+  # This avoids duplication and ensures single source of truth
 
 # Rate limiting guidelines (requests per minute)
 rate_limits:

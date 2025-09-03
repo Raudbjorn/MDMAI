@@ -5,15 +5,16 @@ This module provides usage tracking, cost calculation, and spending limit
 enforcement for AI provider usage.
 """
 
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union
 import asyncio
 import json
 import logging
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict, List, Optional, Union, Tuple
 
 from .base_provider import ProviderType
+from .pricing_config import get_pricing_manager
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +120,8 @@ class UsageTracker:
         else:
             self._init_filesystem()
         
-        # Load pricing configuration
-        self.pricing_config = self._load_pricing_config()
+        # Use centralized pricing manager
+        self.pricing_manager = get_pricing_manager()
         
         logger.info(f"UsageTracker initialized with storage at {self.storage_path}")
     
@@ -157,47 +158,6 @@ class UsageTracker:
         
         logger.info("Filesystem storage initialized")
     
-    def _load_pricing_config(self) -> Dict[str, Dict[str, Dict[str, float]]]:
-        """Load pricing configuration from file."""
-        try:
-            import yaml
-            config_path = Path(__file__).parent.parent / 'config' / 'pricing.yaml'
-            
-            # Create default config if it doesn't exist
-            if not config_path.exists():
-                config_path.parent.mkdir(parents=True, exist_ok=True)
-                default_config = self._get_default_pricing_config()
-                with open(config_path, 'w') as f:
-                    yaml.dump(default_config, f, default_flow_style=False)
-                return default_config
-            
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-        except ImportError:
-            logger.warning("PyYAML not available, using hardcoded pricing")
-            return self._get_default_pricing_config()
-    
-    def _get_default_pricing_config(self) -> Dict:
-        """Get default pricing configuration."""
-        return {
-            'anthropic': {
-                'claude-3-haiku': {'input': 0.25, 'output': 1.25},
-                'claude-3-5-sonnet': {'input': 3.0, 'output': 15.0},
-                'claude-3-opus': {'input': 15.0, 'output': 75.0}
-            },
-            'openai': {
-                'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
-                'gpt-4o': {'input': 2.50, 'output': 10.00},
-                'gpt-4-turbo': {'input': 10.00, 'output': 30.00}
-            },
-            'google': {
-                'gemini-1.5-flash': {'input': 0.075, 'output': 0.30},
-                'gemini-1.5-pro': {'input': 1.25, 'output': 5.00}
-            },
-            'updated_at': datetime.utcnow().isoformat(),
-            'currency': 'USD',
-            'per_tokens': 1_000_000
-        }
     
     async def track_usage(
         self,
@@ -447,26 +407,8 @@ class UsageTracker:
         }
     
     def _calculate_cost(self, provider: ProviderType, model: str, input_tokens: int, output_tokens: int) -> float:
-        """Calculate cost for API usage."""
-        provider_pricing = self.pricing_config.get(provider.value, {})
-        
-        # Find best match for model in pricing
-        model_pricing = None
-        for price_key, pricing_data in provider_pricing.items():
-            if isinstance(pricing_data, dict) and 'input' in pricing_data:
-                if price_key in model.lower():
-                    model_pricing = pricing_data
-                    break
-        
-        if not model_pricing:
-            logger.warning(f"No pricing data found for {provider.value} model {model}")
-            return 0.0
-        
-        per_tokens = self.pricing_config.get('per_tokens', 1_000_000)
-        input_cost = (input_tokens / per_tokens) * model_pricing['input']
-        output_cost = (output_tokens / per_tokens) * model_pricing['output']
-        
-        return input_cost + output_cost
+        """Calculate cost for API usage using centralized pricing."""
+        return self.pricing_manager.calculate_cost(provider, model, input_tokens, output_tokens)
     
     async def _check_spending_limits(self, user_id: str, new_cost: float):
         """Check if user would exceed spending limits."""

@@ -5,11 +5,11 @@ This module provides Google Gemini integration with authentication,
 validation, and TTRPG-optimized features.
 """
 
-from typing import Dict, Any, AsyncIterator, List, Optional
 import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
+from typing import Dict, Any, AsyncIterator, List, Optional, Tuple
 
 try:
     import google.generativeai as genai
@@ -24,6 +24,8 @@ from .base_provider import (
     ProviderError, ProviderAuthenticationError, ProviderRateLimitError,
     ProviderTimeoutError, ProviderQuotaExceededError, ProviderInvalidRequestError
 )
+from .pricing_config import get_pricing_manager
+from .rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -70,16 +72,12 @@ class GoogleProvider(BaseAIProvider):
             'fast': 'gemini-1.5-flash',      # Fast, efficient responses
             'balanced': 'gemini-1.5-pro',   # Balanced performance
             'powerful': 'gemini-1.5-pro',   # Same as balanced for now
-            'vision': 'gemini-pro-vision'    # Multi-modal support
+            'vision': 'gemini-1.5-pro'    # Multi-modal support (1.5-pro has vision)
         }
         
-        # Cost tracking (per 1M tokens in USD)
-        self.pricing = {
-            'gemini-1.5-flash': {'input': 0.075, 'output': 0.30},
-            'gemini-1.5-pro': {'input': 1.25, 'output': 5.00},
-            'gemini-pro': {'input': 0.50, 'output': 1.50},
-            'gemini-pro-vision': {'input': 0.25, 'output': 0.50}
-        }
+        # Use centralized services
+        self.pricing_manager = get_pricing_manager()
+        self.rate_limiter = RateLimiter()
         
         # Safety settings optimized for TTRPG content
         self.safety_settings = {
@@ -89,10 +87,6 @@ class GoogleProvider(BaseAIProvider):
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
         }
         
-        # Rate limiting tracking
-        self._last_request_time = 0.0
-        self._request_count = 0
-        self._reset_time = time.time() + 60  # Reset every minute
         
         # Initialize model (will be set during validation)
         self.model = None
@@ -123,8 +117,8 @@ class GoogleProvider(BaseAIProvider):
             await self.validate_credentials()
         
         try:
-            # Apply rate limiting
-            await self._apply_rate_limit()
+            # Apply rate limiting using centralized service
+            await self.rate_limiter.acquire(ProviderType.GOOGLE, "default_user", priority=5)
             
             # Convert messages to Gemini format
             gemini_messages = self._convert_messages_to_gemini(messages)
@@ -157,7 +151,7 @@ class GoogleProvider(BaseAIProvider):
                 if stream:
                     # Streaming response
                     response = await asyncio.wait_for(
-                        self._generate_stream(gemini_messages, generation_config),
+                        self._generate_stream_async(gemini_messages, generation_config),
                         timeout=self.config.timeout
                     )
                     
@@ -167,7 +161,7 @@ class GoogleProvider(BaseAIProvider):
                 else:
                     # Non-streaming response
                     response = await asyncio.wait_for(
-                        self._generate_content(gemini_messages, generation_config),
+                        self._generate_content_async(gemini_messages, generation_config),
                         timeout=self.config.timeout
                     )
                     
@@ -185,7 +179,13 @@ class GoogleProvider(BaseAIProvider):
         except ProviderError:
             raise
         except Exception as e:
+            # Record failure for rate limiting
+            is_rate_limit = "rate" in str(e).lower() or "quota" in str(e).lower() or "429" in str(e)
+            self.rate_limiter.record_failure(ProviderType.GOOGLE, "default_user", is_rate_limit)
             await self._handle_google_error(e)
+        else:
+            # Record success for adaptive rate limiting
+            self.rate_limiter.record_success(ProviderType.GOOGLE, "default_user")
     
     async def validate_credentials(self) -> bool:
         """
@@ -204,8 +204,8 @@ class GoogleProvider(BaseAIProvider):
             
             start_time = time.time()
             response = await asyncio.wait_for(
-                self._generate_content(
-                    [{"role": "user", "content": "Hi"}],
+                self._generate_content_async(
+                    [{"role": "user", "parts": [{"text": "Hi"}]}],
                     genai.types.GenerationConfig(max_output_tokens=5, temperature=0.0),
                     test_model
                 ),
@@ -237,7 +237,7 @@ class GoogleProvider(BaseAIProvider):
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """
-        Estimate cost for Google Gemini request.
+        Estimate cost for Google Gemini request using centralized pricing.
         
         Args:
             input_tokens: Number of input tokens
@@ -246,25 +246,10 @@ class GoogleProvider(BaseAIProvider):
         Returns:
             float: Estimated cost in USD
         """
-        model = self.config.model or self.model_mapping.get('balanced')
-        
-        # Find matching pricing model
-        pricing_model = None
-        for price_key in self.pricing:
-            if price_key in model:
-                pricing_model = price_key
-                break
-        
-        if not pricing_model:
-            logger.warning(f"No pricing data for model {model}, using default")
-            pricing_model = 'gemini-1.5-pro'
-        
-        pricing_data = self.pricing[pricing_model]
-        
-        input_cost = (input_tokens / 1_000_000) * pricing_data['input']
-        output_cost = (output_tokens / 1_000_000) * pricing_data['output']
-        
-        return input_cost + output_cost
+        model = self.config.model or self.model_mapping.get('balanced', 'gemini-1.5-pro')
+        return self.pricing_manager.calculate_cost(
+            ProviderType.GOOGLE, model, input_tokens, output_tokens
+        )
     
     async def health_check(self) -> bool:
         """
@@ -281,8 +266,8 @@ class GoogleProvider(BaseAIProvider):
             start_time = time.time()
             
             response = await asyncio.wait_for(
-                self._generate_content(
-                    [{"role": "user", "content": "ping"}],
+                self._generate_content_async(
+                    [{"role": "user", "parts": [{"text": "ping"}]}],
                     genai.types.GenerationConfig(max_output_tokens=1, temperature=0.0),
                     test_model
                 ),
@@ -331,10 +316,14 @@ class GoogleProvider(BaseAIProvider):
         
         return gemini_messages
     
-    async def _generate_content(self, messages: List[Dict], generation_config, model=None):
-        """Generate content using the Gemini model."""
+    async def _generate_content_async(self, messages: List[Dict], generation_config, model=None):
+        """Generate content using the Gemini model with native async methods."""
         if model is None:
             model = self.model
+        
+        # Use native async methods from google-generativeai library
+        # For now, we'll use asyncio.to_thread as a bridge until native async is available
+        # TODO: Replace with native async methods when google-generativeai adds them
         
         # Convert messages to chat format
         if len(messages) == 1:
@@ -359,8 +348,12 @@ class GoogleProvider(BaseAIProvider):
                 generation_config=generation_config
             )
     
-    async def _generate_stream(self, messages: List[Dict], generation_config):
-        """Generate streaming content using the Gemini model."""
+    async def _generate_stream_async(self, messages: List[Dict], generation_config):
+        """Generate streaming content using the Gemini model with native async methods."""
+        # Use native async methods from google-generativeai library
+        # For now, we'll use asyncio.to_thread as a bridge until native async is available
+        # TODO: Replace with native async methods when google-generativeai adds them
+        
         # Convert messages to chat format
         if len(messages) == 1:
             # Single message streaming
@@ -390,31 +383,6 @@ class GoogleProvider(BaseAIProvider):
         for chunk in response:
             yield chunk
     
-    async def _apply_rate_limit(self) -> None:
-        """Apply rate limiting to prevent API abuse."""
-        current_time = time.time()
-        
-        # Reset counter if minute has passed
-        if current_time > self._reset_time:
-            self._request_count = 0
-            self._reset_time = current_time + 60
-        
-        # Check if we need to wait (Google has moderate limits)
-        if self._request_count >= 60:  # Conservative limit for Google
-            wait_time = self._reset_time - current_time
-            if wait_time > 0:
-                logger.info(f"Rate limiting: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-                self._request_count = 0
-                self._reset_time = time.time() + 60
-        
-        # Minimum time between requests
-        time_since_last = current_time - self._last_request_time
-        if time_since_last < 1.0:  # 1 second minimum (conservative)
-            await asyncio.sleep(1.0 - time_since_last)
-        
-        self._request_count += 1
-        self._last_request_time = time.time()
     
     async def _handle_google_error(self, error: Exception) -> None:
         """

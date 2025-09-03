@@ -8,7 +8,7 @@ fallback, circuit breaker patterns, and load balancing.
 import logging
 import asyncio
 import time
-from typing import Dict, Optional, List, Union, AsyncIterator
+from typing import Dict, Optional, List, Union, AsyncIterator, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from enum import Enum
@@ -386,7 +386,7 @@ class ProviderRouter:
         preferred_provider: Optional[ProviderType],
         fallback_order: Optional[List[ProviderType]],
         cost_optimization: bool
-    ) -> List[tuple[ProviderType, bool]]:
+    ) -> List[Tuple[ProviderType, bool]]:
         """
         Determine the order of providers to try.
         

@@ -5,11 +5,14 @@ This module provides OpenAI GPT integration with authentication,
 validation, and TTRPG-optimized features.
 """
 
-from typing import Dict, Any, AsyncIterator, List, Optional
 import asyncio
 import logging
 import time
+import tempfile
+import json
+import os
 from datetime import datetime, timedelta
+from typing import Dict, Any, AsyncIterator, List, Optional, Tuple
 
 try:
     from openai import AsyncOpenAI
@@ -23,6 +26,8 @@ from .base_provider import (
     ProviderError, ProviderAuthenticationError, ProviderRateLimitError,
     ProviderTimeoutError, ProviderQuotaExceededError, ProviderInvalidRequestError
 )
+from .pricing_config import get_pricing_manager
+from .rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -73,22 +78,12 @@ class OpenAIProvider(BaseAIProvider):
             'fast': 'gpt-4o-mini',      # Economy option
             'balanced': 'gpt-4o',        # Recommended
             'powerful': 'gpt-4-turbo',   # Premium features
-            'vision': 'gpt-4-vision-preview'  # Multi-modal support
+            'vision': 'gpt-4o'  # Multi-modal support (gpt-4o has vision)
         }
         
-        # Cost tracking (per 1M tokens in USD)
-        self.pricing = {
-            'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
-            'gpt-4o': {'input': 2.50, 'output': 10.00},
-            'gpt-4-turbo': {'input': 10.00, 'output': 30.00},
-            'gpt-4-turbo-2024-04-09': {'input': 10.00, 'output': 30.00},
-            'gpt-4-vision-preview': {'input': 10.00, 'output': 30.00}
-        }
-        
-        # Rate limiting tracking
-        self._last_request_time = 0.0
-        self._request_count = 0
-        self._reset_time = time.time() + 60  # Reset every minute
+        # Use centralized services
+        self.pricing_manager = get_pricing_manager()
+        self.rate_limiter = RateLimiter()
         
         logger.info(f"OpenAIProvider initialized with model mapping: {self.model_mapping}")
     
@@ -116,8 +111,8 @@ class OpenAIProvider(BaseAIProvider):
             await self.validate_credentials()
         
         try:
-            # Apply rate limiting
-            await self._apply_rate_limit()
+            # Apply rate limiting using centralized service
+            await self.rate_limiter.acquire(ProviderType.OPENAI, "default_user", priority=5)
             
             # Convert tools to OpenAI tool format
             openai_tools = self._convert_to_openai_tools(tools) if tools else None
@@ -177,7 +172,13 @@ class OpenAIProvider(BaseAIProvider):
         except ProviderError:
             raise
         except Exception as e:
+            # Record failure for rate limiting
+            is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
+            self.rate_limiter.record_failure(ProviderType.OPENAI, "default_user", is_rate_limit)
             await self._handle_openai_error(e)
+        else:
+            # Record success for adaptive rate limiting
+            self.rate_limiter.record_success(ProviderType.OPENAI, "default_user")
     
     async def validate_credentials(self) -> bool:
         """
@@ -228,7 +229,7 @@ class OpenAIProvider(BaseAIProvider):
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """
-        Estimate cost for OpenAI request.
+        Estimate cost for OpenAI request using centralized pricing.
         
         Args:
             input_tokens: Number of input tokens
@@ -237,25 +238,10 @@ class OpenAIProvider(BaseAIProvider):
         Returns:
             float: Estimated cost in USD
         """
-        model = self.config.model or self.model_mapping.get('balanced')
-        
-        # Find matching pricing model
-        pricing_model = None
-        for price_key in self.pricing:
-            if price_key in model:
-                pricing_model = price_key
-                break
-        
-        if not pricing_model:
-            logger.warning(f"No pricing data for model {model}, using default")
-            pricing_model = 'gpt-4o'
-        
-        pricing_data = self.pricing[pricing_model]
-        
-        input_cost = (input_tokens / 1_000_000) * pricing_data['input']
-        output_cost = (output_tokens / 1_000_000) * pricing_data['output']
-        
-        return input_cost + output_cost
+        model = self.config.model or self.model_mapping.get('balanced', 'gpt-4o')
+        return self.pricing_manager.calculate_cost(
+            ProviderType.OPENAI, model, input_tokens, output_tokens
+        )
     
     async def health_check(self) -> bool:
         """
@@ -342,22 +328,28 @@ class OpenAIProvider(BaseAIProvider):
                     "body": req
                 })
             
-            # Create JSONL file for batch
-            import tempfile
-            import json
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-                for req in batch_requests:
-                    json.dump(req, f)
-                    f.write('\n')
-                jsonl_file = f.name
-            
-            # Upload file and create batch
-            with open(jsonl_file, 'rb') as f:
-                file_response = await self.client.files.create(
-                    file=f,
-                    purpose='batch'
-                )
+            # Create JSONL file for batch with proper cleanup
+            jsonl_file = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+                    for req in batch_requests:
+                        json.dump(req, f)
+                        f.write('\n')
+                    jsonl_file = f.name
+                
+                # Upload file and create batch
+                with open(jsonl_file, 'rb') as f:
+                    file_response = await self.client.files.create(
+                        file=f,
+                        purpose='batch'
+                    )
+            finally:
+                # Clean up temporary file
+                if jsonl_file and os.path.exists(jsonl_file):
+                    try:
+                        os.unlink(jsonl_file)
+                    except OSError as e:
+                        logger.warning(f"Failed to clean up temporary file {jsonl_file}: {e}")
             
             batch_response = await self.client.batches.create(
                 input_file_id=file_response.id,
@@ -397,31 +389,6 @@ class OpenAIProvider(BaseAIProvider):
             logger.error(f"Failed to get batch status: {e}")
             raise ProviderError(f"Batch status check failed: {e}", provider="openai")
     
-    async def _apply_rate_limit(self) -> None:
-        """Apply rate limiting to prevent API abuse."""
-        current_time = time.time()
-        
-        # Reset counter if minute has passed
-        if current_time > self._reset_time:
-            self._request_count = 0
-            self._reset_time = current_time + 60
-        
-        # Check if we need to wait (OpenAI has higher limits)
-        if self._request_count >= 500:  # More generous limit for OpenAI
-            wait_time = self._reset_time - current_time
-            if wait_time > 0:
-                logger.info(f"Rate limiting: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-                self._request_count = 0
-                self._reset_time = time.time() + 60
-        
-        # Minimum time between requests
-        time_since_last = current_time - self._last_request_time
-        if time_since_last < 0.02:  # 20ms minimum (faster than Anthropic)
-            await asyncio.sleep(0.02 - time_since_last)
-        
-        self._request_count += 1
-        self._last_request_time = time.time()
     
     async def _handle_openai_error(self, error: Exception) -> None:
         """

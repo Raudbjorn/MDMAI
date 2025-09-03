@@ -136,13 +136,40 @@ class PricingConfigManager:
                 'output_price': model_info.get('output_price', 0.0)
             }
         
-        # Try partial match for legacy/versioned models
+        # Try partial matches with improved logic to avoid false positives
+        # 1. Try normalized exact match (handle case and hyphens)
+        normalized_model = model.lower().replace('_', '-')
         for config_model, model_info in models_config.items():
-            if config_model in model.lower() or model.lower() in config_model:
+            normalized_config = config_model.lower().replace('_', '-')
+            if normalized_model == normalized_config:
                 return {
                     'input_price': model_info.get('input_price', 0.0),
                     'output_price': model_info.get('output_price', 0.0)
                 }
+        
+        # 2. Try prefix match for versioned models (e.g., claude-3-haiku-20240307 -> claude-3-haiku)
+        for config_model, model_info in models_config.items():
+            normalized_config = config_model.lower().replace('_', '-')
+            # Check if config model is a prefix of the requested model
+            if normalized_model.startswith(normalized_config) or normalized_config.startswith(normalized_model):
+                # Additional check: ensure we're not matching too broadly
+                # E.g., don't match "gpt-4" to "gpt-4o" 
+                if len(normalized_config) >= 3 and len(normalized_model) >= 3:  # Reasonable length check
+                    return {
+                        'input_price': model_info.get('input_price', 0.0),
+                        'output_price': model_info.get('output_price', 0.0)
+                    }
+        
+        # 3. Try substring match as last resort (most prone to false positives)
+        for config_model, model_info in models_config.items():
+            normalized_config = config_model.lower().replace('_', '-')
+            # Only match if substring is reasonably long to avoid false positives
+            if len(normalized_config) >= 6:  # At least 6 characters
+                if normalized_config in normalized_model or normalized_model in normalized_config:
+                    return {
+                        'input_price': model_info.get('input_price', 0.0),
+                        'output_price': model_info.get('output_price', 0.0)
+                    }
         
         logger.warning(f"No pricing found for {provider.value} model {model}")
         return None
@@ -309,10 +336,27 @@ class PricingConfigManager:
         if model in models:
             return models[model]
         
-        # Try partial match
+        # Try improved partial match logic
+        # 1. Normalized exact match
+        normalized_model = model.lower().replace('_', '-')
         for config_model, model_info in models.items():
-            if config_model in model.lower() or model.lower() in config_model:
+            normalized_config = config_model.lower().replace('_', '-')
+            if normalized_model == normalized_config:
                 return model_info
+        
+        # 2. Prefix match for versioned models
+        for config_model, model_info in models.items():
+            normalized_config = config_model.lower().replace('_', '-')
+            if normalized_model.startswith(normalized_config) or normalized_config.startswith(normalized_model):
+                if len(normalized_config) >= 3 and len(normalized_model) >= 3:
+                    return model_info
+        
+        # 3. Substring match as last resort
+        for config_model, model_info in models.items():
+            normalized_config = config_model.lower().replace('_', '-')
+            if len(normalized_config) >= 6:
+                if normalized_config in normalized_model or normalized_model in normalized_config:
+                    return model_info
         
         return {}
     

@@ -5,11 +5,11 @@ This module provides Anthropic Claude integration with authentication,
 validation, and TTRPG-optimized features.
 """
 
-from typing import Dict, Any, AsyncIterator, List, Optional
 import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
+from typing import Dict, Any, AsyncIterator, List, Optional, Tuple
 
 try:
     from anthropic import Anthropic, AsyncAnthropic
@@ -24,6 +24,8 @@ from .base_provider import (
     ProviderError, ProviderAuthenticationError, ProviderRateLimitError,
     ProviderTimeoutError, ProviderQuotaExceededError, ProviderInvalidRequestError
 )
+from .pricing_config import get_pricing_manager
+from .rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -68,22 +70,14 @@ class AnthropicProvider(BaseAIProvider):
         
         # Model selection with TTRPG optimization
         self.model_mapping = {
-            'fast': 'claude-3-haiku-20240307',      # Quick responses, dice rolls
-            'balanced': 'claude-3-5-sonnet-20241022',  # Main gameplay
-            'powerful': 'claude-3-opus-20240229'    # Complex narratives
+            'fast': 'claude-3-haiku',      # Quick responses, dice rolls
+            'balanced': 'claude-3-5-sonnet',  # Main gameplay
+            'powerful': 'claude-3-opus'    # Complex narratives
         }
         
-        # Cost tracking (per 1M tokens in USD)
-        self.pricing = {
-            'claude-3-haiku-20240307': {'input': 0.25, 'output': 1.25},
-            'claude-3-5-sonnet-20241022': {'input': 3.0, 'output': 15.0},
-            'claude-3-opus-20240229': {'input': 15.0, 'output': 75.0}
-        }
-        
-        # Rate limiting tracking
-        self._last_request_time = 0.0
-        self._request_count = 0
-        self._reset_time = time.time() + 60  # Reset every minute
+        # Use centralized services
+        self.pricing_manager = get_pricing_manager()
+        self.rate_limiter = RateLimiter()
         
         logger.info(f"AnthropicProvider initialized with model mapping: {self.model_mapping}")
     
@@ -111,8 +105,8 @@ class AnthropicProvider(BaseAIProvider):
             await self.validate_credentials()
         
         try:
-            # Apply rate limiting
-            await self._apply_rate_limit()
+            # Apply rate limiting using centralized service
+            await self.rate_limiter.acquire(ProviderType.ANTHROPIC, "default_user", priority=5)
             
             # Convert to Anthropic format
             anthropic_messages = self._convert_messages(messages)
@@ -121,7 +115,7 @@ class AnthropicProvider(BaseAIProvider):
             system_prompt = self.get_ttrpg_system_prompt()
             
             # Select model
-            model = self.config.model or self.model_mapping.get('balanced', 'claude-3-5-sonnet-20241022')
+            model = self.config.model or self.model_mapping.get('balanced', 'claude-3-5-sonnet')
             
             # Convert tools if provided
             anthropic_tools = self._convert_tools_to_anthropic(tools) if tools else None
@@ -176,7 +170,13 @@ class AnthropicProvider(BaseAIProvider):
         except ProviderError:
             raise
         except Exception as e:
+            # Record failure for rate limiting
+            is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
+            self.rate_limiter.record_failure(ProviderType.ANTHROPIC, "default_user", is_rate_limit)
             await self._handle_anthropic_error(e)
+        else:
+            # Record success for adaptive rate limiting
+            self.rate_limiter.record_success(ProviderType.ANTHROPIC, "default_user")
     
     async def validate_credentials(self) -> bool:
         """
@@ -228,7 +228,7 @@ class AnthropicProvider(BaseAIProvider):
     
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         """
-        Estimate cost for Anthropic request.
+        Estimate cost for Anthropic request using centralized pricing.
         
         Args:
             input_tokens: Number of input tokens
@@ -237,25 +237,10 @@ class AnthropicProvider(BaseAIProvider):
         Returns:
             float: Estimated cost in USD
         """
-        model = self.config.model or self.model_mapping.get('balanced')
-        
-        # Find matching pricing model
-        pricing_model = None
-        for price_key in self.pricing:
-            if price_key in model:
-                pricing_model = price_key
-                break
-        
-        if not pricing_model:
-            logger.warning(f"No pricing data for model {model}, using default")
-            pricing_model = 'claude-3-5-sonnet-20241022'
-        
-        pricing_data = self.pricing[pricing_model]
-        
-        input_cost = (input_tokens / 1_000_000) * pricing_data['input']
-        output_cost = (output_tokens / 1_000_000) * pricing_data['output']
-        
-        return input_cost + output_cost
+        model = self.config.model or self.model_mapping.get('balanced', 'claude-3-5-sonnet')
+        return self.pricing_manager.calculate_cost(
+            ProviderType.ANTHROPIC, model, input_tokens, output_tokens
+        )
     
     async def health_check(self) -> bool:
         """
@@ -349,31 +334,6 @@ class AnthropicProvider(BaseAIProvider):
         
         return anthropic_tools
     
-    async def _apply_rate_limit(self) -> None:
-        """Apply rate limiting to prevent API abuse."""
-        current_time = time.time()
-        
-        # Reset counter if minute has passed
-        if current_time > self._reset_time:
-            self._request_count = 0
-            self._reset_time = current_time + 60
-        
-        # Check if we need to wait
-        if self._request_count >= 50:  # Conservative limit
-            wait_time = self._reset_time - current_time
-            if wait_time > 0:
-                logger.info(f"Rate limiting: waiting {wait_time:.1f}s")
-                await asyncio.sleep(wait_time)
-                self._request_count = 0
-                self._reset_time = time.time() + 60
-        
-        # Minimum time between requests
-        time_since_last = current_time - self._last_request_time
-        if time_since_last < 0.1:  # 100ms minimum
-            await asyncio.sleep(0.1 - time_since_last)
-        
-        self._request_count += 1
-        self._last_request_time = time.time()
     
     async def _handle_anthropic_error(self, error: Exception) -> None:
         """
