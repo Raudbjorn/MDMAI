@@ -147,25 +147,47 @@ class PricingConfigManager:
                     'output_price': model_info.get('output_price', 0.0)
                 }
         
-        # 2. Try prefix match for versioned models (e.g., claude-3-haiku-20240307 -> claude-3-haiku)
+        # 2. Try prefix match for versioned models with strict boundaries
+        # Only match if one is a true prefix of the other with version/date suffix
         for config_model, model_info in models_config.items():
             normalized_config = config_model.lower().replace('_', '-')
-            # Check if config model is a prefix of the requested model
-            if normalized_model.startswith(normalized_config) or normalized_config.startswith(normalized_model):
-                # Additional check: ensure we're not matching too broadly
-                # E.g., don't match "gpt-4" to "gpt-4o" 
-                if len(normalized_config) >= 3 and len(normalized_model) >= 3:  # Reasonable length check
-                    return {
-                        'input_price': model_info.get('input_price', 0.0),
-                        'output_price': model_info.get('output_price', 0.0)
-                    }
+            
+            # Check for versioned model patterns (e.g., model-20240307 or model-v2)
+            # The prefix should be followed by a version separator like -, _, or digit
+            if normalized_model.startswith(normalized_config):
+                # Check if the next character after the prefix is a version separator
+                if len(normalized_model) > len(normalized_config):
+                    next_char = normalized_model[len(normalized_config)]
+                    if next_char in ['-', '_'] or next_char.isdigit():
+                        return {
+                            'input_price': model_info.get('input_price', 0.0),
+                            'output_price': model_info.get('output_price', 0.0)
+                        }
+            elif normalized_config.startswith(normalized_model):
+                # Check the reverse case
+                if len(normalized_config) > len(normalized_model):
+                    next_char = normalized_config[len(normalized_model)]
+                    if next_char in ['-', '_'] or next_char.isdigit():
+                        return {
+                            'input_price': model_info.get('input_price', 0.0),
+                            'output_price': model_info.get('output_price', 0.0)
+                        }
         
-        # 3. Try substring match as last resort (most prone to false positives)
+        # 3. Try word-boundary based substring match (safer than general substring)
+        # Only match complete words/segments separated by common delimiters
         for config_model, model_info in models_config.items():
             normalized_config = config_model.lower().replace('_', '-')
-            # Only match if substring is reasonably long to avoid false positives
-            if len(normalized_config) >= 6:  # At least 6 characters
-                if normalized_config in normalized_model or normalized_model in normalized_config:
+            
+            # Split both strings into segments
+            model_segments = set(normalized_model.split('-'))
+            config_segments = set(normalized_config.split('-'))
+            
+            # Check if all config segments are present in model segments (subset match)
+            # This helps match "gpt-4-turbo" to "gpt-4-turbo-preview" but not "gpt-4" to "gpt-4o"
+            if len(config_segments) >= 2 and config_segments.issubset(model_segments):
+                # Additional check: ensure significant overlap (at least 75% of segments match)
+                overlap_ratio = len(config_segments) / len(model_segments)
+                if overlap_ratio >= 0.75:
                     return {
                         'input_price': model_info.get('input_price', 0.0),
                         'output_price': model_info.get('output_price', 0.0)

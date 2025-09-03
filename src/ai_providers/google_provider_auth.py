@@ -118,7 +118,7 @@ class GoogleProvider(BaseAIProvider):
         
         try:
             # Apply rate limiting using centralized service
-            await self.rate_limiter.acquire(ProviderType.GOOGLE, "default_user", priority=5)
+            await self.rate_limiter.acquire(ProviderType.GOOGLE, self.config.user_id, priority=5)
             
             # Convert messages to Gemini format
             gemini_messages = self._convert_messages_to_gemini(messages)
@@ -181,11 +181,11 @@ class GoogleProvider(BaseAIProvider):
         except Exception as e:
             # Record failure for rate limiting
             is_rate_limit = "rate" in str(e).lower() or "quota" in str(e).lower() or "429" in str(e)
-            self.rate_limiter.record_failure(ProviderType.GOOGLE, "default_user", is_rate_limit)
+            self.rate_limiter.record_failure(ProviderType.GOOGLE, self.config.user_id, is_rate_limit)
             await self._handle_google_error(e)
         else:
             # Record success for adaptive rate limiting
-            self.rate_limiter.record_success(ProviderType.GOOGLE, "default_user")
+            self.rate_limiter.record_success(ProviderType.GOOGLE, self.config.user_id)
     
     async def validate_credentials(self) -> bool:
         """
@@ -334,14 +334,27 @@ class GoogleProvider(BaseAIProvider):
                 generation_config=generation_config
             )
         else:
-            # Multi-message chat
+            # Multi-message chat - batch process all messages at once
             chat = model.start_chat()
-            for msg in messages[:-1]:
-                await asyncio.to_thread(
-                    chat.send_message,
-                    msg["parts"][0]["text"]
-                )
             
+            # Build full conversation history efficiently
+            history = []
+            for msg in messages[:-1]:
+                history.append(msg)
+            
+            # Set history all at once if supported, otherwise send messages in batch
+            if hasattr(chat, 'history'):
+                # Try to set history directly for better performance
+                chat.history = history
+            else:
+                # Fall back to sending messages, but batch the operation
+                for msg in messages[:-1]:
+                    await asyncio.to_thread(
+                        chat.send_message,
+                        msg["parts"][0]["text"]
+                    )
+            
+            # Send the final message
             return await asyncio.to_thread(
                 chat.send_message,
                 messages[-1]["parts"][0]["text"],
@@ -364,14 +377,33 @@ class GoogleProvider(BaseAIProvider):
                 stream=True
             )
         else:
-            # Multi-message chat streaming
+            # Multi-message chat streaming - batch process history
             chat = self.model.start_chat()
-            for msg in messages[:-1]:
-                await asyncio.to_thread(
-                    chat.send_message,
-                    msg["parts"][0]["text"]
-                )
             
+            # Build full conversation history efficiently
+            history = []
+            for msg in messages[:-1]:
+                history.append(msg)
+            
+            # Set history all at once if supported, otherwise batch send
+            if hasattr(chat, 'history'):
+                # Try to set history directly for better performance
+                chat.history = history
+            else:
+                # Fall back to sending messages, but batch the operation
+                # Process all history messages in parallel if possible
+                history_tasks = [
+                    asyncio.to_thread(
+                        chat.send_message,
+                        msg["parts"][0]["text"]
+                    )
+                    for msg in messages[:-1]
+                ]
+                # Execute sequentially to maintain order
+                for task in history_tasks:
+                    await task
+            
+            # Send the final message with streaming
             response = await asyncio.to_thread(
                 chat.send_message,
                 messages[-1]["parts"][0]["text"],

@@ -112,7 +112,7 @@ class OpenAIProvider(BaseAIProvider):
         
         try:
             # Apply rate limiting using centralized service
-            await self.rate_limiter.acquire(ProviderType.OPENAI, "default_user", priority=5)
+            await self.rate_limiter.acquire(ProviderType.OPENAI, self.config.user_id, priority=5)
             
             # Convert tools to OpenAI tool format
             openai_tools = self._convert_to_openai_tools(tools) if tools else None
@@ -174,11 +174,11 @@ class OpenAIProvider(BaseAIProvider):
         except Exception as e:
             # Record failure for rate limiting
             is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
-            self.rate_limiter.record_failure(ProviderType.OPENAI, "default_user", is_rate_limit)
+            self.rate_limiter.record_failure(ProviderType.OPENAI, self.config.user_id, is_rate_limit)
             await self._handle_openai_error(e)
         else:
             # Record success for adaptive rate limiting
-            self.rate_limiter.record_success(ProviderType.OPENAI, "default_user")
+            self.rate_limiter.record_success(ProviderType.OPENAI, self.config.user_id)
     
     async def validate_credentials(self) -> bool:
         """

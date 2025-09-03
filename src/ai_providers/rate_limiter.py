@@ -6,6 +6,7 @@ exponential backoff, provider-specific limits, and adaptive behavior.
 """
 
 import asyncio
+import random
 import time
 import logging
 from typing import Dict, Optional, Tuple
@@ -400,7 +401,6 @@ class RateLimiter:
             
             # Apply jitter to prevent thundering herd
             if config.jitter:
-                import random
                 jitter_factor = random.uniform(0.8, 1.2)
                 backoff_delay *= jitter_factor
             

@@ -106,7 +106,7 @@ class AnthropicProvider(BaseAIProvider):
         
         try:
             # Apply rate limiting using centralized service
-            await self.rate_limiter.acquire(ProviderType.ANTHROPIC, "default_user", priority=5)
+            await self.rate_limiter.acquire(ProviderType.ANTHROPIC, self.config.user_id, priority=5)
             
             # Convert to Anthropic format
             anthropic_messages = self._convert_messages(messages)
@@ -172,11 +172,11 @@ class AnthropicProvider(BaseAIProvider):
         except Exception as e:
             # Record failure for rate limiting
             is_rate_limit = "rate_limit" in str(e).lower() or "429" in str(e)
-            self.rate_limiter.record_failure(ProviderType.ANTHROPIC, "default_user", is_rate_limit)
+            self.rate_limiter.record_failure(ProviderType.ANTHROPIC, self.config.user_id, is_rate_limit)
             await self._handle_anthropic_error(e)
         else:
             # Record success for adaptive rate limiting
-            self.rate_limiter.record_success(ProviderType.ANTHROPIC, "default_user")
+            self.rate_limiter.record_success(ProviderType.ANTHROPIC, self.config.user_id)
     
     async def validate_credentials(self) -> bool:
         """

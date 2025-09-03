@@ -26,6 +26,8 @@ Legacy Components (still available):
 - AbstractProvider, ProviderRegistry, CostOptimizer (from existing codebase)
 """
 
+import logging
+
 # Version information
 __version__ = "1.0.0"
 __author__ = "MDMAI TTRPG Assistant Team"
@@ -94,7 +96,6 @@ try:
 except ImportError as e:
     # Fallback if new components are not available
     AUTH_LAYER_AVAILABLE = False
-    import logging
     logging.getLogger(__name__).warning(f"New authentication layer components not available: {e}")
 
 # Import legacy components (existing codebase)
@@ -114,7 +115,6 @@ try:
     
 except ImportError as e:
     LEGACY_COMPONENTS_AVAILABLE = False
-    import logging
     logging.getLogger(__name__).warning(f"Legacy components not available: {e}")
 
 # Build __all__ list dynamically based on what's available

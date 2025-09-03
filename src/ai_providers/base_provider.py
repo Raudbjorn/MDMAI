@@ -102,11 +102,12 @@ class ProviderConfig:
     type: ProviderType
     api_key: Optional[str] = None
     endpoint: Optional[str] = None
-    model: str = ""
+    model: str = ""  # Empty string means use provider's default model
     max_tokens: int = 4096
     temperature: float = 0.7
     timeout: float = 30.0
     max_retries: int = 3
+    user_id: str = "default_user"  # User ID for rate limiting
     
     def validate(self) -> bool:
         """Validate the provider configuration."""
