@@ -498,34 +498,77 @@ class UserUsageTracker:
             return self.active_sessions[user_id][session_id]
         return 0.0
     
+    async def reserve_budget(self, user_id: str, amount: float) -> bool:
+        """Reserve budget atomically to prevent race conditions in budget enforcement.
+        
+        This method atomically checks and reserves budget to ensure that concurrent
+        requests don't exceed limits due to race conditions.
+        
+        Returns:
+            True if budget was successfully reserved, False if it would exceed limits
+        """
+        async with self._lock:
+            # Check current usage
+            current_daily = self.get_user_daily_usage(user_id)
+            current_monthly = self.get_user_monthly_usage(user_id)
+            
+            # Get user limits
+            limits = self.user_limits.get(user_id)
+            if not limits or not limits.enabled:
+                return True  # No limits set, allow the reservation
+            
+            # Check if reservation would exceed limits
+            if limits.daily_limit and (current_daily + amount) > limits.daily_limit:
+                return False
+            
+            if limits.monthly_limit and (current_monthly + amount) > limits.monthly_limit:
+                return False
+            
+            if limits.per_request_limit and amount > limits.per_request_limit:
+                return False
+            
+            # Reserve the budget by updating aggregations immediately
+            today = datetime.now().date().isoformat()
+            current_month = datetime.now().strftime("%Y-%m")
+            
+            # Update daily usage
+            if user_id not in self.daily_usage:
+                self.daily_usage[user_id] = {}
+            if today not in self.daily_usage[user_id]:
+                self.daily_usage[user_id][today] = UserUsageAggregation(user_id=user_id, date=today)
+            
+            self.daily_usage[user_id][today].total_cost += amount
+            
+            # Update monthly usage
+            if user_id not in self.monthly_usage:
+                self.monthly_usage[user_id] = {}
+            if current_month not in self.monthly_usage[user_id]:
+                self.monthly_usage[user_id][current_month] = UserUsageAggregation(user_id=user_id, date=current_month)
+            
+            self.monthly_usage[user_id][current_month].total_cost += amount
+            
+            return True
+    
     async def _save_user_profiles(self) -> None:
-        """Save user profiles to JSON file."""
+        """Save user profiles to JSON file using append-friendly approach."""
         try:
-            profiles_data = {
-                "last_updated": datetime.now().isoformat(),
-                "users": []
-            }
+            profiles_file = self.storage_path / "user_profiles.jsonl"
             
-            for profile in self.user_profiles.values():
-                user_data = {
-                    "user_id": profile.user_id,
-                    "username": profile.username,
-                    "email": profile.email,
-                    "created_at": profile.created_at.isoformat(),
-                    "updated_at": profile.updated_at.isoformat(),
-                    "is_active": profile.is_active,
-                    "user_tier": profile.user_tier,
-                    "preferences": profile.preferences,
-                    "metadata": profile.metadata
-                }
-                profiles_data["users"].append(user_data)
-            
-            profiles_file = self.storage_path / "user_profiles.json"
-            await asyncio.to_thread(
-                self._write_json_file,
-                profiles_file,
-                profiles_data
-            )
+            # Use JSON Lines format for append-friendly operations
+            async with aiofiles.open(profiles_file, 'w') as f:
+                for profile in self.user_profiles.values():
+                    user_data = {
+                        "user_id": profile.user_id,
+                        "username": profile.username,
+                        "email": profile.email,
+                        "created_at": profile.created_at.isoformat(),
+                        "updated_at": profile.updated_at.isoformat(),
+                        "is_active": profile.is_active,
+                        "user_tier": profile.user_tier,
+                        "preferences": profile.preferences,
+                        "metadata": profile.metadata
+                    }
+                    await f.write(json.dumps(user_data) + "\n")
                 
         except Exception as e:
             logger.error("Failed to save user profiles", error=str(e))
@@ -585,18 +628,20 @@ class UserUsageTracker:
             logger.error("Failed to flush pending records", error=str(e))
     
     async def _save_usage_aggregations(self) -> None:
-        """Save usage aggregations to JSON files using async I/O."""
+        """Save usage aggregations to JSON Lines files for efficient appending."""
         try:
-            # Save daily usage
-            daily_data = {}
-            for user_id, user_daily in self.daily_usage.items():
-                daily_data[user_id] = {}
-                for date, agg in user_daily.items():
-                    daily_data[user_id][date] = {
-                        "total_requests": agg.total_requests,
-                        "successful_requests": agg.successful_requests,
-                        "failed_requests": agg.failed_requests,
-                        "total_input_tokens": agg.total_input_tokens,
+            # Save daily usage in JSON Lines format
+            daily_file = self.storage_path / "daily_usage.jsonl"
+            async with aiofiles.open(daily_file, 'w') as f:
+                for user_id, user_daily in self.daily_usage.items():
+                    for date, agg in user_daily.items():
+                        record = {
+                            "user_id": user_id,
+                            "date": date,
+                            "total_requests": agg.total_requests,
+                            "successful_requests": agg.successful_requests,
+                            "failed_requests": agg.failed_requests,
+                            "total_input_tokens": agg.total_input_tokens,
                         "total_output_tokens": agg.total_output_tokens,
                         "total_cost": agg.total_cost,
                         "avg_latency_ms": agg.avg_latency_ms,

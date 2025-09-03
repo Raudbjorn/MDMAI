@@ -299,9 +299,9 @@ class EnhancedTokenEstimator:
                 chars_per_token=4.2
             ),
             
-            # Ollama Models (fallback pattern)
+            # Ollama Models
             TokenizationConfig(
-                provider_type=ProviderType.ANTHROPIC,  # Using ANTHROPIC as Ollama isn't in enum
+                provider_type=ProviderType.OLLAMA,
                 model_pattern=r"llama|mistral|codellama|vicuna",
                 method=TokenCountMethod.OLLAMA_ESTIMATION,
                 chars_per_token=4.5

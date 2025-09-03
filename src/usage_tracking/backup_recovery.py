@@ -2,7 +2,8 @@
 
 import asyncio
 import os
-import shutil
+import aiofiles
+import aiofiles.os
 import gzip
 import json
 import hashlib
@@ -928,8 +929,11 @@ class RecoveryEngine:
                 target_file = target_dir / relative_path
                 target_file.parent.mkdir(parents=True, exist_ok=True)
                 
-                # Copy file (would decompress if needed)
-                await asyncio.to_thread(shutil.copy2, file_path, target_file)
+                # Copy file asynchronously (would decompress if needed)
+                async with aiofiles.open(file_path, 'rb') as src:
+                    async with aiofiles.open(target_file, 'wb') as dst:
+                        content = await src.read()
+                        await dst.write(content)
         
         logger.debug("JSON files recovered", target_dir=str(target_dir))
     

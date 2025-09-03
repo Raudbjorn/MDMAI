@@ -1,6 +1,8 @@
 """Comprehensive data retention policies and cleanup strategies for usage tracking."""
 
 import asyncio
+import aiofiles
+import aiofiles.os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Set, Callable
 from dataclasses import dataclass, asdict
@@ -823,10 +825,10 @@ class DataRetentionManager:
                     pass
                 
                 elif backend == "filesystem":
-                    # Delete file from filesystem
+                    # Delete file from filesystem asynchronously
                     file_path = Path(item["data"]["path"])
                     if file_path.exists():
-                        await asyncio.to_thread(file_path.unlink)
+                        await aiofiles.os.remove(str(file_path))
                 
                 result["records_processed"] += 1
                 result["size_freed_bytes"] += item.get("size_bytes", 0)

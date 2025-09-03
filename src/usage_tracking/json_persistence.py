@@ -291,17 +291,19 @@ class JsonPersistenceManager:
             # Find appropriate file
             file_path = await self._get_writable_file(partition_key, len(records_to_write))
             
-            # Prepare data
-            data_to_write = {
-                "schema_version": self.config.schema_version,
-                "partition_key": partition_key,
-                "timestamp": datetime.now().isoformat(),
-                "record_count": len(records_to_write),
-                "records": records_to_write
-            }
+            # Prepare data in JSON Lines format (one record per line)
+            lines = []
+            for record in records_to_write:
+                record_with_meta = {
+                    "schema_version": self.config.schema_version,
+                    "partition_key": partition_key,
+                    "timestamp": datetime.now().isoformat(),
+                    **record
+                }
+                lines.append(json.dumps(record_with_meta, separators=(',', ':')))
             
-            # Serialize and optionally compress
-            json_data = json.dumps(data_to_write, indent=None, separators=(',', ':'))
+            # Join lines and encode
+            json_data = '\n'.join(lines) + '\n'
             json_bytes = json_data.encode('utf-8')
             
             if self.config.compression_type == CompressionType.GZIP:
@@ -580,20 +582,37 @@ class JsonPersistenceManager:
             if file_meta and file_meta.compressed:
                 if file_meta.compression_type == CompressionType.GZIP:
                     decompressed_data = gzip.decompress(file_data)
-                    data = json.loads(decompressed_data.decode('utf-8'))
+                    text_data = decompressed_data.decode('utf-8')
                 elif file_meta.compression_type == CompressionType.PICKLE:
                     data = pickle.loads(file_data)
+                    # Handle legacy format
+                    records = data.get("records", [])
                 else:
-                    data = json.loads(file_data.decode('utf-8'))
+                    text_data = file_data.decode('utf-8')
             else:
-                data = json.loads(file_data.decode('utf-8'))
+                text_data = file_data.decode('utf-8')
             
             # Verify checksum if enabled
             if (self.config.enable_checksums and file_meta and 
                 file_meta.checksum and file_meta.checksum != self._calculate_checksum(file_data)):
                 logger.warning("Checksum mismatch detected", file_path=file_path)
             
-            records = data.get("records", [])
+            # Parse JSON Lines format (or legacy format)
+            records = []
+            if 'text_data' in locals():
+                for line in text_data.strip().split('\n'):
+                    if line:
+                        try:
+                            record = json.loads(line)
+                            # Remove metadata fields to get clean record
+                            record.pop('schema_version', None)
+                            record.pop('partition_key', None)
+                            records.append(record)
+                        except json.JSONDecodeError:
+                            # Try legacy format
+                            data = json.loads(text_data)
+                            records = data.get("records", [])
+                            break
             
             # Apply filters
             filtered_records = []

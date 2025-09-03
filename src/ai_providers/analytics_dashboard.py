@@ -684,44 +684,51 @@ class AnalyticsDashboard:
             for date_str, agg in user_daily.items():
                 record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                 if start_time <= record_date <= end_time:
-                    # Convert aggregation back to individual records (approximation)
-                    # In practice, you'd store and retrieve actual usage records
-                    for _ in range(agg.total_requests):
-                        record = UsageRecord(
-                            request_id=f"agg_{date_str}_{_}",
-                            provider_type=ProviderType.ANTHROPIC,  # Default
-                            session_id=None,
-                            model="unknown",
-                            input_tokens=agg.total_input_tokens // max(agg.total_requests, 1),
-                            output_tokens=agg.total_output_tokens // max(agg.total_requests, 1),
-                            cost=agg.total_cost / max(agg.total_requests, 1),
-                            latency_ms=agg.avg_latency_ms,
-                            timestamp=record_date,
-                            success=agg.successful_requests > agg.failed_requests,
-                            metadata={"user_id": user_id}
-                        )
-                        all_records.append(record)
+                    # Return aggregated record directly without reconstruction
+                    # Much more efficient than creating thousands of synthetic records
+                    record = UsageRecord(
+                        request_id=f"agg_{date_str}",
+                        provider_type=ProviderType.ANTHROPIC,  # Default
+                        session_id=None,
+                        model="aggregated",
+                        input_tokens=agg.total_input_tokens,
+                        output_tokens=agg.total_output_tokens,
+                        cost=agg.total_cost,
+                        latency_ms=agg.avg_latency_ms,
+                        timestamp=record_date,
+                        success=agg.successful_requests > agg.failed_requests,
+                        metadata={
+                            "user_id": user_id,
+                            "total_requests": agg.total_requests,
+                            "aggregation_type": "daily"
+                        }
+                    )
+                    all_records.append(record)
         else:
             # Aggregate across all users
             for user_id_iter, user_daily in self.usage_tracker.daily_usage.items():
                 for date_str, agg in user_daily.items():
                     record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                     if start_time <= record_date <= end_time:
-                        for _ in range(agg.total_requests):
-                            record = UsageRecord(
-                                request_id=f"agg_{user_id_iter}_{date_str}_{_}",
-                                provider_type=ProviderType.ANTHROPIC,  # Default
-                                session_id=None,
-                                model="unknown",
-                                input_tokens=agg.total_input_tokens // max(agg.total_requests, 1),
-                                output_tokens=agg.total_output_tokens // max(agg.total_requests, 1),
-                                cost=agg.total_cost / max(agg.total_requests, 1),
-                                latency_ms=agg.avg_latency_ms,
-                                timestamp=record_date,
-                                success=agg.successful_requests > agg.failed_requests,
-                                metadata={"user_id": user_id_iter}
-                            )
-                            all_records.append(record)
+                        # Return aggregated record directly without reconstruction
+                        record = UsageRecord(
+                            request_id=f"agg_{user_id_iter}_{date_str}",
+                            provider_type=ProviderType.ANTHROPIC,  # Default
+                            session_id=None,
+                            model="aggregated",
+                            input_tokens=agg.total_input_tokens,
+                            output_tokens=agg.total_output_tokens,
+                            cost=agg.total_cost,
+                            latency_ms=agg.avg_latency_ms,
+                            timestamp=record_date,
+                            success=agg.successful_requests > agg.failed_requests,
+                            metadata={
+                                "user_id": user_id_iter,
+                                "total_requests": agg.total_requests,
+                                "aggregation_type": "daily"
+                            }
+                        )
+                        all_records.append(record)
         
         # Apply filters
         if filters:

@@ -625,17 +625,25 @@ class UsageRecordActor(Actor):
             if isinstance(message, dict) and message.get("type") == "store_usage_record":
                 usage_record = message.get("record")
                 if usage_record:
-                    # Process the usage record
-                    # Use asyncio.run_coroutine_threadsafe to run coroutine from thread
-                    # Note: This is a simplified fix - in production, you'd need access to the main event loop
-                    import threading
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                    # Process the usage record using run_coroutine_threadsafe
+                    # Get the running event loop from the main thread
                     try:
-                        loop.run_until_complete(self.storage_backend.store_usage_record(usage_record))
-                    finally:
-                        loop.close()
-                    self.processed_count += 1
+                        loop = asyncio.get_running_loop()
+                    except RuntimeError:
+                        # No running loop, create one for this thread
+                        loop = asyncio.new_event_loop()
+                    
+                    # Schedule the coroutine in the event loop
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.storage_backend.store_usage_record(usage_record),
+                        loop
+                    )
+                    # Wait for the result with a timeout
+                    try:
+                        future.result(timeout=5.0)
+                        self.processed_count += 1
+                    except TimeoutError:
+                        logger.error(f"Timeout storing usage record in actor {self.actor_id}")
                     
             elif isinstance(message, dict) and message.get("type") == "get_stats":
                 # Return processing statistics
