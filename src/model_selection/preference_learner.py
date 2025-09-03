@@ -630,16 +630,23 @@ class PreferenceLearner:
                 original_feedback = self.feedback_history[user_id]
                 original_length = len(original_feedback)
                 
-                # Only create new deque if filtering is needed
-                recent_feedback = [f for f in original_feedback if f.timestamp > cutoff_time]
+                # Process feedback in chunks to optimize memory usage
+                new_deque = deque(maxlen=1000)
+                removed_count = 0
                 
-                if len(recent_feedback) != original_length:
-                    # Only recreate deque if data was filtered
-                    self.feedback_history[user_id] = deque(recent_feedback, maxlen=1000)
-                    cleaned_count += original_length - len(recent_feedback)
+                for feedback in original_feedback:
+                    if feedback.timestamp > cutoff_time:
+                        new_deque.append(feedback)
+                    else:
+                        removed_count += 1
+                
+                if removed_count > 0:
+                    # Only update if data was actually filtered
+                    self.feedback_history[user_id] = new_deque
+                    cleaned_count += removed_count
                 
                 # Mark user for removal if no recent activity
-                if len(recent_feedback) == 0:
+                if len(new_deque) == 0:
                     users_to_remove.add(user_id)
             
             # Clean up session data if user has any
