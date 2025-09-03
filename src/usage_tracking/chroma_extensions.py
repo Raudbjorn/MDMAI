@@ -397,31 +397,34 @@ class UsageTrackingChromaExtensions:
                 collection_retention = collection_metadata.get("retention_days", retention_days)
                 collection_cutoff = datetime.now() - timedelta(days=collection_retention)
                 
-                # Delete old documents directly using where filter (more efficient)
-                try:
-                    collection.delete(where={"date": {"$lt": collection_cutoff.date().isoformat()}})
-                    # Note: ChromaDB delete with where doesn't return count, estimate as 1 if successful
-                    cleanup_stats[collection_name] = 1  # Placeholder - actual count would need separate query
-                except Exception as delete_error:
-                    logger.warning(f"Direct delete failed, falling back to query-then-delete", error=str(delete_error))
-                    # Fallback to original method if direct delete fails
-                    old_docs = collection.get(
-                        where={"date": {"$lt": collection_cutoff.date().isoformat()}}
-                    )
-                    if old_docs["ids"]:
-                        collection.delete(ids=old_docs["ids"])
-                        cleanup_stats[collection_name] = len(old_docs["ids"])
-                    else:
-                        cleanup_stats[collection_name] = 0
-                    
+                # Use query-then-delete approach since ChromaDB doesn't support direct where-based delete
+                # ChromaDB uses different query syntax than MongoDB
+                cutoff_date = collection_cutoff.date().isoformat()
+                
+                # First, query for documents older than cutoff
+                old_docs = collection.get()
+                
+                # Filter documents in Python since ChromaDB has limited where clause support
+                # for complex date comparisons
+                ids_to_delete = []
+                if old_docs["ids"] and old_docs["metadatas"]:
+                    for doc_id, metadata in zip(old_docs["ids"], old_docs["metadatas"]):
+                        doc_date = metadata.get("date", "")
+                        if doc_date < cutoff_date:  # String comparison works for ISO dates
+                            ids_to_delete.append(doc_id)
+                
+                # Delete the identified documents
+                if ids_to_delete:
+                    collection.delete(ids=ids_to_delete)
+                    cleanup_stats[collection_name] = len(ids_to_delete)
                     logger.info(
                         "Cleaned up old analytics data",
                         collection=collection_name,
-                        deleted_count=len(old_docs["ids"]),
+                        deleted_count=len(ids_to_delete),
                         cutoff_date=collection_cutoff.isoformat()
                     )
-                else:
-                    cleanup_stats[collection_name] = 0
+                # Remove else clause as suggested in review - no action needed when no documents to delete
+                cleanup_stats[collection_name] = cleanup_stats.get(collection_name, 0)
             
             except Exception as e:
                 logger.error(

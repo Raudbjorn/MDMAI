@@ -146,7 +146,7 @@ class UserUsageTracker:
             logger.warning(f"Failed to initialize ChromaDB collections: {e}")
             self.use_chromadb = False
     
-    def _load_user_data(self) -> None:
+    async def _load_user_data(self) -> None:
         """Load user data from JSON files."""
         try:
             # Load user profiles
@@ -156,7 +156,7 @@ class UserUsageTracker:
                     self._read_json_file,
                     profiles_file
                 )
-                    for user_data in profiles_data.get("users", []):
+                for user_data in profiles_data.get("users", []):
                         profile = UserProfile(
                             user_id=user_data["user_id"],
                             username=user_data["username"],
@@ -177,7 +177,7 @@ class UserUsageTracker:
                     self._read_json_file,
                     limits_file
                 )
-                    for limit_data in limits_data.get("limits", []):
+                for limit_data in limits_data.get("limits", []):
                         limits = UserSpendingLimits(
                             user_id=limit_data["user_id"],
                             daily_limit=limit_data.get("daily_limit"),
@@ -195,7 +195,7 @@ class UserUsageTracker:
                         self.user_limits[limits.user_id] = limits
             
             # Load recent usage aggregations
-            self._load_usage_aggregations()
+            await self._load_usage_aggregations()
             
             logger.info("User data loaded", 
                        profiles=len(self.user_profiles), 
@@ -204,7 +204,7 @@ class UserUsageTracker:
         except Exception as e:
             logger.error("Failed to load user data", error=str(e))
     
-    def _load_usage_aggregations(self) -> None:
+    async def _load_usage_aggregations(self) -> None:
         """Load usage aggregations from JSON files."""
         try:
             # Load daily usage
@@ -214,7 +214,7 @@ class UserUsageTracker:
                     self._read_json_file,
                     daily_file
                 )
-                    for user_id, user_daily in daily_data.items():
+                for user_id, user_daily in daily_data.items():
                         if user_id not in self.daily_usage:
                             self.daily_usage[user_id] = {}
                         for date, agg_data in user_daily.items():
@@ -242,7 +242,7 @@ class UserUsageTracker:
                     self._read_json_file,
                     monthly_file
                 )
-                    for user_id, user_monthly in monthly_data.items():
+                for user_id, user_monthly in monthly_data.items():
                         if user_id not in self.monthly_usage:
                             self.monthly_usage[user_id] = {}
                         for month, agg_data in user_monthly.items():
@@ -628,20 +628,18 @@ class UserUsageTracker:
             logger.error("Failed to flush pending records", error=str(e))
     
     async def _save_usage_aggregations(self) -> None:
-        """Save usage aggregations to JSON Lines files for efficient appending."""
+        """Save usage aggregations to JSON files."""
         try:
-            # Save daily usage in JSON Lines format
-            daily_file = self.storage_path / "daily_usage.jsonl"
-            async with aiofiles.open(daily_file, 'w') as f:
-                for user_id, user_daily in self.daily_usage.items():
-                    for date, agg in user_daily.items():
-                        record = {
-                            "user_id": user_id,
-                            "date": date,
-                            "total_requests": agg.total_requests,
-                            "successful_requests": agg.successful_requests,
-                            "failed_requests": agg.failed_requests,
-                            "total_input_tokens": agg.total_input_tokens,
+            # Prepare daily usage data
+            daily_data = {}
+            for user_id, user_daily in self.daily_usage.items():
+                daily_data[user_id] = {}
+                for date, agg in user_daily.items():
+                    daily_data[user_id][date] = {
+                        "total_requests": agg.total_requests,
+                        "successful_requests": agg.successful_requests,
+                        "failed_requests": agg.failed_requests,
+                        "total_input_tokens": agg.total_input_tokens,
                         "total_output_tokens": agg.total_output_tokens,
                         "total_cost": agg.total_cost,
                         "avg_latency_ms": agg.avg_latency_ms,

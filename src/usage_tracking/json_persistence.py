@@ -180,7 +180,7 @@ class JsonPersistenceManager:
     
     def _generate_file_path(self, partition_key: str, file_index: int = 0) -> Path:
         """Generate file path for a partition."""
-        filename = f"{partition_key}_{file_index:03d}.json"
+        filename = f"{partition_key}_{file_index:03d}.jsonl"
         if self.config.compression_type != CompressionType.NONE:
             filename += f".{self.config.compression_type.value}"
         

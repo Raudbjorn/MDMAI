@@ -358,11 +358,15 @@ class EnhancedTokenEstimator:
             output_tokens = max_output_tokens or min(input_tokens // 2, 500)
         
         result = (input_tokens, output_tokens)
+        
+        # Implement LRU cache behavior - remove and re-add to move to end
+        if cache_key in self._estimation_cache:
+            del self._estimation_cache[cache_key]
         self._estimation_cache[cache_key] = result
         
-        # Limit cache size
+        # Limit cache size using LRU eviction
         if len(self._estimation_cache) > 1000:
-            # Remove oldest entries (simple FIFO)
+            # Remove least recently used entries (oldest 100 keys)
             keys_to_remove = list(self._estimation_cache.keys())[:100]
             for key in keys_to_remove:
                 del self._estimation_cache[key]

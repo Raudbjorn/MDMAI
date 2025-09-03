@@ -314,7 +314,9 @@ class CostOptimizationEngine:
                         
                         for provider, count in agg.providers_used.items():
                             global_providers[provider] += count
-                except:
+                except (KeyError, TypeError, AttributeError) as e:
+                    # Log specific errors but continue processing other data
+                    logger.warning(f"Error processing usage data: {e}")
                     continue
         
         if total_requests < 100:  # Not enough data for global analysis

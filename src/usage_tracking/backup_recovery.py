@@ -7,6 +7,7 @@ import aiofiles.os
 import gzip
 import json
 import hashlib
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set, Callable

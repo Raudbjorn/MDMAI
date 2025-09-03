@@ -591,8 +591,8 @@ class AnalyticsDashboard:
         # Aggregate data into time buckets
         for bucket_start, bucket_end in time_buckets:
             bucket_data = [
-                record for record in usage_data
-                if bucket_start <= record.timestamp < bucket_end
+                data_point for data_point in usage_data
+                if bucket_start <= data_point["timestamp"] < bucket_end
             ]
             
             # Apply aggregation method
@@ -671,12 +671,12 @@ class AnalyticsDashboard:
         end_time: datetime,
         user_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None
-    ) -> List[UsageRecord]:
-        """Get raw usage data from storage."""
-        # This is a simplified version - in practice, you'd query your storage
-        # For now, we'll use the in-memory usage data
+    ) -> List[Dict[str, Any]]:
+        """Get aggregated usage data from storage."""
+        # Return aggregated data structures instead of reconstructed UsageRecord objects
+        # This is more accurate and efficient for analytics purposes
         
-        all_records = []
+        all_data = []
         
         # Get data from daily usage aggregations
         if user_id:
@@ -684,97 +684,108 @@ class AnalyticsDashboard:
             for date_str, agg in user_daily.items():
                 record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                 if start_time <= record_date <= end_time:
-                    # Return aggregated record directly without reconstruction
-                    # Much more efficient than creating thousands of synthetic records
-                    record = UsageRecord(
-                        request_id=f"agg_{date_str}",
-                        provider_type=ProviderType.ANTHROPIC,  # Default
-                        session_id=None,
-                        model="aggregated",
-                        input_tokens=agg.total_input_tokens,
-                        output_tokens=agg.total_output_tokens,
-                        cost=agg.total_cost,
-                        latency_ms=agg.avg_latency_ms,
-                        timestamp=record_date,
-                        success=agg.successful_requests > agg.failed_requests,
-                        metadata={
-                            "user_id": user_id,
-                            "total_requests": agg.total_requests,
-                            "aggregation_type": "daily"
-                        }
-                    )
-                    all_records.append(record)
+                    # Return aggregation data directly - more accurate than synthetic records
+                    data_point = {
+                        "date": date_str,
+                        "timestamp": record_date,
+                        "user_id": user_id,
+                        "total_requests": agg.total_requests,
+                        "successful_requests": agg.successful_requests,
+                        "failed_requests": agg.failed_requests,
+                        "total_input_tokens": agg.total_input_tokens,
+                        "total_output_tokens": agg.total_output_tokens,
+                        "total_cost": agg.total_cost,
+                        "avg_latency_ms": agg.avg_latency_ms,
+                        "providers_used": agg.providers_used,
+                        "models_used": agg.models_used,
+                        "session_count": agg.session_count,
+                        "aggregation_type": "daily"
+                    }
+                    all_data.append(data_point)
         else:
             # Aggregate across all users
             for user_id_iter, user_daily in self.usage_tracker.daily_usage.items():
                 for date_str, agg in user_daily.items():
                     record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                     if start_time <= record_date <= end_time:
-                        # Return aggregated record directly without reconstruction
-                        record = UsageRecord(
-                            request_id=f"agg_{user_id_iter}_{date_str}",
-                            provider_type=ProviderType.ANTHROPIC,  # Default
-                            session_id=None,
-                            model="aggregated",
-                            input_tokens=agg.total_input_tokens,
-                            output_tokens=agg.total_output_tokens,
-                            cost=agg.total_cost,
-                            latency_ms=agg.avg_latency_ms,
-                            timestamp=record_date,
-                            success=agg.successful_requests > agg.failed_requests,
-                            metadata={
-                                "user_id": user_id_iter,
-                                "total_requests": agg.total_requests,
-                                "aggregation_type": "daily"
-                            }
-                        )
-                        all_records.append(record)
+                        # Return aggregation data directly
+                        data_point = {
+                            "date": date_str,
+                            "timestamp": record_date,
+                            "user_id": user_id_iter,
+                            "total_requests": agg.total_requests,
+                            "successful_requests": agg.successful_requests,
+                            "failed_requests": agg.failed_requests,
+                            "total_input_tokens": agg.total_input_tokens,
+                            "total_output_tokens": agg.total_output_tokens,
+                            "total_cost": agg.total_cost,
+                            "avg_latency_ms": agg.avg_latency_ms,
+                            "providers_used": agg.providers_used,
+                            "models_used": agg.models_used,
+                            "session_count": agg.session_count,
+                            "aggregation_type": "daily"
+                        }
+                        all_data.append(data_point)
         
-        # Apply filters
+        # Apply filters to aggregated data
         if filters:
-            filtered_records = []
-            for record in all_records:
+            filtered_data = []
+            for data_point in all_data:
                 include_record = True
                 for filter_key, filter_value in filters.items():
-                    if hasattr(record, filter_key):
-                        if getattr(record, filter_key) != filter_value:
-                            include_record = False
-                            break
-                    elif filter_key in record.metadata:
-                        if record.metadata[filter_key] != filter_value:
+                    if filter_key in data_point:
+                        if data_point[filter_key] != filter_value:
                             include_record = False
                             break
                 
                 if include_record:
-                    filtered_records.append(record)
+                    filtered_data.append(data_point)
             
-            all_records = filtered_records
+            all_data = filtered_data
         
-        return all_records
+        return all_data
     
-    def _apply_aggregation(self, records: List[UsageRecord], metric: MetricDefinition) -> float:
-        """Apply aggregation method to a list of usage records."""
-        if not records:
+    def _apply_aggregation(self, data_points: List[Dict[str, Any]], metric: MetricDefinition) -> float:
+        """Apply aggregation method to aggregated data points."""
+        if not data_points:
             return 0.0
         
-        # Get values based on source field
+        # Get values based on source field from aggregated data
         values = []
-        for record in records:
-            if metric.source_field == "request_id":
-                values.append(1)  # Count requests
+        for data_point in data_points:
+            if metric.source_field == "request_id" or metric.source_field == "total_requests":
+                values.append(data_point.get("total_requests", 0))
             elif metric.source_field == "total_tokens":
-                values.append(record.input_tokens + record.output_tokens)
+                input_tokens = data_point.get("total_input_tokens", 0)
+                output_tokens = data_point.get("total_output_tokens", 0)
+                values.append(input_tokens + output_tokens)
             elif metric.source_field == "cost_per_token":
-                total_tokens = record.input_tokens + record.output_tokens
+                cost = data_point.get("total_cost", 0.0)
+                input_tokens = data_point.get("total_input_tokens", 0)
+                output_tokens = data_point.get("total_output_tokens", 0)
+                total_tokens = input_tokens + output_tokens
                 if total_tokens > 0:
-                    values.append(record.cost / total_tokens)
-            elif metric.source_field == "success":
-                # For error rate calculation
-                values.append(0 if record.success else 1)
+                    values.append(cost / total_tokens)
+                else:
+                    values.append(0.0)
+            elif metric.source_field == "success_rate":
+                successful = data_point.get("successful_requests", 0)
+                total = data_point.get("total_requests", 0)
+                if total > 0:
+                    values.append(successful / total)
+                else:
+                    values.append(0.0)
+            elif metric.source_field == "error_rate":
+                failed = data_point.get("failed_requests", 0)
+                total = data_point.get("total_requests", 0)
+                if total > 0:
+                    values.append(failed / total)
+                else:
+                    values.append(0.0)
             elif metric.source_field == "user_id":
-                values.append(record.metadata.get("user_id", "unknown"))
-            elif hasattr(record, metric.source_field):
-                values.append(getattr(record, metric.source_field))
+                values.append(data_point.get("user_id", "unknown"))
+            elif metric.source_field in data_point:
+                values.append(data_point[metric.source_field])
             else:
                 values.append(0)
         

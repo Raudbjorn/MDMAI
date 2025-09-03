@@ -24,6 +24,9 @@ Key Components:
 - Migration Strategies: Version upgrades and schema evolution
 """
 
+import asyncio
+from datetime import datetime
+
 from .chroma_extensions import (
     UsageTrackingChromaExtensions,
     UsageAnalyticsType,
@@ -163,6 +166,9 @@ async def create_integrated_usage_system(
 ):
     """
     Create a fully integrated usage tracking persistence system.
+    
+    NOTE: This factory function has grown large and should be refactored into 
+    separate builder classes in future versions for better maintainability.
     
     Args:
         postgres_persistence: PostgreSQL persistence layer
