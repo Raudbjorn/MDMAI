@@ -19,7 +19,7 @@ import secrets
 from structlog import get_logger
 from returns.result import Result, Success, Failure
 
-from .credential_encryption import CredentialEncryptionService, EncryptedCredential
+from .credential_encryption import CredentialEncryptionService, EncryptedCredential, SecureMemory
 from .credential_storage import CredentialStorageManager, CredentialMetadata
 from .credential_validator import CredentialValidationService, ValidationResult
 from ..ai_providers.models import ProviderType
@@ -348,14 +348,15 @@ class CredentialRotationService:
                 
                 # Store hash of old key for rollback
                 import hashlib
-                old_key_result = self.encryption_service.decrypt_credential(current_encrypted, metadata.user_id)
+                old_key_result = self.encryption_service.decrypt(current_encrypted, metadata.user_id)
                 if old_key_result.is_success():
                     old_key = old_key_result.unwrap()
                     rotation_record.old_key_hash = hashlib.sha256(old_key.encode()).hexdigest()[:16]
-                    self.encryption_service.secure_delete(old_key)
+                    old_key_bytes = bytearray(old_key.encode('utf-8'))
+                    SecureMemory.secure_zero(old_key_bytes)
                 
                 # Encrypt new credential
-                new_encrypted_result = self.encryption_service.encrypt_credential(
+                new_encrypted_result = self.encryption_service.encrypt(
                     new_api_key,
                     metadata.user_id,
                     current_encrypted.provider_type
@@ -392,7 +393,8 @@ class CredentialRotationService:
                 )
                 
                 # Securely delete new key from memory
-                self.encryption_service.secure_delete(new_api_key)
+                new_api_key_bytes = bytearray(new_api_key.encode('utf-8'))
+                SecureMemory.secure_zero(new_api_key_bytes)
                 
                 # Trigger callbacks
                 await self._trigger_rotation_callbacks(rotation_record)
