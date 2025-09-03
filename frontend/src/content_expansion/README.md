@@ -90,15 +90,16 @@ python extract_pdfs.py /path/to/pdfs --no-resume --clear-cache
 ### Python API
 
 ```python
-from content_expansion import PDFAnalyzer, TTRPGGenre
+from frontend.src.content_expansion.pdf_analyzer_enhanced import EnhancedPDFAnalyzer, ProcessingConfig, TTRPGGenre
 
 # Initialize analyzer
-analyzer = PDFAnalyzer(
+config = ProcessingConfig(
     output_dir="./extracted_content",
     cache_dir="./cache",
     use_multiprocessing=True,
     max_workers=4
 )
+analyzer = EnhancedPDFAnalyzer(config)
 
 # Process single PDF
 from pathlib import Path

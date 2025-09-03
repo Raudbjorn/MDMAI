@@ -281,8 +281,13 @@ impl MCPBridge {
             return Err("Stdin channel not available".to_string());
         }
 
-        // Wait for response with timeout
-        match tokio::time::timeout(tokio::time::Duration::from_secs(30), rx).await {
+        // Wait for response with timeout - use shorter timeout for tests
+        let timeout_duration = if cfg!(test) { 
+            tokio::time::Duration::from_millis(100) 
+        } else { 
+            tokio::time::Duration::from_secs(30) 
+        };
+        match tokio::time::timeout(timeout_duration, rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err("Response channel closed".to_string()),
             Err(_) => {
