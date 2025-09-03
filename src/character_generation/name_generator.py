@@ -4,7 +4,7 @@ import logging
 import random
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 from .models import CharacterRace, NPCRole, TTRPGGenre
 
