@@ -523,7 +523,7 @@ class NameGenerator:
         
         # Get templates for genre and type
         genre_templates = org_templates.get(genre, org_templates[TTRPGGenre.FANTASY])
-        templates = genre_templates.get(org_type, genre_templates[list(genre_templates.keys())[0]])
+        templates = genre_templates.get(org_type, next(iter(genre_templates.values()), []))
         
         # Get adjectives and nouns
         adj_list = adjectives.get(genre, adjectives[TTRPGGenre.FANTASY])
