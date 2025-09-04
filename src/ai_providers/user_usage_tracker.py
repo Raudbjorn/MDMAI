@@ -597,6 +597,13 @@ class UserUsageTracker:
             daily_file = self.storage_path / "daily_usage.json"
             if daily_file.exists():
                 logger.info("Migrating legacy daily usage data to scalable format")
+                # Check file size and use streaming for large files
+                file_size = daily_file.stat().st_size
+                if file_size > 50 * 1024 * 1024:  # 50MB threshold
+                    logger.info(f"Large legacy file detected ({file_size / (1024*1024):.1f}MB), using streaming migration")
+                    await self._migrate_large_json_file(daily_file, "daily")
+                    return
+                
                 daily_data = await asyncio.to_thread(self._read_json_file, daily_file)
                 
                 for user_id, user_daily in daily_data.items():
@@ -631,6 +638,13 @@ class UserUsageTracker:
             monthly_file = self.storage_path / "monthly_usage.json"
             if monthly_file.exists():
                 logger.info("Migrating legacy monthly usage data to scalable format")
+                # Check file size and use streaming for large files
+                file_size = monthly_file.stat().st_size
+                if file_size > 50 * 1024 * 1024:  # 50MB threshold
+                    logger.info(f"Large legacy file detected ({file_size / (1024*1024):.1f}MB), using streaming migration")
+                    await self._migrate_large_json_file(monthly_file, "monthly")
+                    return
+                
                 monthly_data = await asyncio.to_thread(self._read_json_file, monthly_file)
                 
                 for user_id, user_monthly in monthly_data.items():
@@ -1160,8 +1174,13 @@ class UserUsageTracker:
                         "updated_at": datetime.now().isoformat()
                     }
                     
-                    async with aiofiles.open(daily_file, 'w') as f:
+                    # Use atomic write to prevent data corruption
+                    temp_file = f"{daily_file}.tmp"
+                    async with aiofiles.open(temp_file, 'w') as f:
                         await f.write(json.dumps(agg_data, indent=2))
+                    
+                    # Atomic replace
+                    await aiofiles.os.replace(temp_file, daily_file)
             
             # Save monthly aggregations in partitioned structure
             for user_id, user_monthly in self._monthly_usage_cache.items():
@@ -1186,16 +1205,144 @@ class UserUsageTracker:
                         "updated_at": datetime.now().isoformat()
                     }
                     
-                    async with aiofiles.open(monthly_file, 'w') as f:
+                    # Use atomic write to prevent data corruption
+                    temp_file = f"{monthly_file}.tmp"
+                    async with aiofiles.open(temp_file, 'w') as f:
                         await f.write(json.dumps(agg_data, indent=2))
+                    
+                    # Atomic replace
+                    await aiofiles.os.replace(temp_file, monthly_file)
                         
         except Exception as e:
             logger.error("Failed to save aggregations to partitioned files", error=str(e))
     
+    async def _migrate_large_json_file(self, file_path: Path, data_type: str) -> None:
+        """Migrate large JSON files using streaming to prevent memory issues."""
+        try:
+            import ijson  # Streaming JSON parser
+            
+            # Process file in chunks to avoid loading entire file into memory
+            batch_size = 0
+            processed_users = 0
+            
+            async with aiofiles.open(file_path, 'rb') as file:
+                parser = ijson.parse(file)
+                current_user = None
+                current_data = {}
+                
+                async for prefix, event, value in parser:
+                    if prefix == '' and event == 'start_map':
+                        # Start of root object
+                        continue
+                    elif prefix.count('.') == 0 and event == 'map_key':
+                        # User ID key
+                        current_user = value
+                        current_data = {}
+                    elif prefix.count('.') == 1 and event == 'start_map':
+                        # Start of user's data object
+                        continue
+                    elif prefix.count('.') == 1 and event == 'map_key':
+                        # Date/month key for this user
+                        current_date = value
+                    elif prefix.count('.') == 2 and event in ('start_map', 'end_map'):
+                        # Skip nested object markers
+                        continue
+                    elif prefix.count('.') == 2 and event == 'end_map' and current_user:
+                        # End of a date's data - process it
+                        agg_data = current_data.get(current_date, {})
+                        if agg_data:
+                            agg = UserUsageAggregation(
+                                user_id=current_user,
+                                date=current_date,
+                                total_requests=agg_data.get("total_requests", 0),
+                                successful_requests=agg_data.get("successful_requests", 0),
+                                failed_requests=agg_data.get("failed_requests", 0),
+                                total_input_tokens=agg_data.get("total_input_tokens", 0),
+                                total_output_tokens=agg_data.get("total_output_tokens", 0),
+                                total_cost=agg_data.get("total_cost", 0.0),
+                                avg_latency_ms=agg_data.get("avg_latency_ms", 0.0),
+                                providers_used=agg_data.get("providers_used", {}),
+                                models_used=agg_data.get("models_used", {}),
+                                session_count=agg_data.get("session_count", 0),
+                                unique_sessions=set(agg_data.get("unique_sessions", []))
+                            )
+                            
+                            # Save to appropriate cache
+                            cache = (self._daily_usage_cache if data_type == "daily" 
+                                   else self._monthly_usage_cache)
+                            if current_user not in cache:
+                                cache[current_user] = {}
+                            cache[current_user][current_date] = agg
+                            
+                            batch_size += 1
+                            
+                            # Periodically save batches to prevent memory buildup
+                            if batch_size >= 100:
+                                await self._save_aggregations_to_partitioned_files()
+                                batch_size = 0
+                                logger.debug(f"Processed batch for {processed_users} users")
+                    
+                    elif prefix.count('.') == 1 and event == 'end_map' and current_user:
+                        # End of user's data
+                        processed_users += 1
+                        if processed_users % 10 == 0:
+                            logger.info(f"Migrated {processed_users} users from legacy {data_type} file")
+            
+            # Save any remaining data
+            if batch_size > 0:
+                await self._save_aggregations_to_partitioned_files()
+                
+            # Backup and remove the legacy file
+            backup_file = file_path.with_suffix(f"{file_path.suffix}.legacy_backup")
+            await asyncio.to_thread(file_path.rename, backup_file)
+            logger.info(f"Legacy {data_type} file backed up and migrated ({processed_users} users)")
+            
+        except ImportError:
+            logger.warning("ijson not available for streaming JSON parsing, falling back to memory-based migration")
+            # Fallback to original approach for smaller files
+            data = await asyncio.to_thread(self._read_json_file, file_path)
+            await self._process_legacy_data(data, data_type)
+            
+        except Exception as e:
+            logger.error(f"Failed to migrate large {data_type} file: {e}")
+            raise
+    
+    async def _process_legacy_data(self, data: dict, data_type: str) -> None:
+        """Process legacy data from in-memory dictionary."""
+        for user_id, user_data in data.items():
+            for date_key, agg_data in user_data.items():
+                agg = UserUsageAggregation(
+                    user_id=user_id,
+                    date=date_key,
+                    total_requests=agg_data.get("total_requests", 0),
+                    successful_requests=agg_data.get("successful_requests", 0),
+                    failed_requests=agg_data.get("failed_requests", 0),
+                    total_input_tokens=agg_data.get("total_input_tokens", 0),
+                    total_output_tokens=agg_data.get("total_output_tokens", 0),
+                    total_cost=agg_data.get("total_cost", 0.0),
+                    avg_latency_ms=agg_data.get("avg_latency_ms", 0.0),
+                    providers_used=agg_data.get("providers_used", {}),
+                    models_used=agg_data.get("models_used", {}),
+                    session_count=agg_data.get("session_count", 0),
+                    unique_sessions=set(agg_data.get("unique_sessions", []))
+                )
+                
+                # Save to appropriate cache
+                cache = (self._daily_usage_cache if data_type == "daily" 
+                       else self._monthly_usage_cache)
+                if user_id not in cache:
+                    cache[user_id] = {}
+                cache[user_id][date_key] = agg
+
     def _write_json_file(self, file_path, data):
-        """Synchronous helper method for writing JSON files."""
-        with open(file_path, 'w') as f:
+        """Synchronous helper method for writing JSON files atomically."""
+        temp_file = f"{file_path}.tmp"
+        with open(temp_file, 'w') as f:
             json.dump(data, f, indent=2)
+        
+        # Atomic replace to prevent data corruption
+        import os
+        os.replace(temp_file, file_path)
     
     def _read_json_file(self, file_path):
         """Synchronous helper method for reading JSON files."""

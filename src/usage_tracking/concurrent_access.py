@@ -473,9 +473,9 @@ class ConcurrentQueue(Generic[T]):
         self.priority_func = priority_func
         
         if priority_func:
-            self._queue: queue.PriorityQueue = queue.PriorityQueue(maxsize)
+            self._queue = queue.PriorityQueue(maxsize)
         else:
-            self._queue: queue.Queue = queue.Queue(maxsize)
+            self._queue = queue.Queue(maxsize)
         
         self._item_counter = 0
         self._counter_lock = threading.Lock()
@@ -637,10 +637,10 @@ class UsageRecordActor(Actor):
                         try:
                             run_async_task()
                             self.processed_count += 1
-                            continue
+                            return
                         except Exception as e:
                             logger.error("Failed to store usage record", error=str(e))
-                            continue
+                            return
                     
                     # Schedule the coroutine in the event loop
                     future = asyncio.run_coroutine_threadsafe(

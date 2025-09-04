@@ -602,7 +602,6 @@ class ABTestingFramework:
         
         return result
     
-<<<<<<< HEAD
     def _t_cdf(self, t: float, df: int) -> float:
         """Calculate t-distribution CDF using scipy if available, otherwise approximation."""
         if SCIPY_AVAILABLE:
@@ -626,8 +625,6 @@ class ABTestingFramework:
                     if abs(term) < 1e-10:
                         break
                 return 0.5 + a / math.pi
-=======
->>>>>>> origin/main
     
     def _generate_recommendations(
         self, 

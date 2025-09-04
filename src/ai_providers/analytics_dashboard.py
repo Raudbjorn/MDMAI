@@ -795,9 +795,21 @@ class AnalyticsDashboard:
                     if processed_count % batch_size == 0:
                         await asyncio.sleep(0)
         else:
-            # Stream across all users with periodic yielding
+            # Stream across all users with limits to prevent memory issues
+            max_users = 100  # Limit concurrent users processing
+            max_records = 10000  # Limit total records per query
+            users_processed = 0
+            
             for user_id_iter, user_daily in self.usage_tracker._daily_usage_cache.items():
+                if users_processed >= max_users:
+                    logger.warning(f"Reached maximum user limit ({max_users}) for single query, truncating results")
+                    break
+                    
                 for date_str, agg in user_daily.items():
+                    if processed_count >= max_records:
+                        logger.warning(f"Reached maximum record limit ({max_records}) for single query, truncating results")
+                        return
+                        
                     record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                     if start_time <= record_date <= end_time:
                         data_point = {
@@ -824,6 +836,8 @@ class AnalyticsDashboard:
                         processed_count += 1
                         if processed_count % batch_size == 0:
                             await asyncio.sleep(0)
+                            
+                users_processed += 1
     
     def _matches_filters(self, data_point: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> bool:
         """Check if data point matches the given filters."""

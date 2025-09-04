@@ -377,7 +377,7 @@ class CostOptimizationEngine:
             """
             params = (start_time.date().isoformat(), end_time.date().isoformat())
             
-            model_stats = defaultdict(lambda: {"count": 0, "cost": 0.0, "users": set()})
+            model_stats = defaultdict(lambda: {"count": 0, "cost": 0.0, "user_hashes": set(), "users_sample": set()})
             
             # Process in chunks to avoid memory issues
             async with db.execute(query, params) as cursor:
@@ -394,7 +394,15 @@ class CostOptimizationEngine:
                             for model, count in models_used.items():
                                 model_stats[model]["count"] += count
                                 model_stats[model]["cost"] += cost * (count / max(requests, 1))
-                                model_stats[model]["users"].add(user_id)
+                                
+                                # Track unique users efficiently with hash-based approximation
+                                # Use hash to reduce memory footprint while maintaining reasonable accuracy
+                                user_hash = hash(user_id) % 100000  # Limit hash space
+                                model_stats[model]["user_hashes"].add(user_hash)
+                                
+                                # Keep a limited sample for reporting (prevent memory bloat)
+                                if len(model_stats[model]["users_sample"]) < 50:  # Limit sample size
+                                    model_stats[model]["users_sample"].add(user_id)
                                 
                         except (json.JSONDecodeError, KeyError, ZeroDivisionError):
                             continue
@@ -409,7 +417,7 @@ class CostOptimizationEngine:
                 if stats["count"] > total_requests * 0.05:  # Used in >5% of requests
                     avg_cost = stats["cost"] / stats["count"] if stats["count"] > 0 else 0
                     if avg_cost > 0.005:  # More than 0.5 cents per request
-                        expensive_models.append((model, stats["count"], avg_cost, len(stats["users"])))
+                        expensive_models.append((model, stats["count"], avg_cost, len(stats["user_hashes"])))
             
             if expensive_models:
                 expensive_models.sort(key=lambda x: x[2], reverse=True)
@@ -421,7 +429,7 @@ class CostOptimizationEngine:
                     description=f"High usage of expensive model: {top_expensive[0]}",
                     frequency=top_expensive[1],
                     cost_impact=model_stats[top_expensive[0]]["cost"],
-                    affected_users=list(model_stats[top_expensive[0]]["users"]),
+                    affected_users=list(model_stats[top_expensive[0]]["users_sample"]),  # Limited sample
                     models_used={top_expensive[0]: top_expensive[1]},
                     providers_used={},
                     avg_tokens_per_request=0,

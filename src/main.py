@@ -53,7 +53,9 @@ mcp = FastMCP("TTRPG Assistant")
 db: Optional[ChromaDBManager] = None
 
 # Initialize PDF processing pipeline
-pdf_pipeline = PDFProcessingPipeline()
+# Disable interactive prompts in non-interactive environments (tests, CI/CD)
+is_interactive = sys.stdin.isatty() if hasattr(sys.stdin, 'isatty') else False
+pdf_pipeline = PDFProcessingPipeline(prompt_for_ollama=is_interactive)
 
 # Initialize search service
 search_service = SearchService()
