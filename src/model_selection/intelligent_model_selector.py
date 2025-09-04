@@ -21,6 +21,10 @@ from ..ai_providers.models import ProviderType, ModelSpec
 
 logger = structlog.get_logger(__name__)
 
+# Fallback configuration constants
+FALLBACK_CONFIDENCE_MULTIPLIER = 0.6  # Reduced confidence for fallback models
+RANDOM_FALLBACK_CONFIDENCE = 0.3  # Low confidence for random fallback
+
 
 def format_provider_model(result: 'SelectionResult') -> str:
     """Helper function to format provider:model consistently."""
@@ -556,7 +560,7 @@ class IntelligentModelSelector:
             if model_key in self.available_models:
                 selected_provider = provider
                 selected_model = model
-                confidence = reliability * 0.6  # Reduced confidence for fallback
+                confidence = reliability * FALLBACK_CONFIDENCE_MULTIPLIER  # Reduced confidence for fallback
                 break
         
         # Final fallback: use any available model
@@ -564,7 +568,7 @@ class IntelligentModelSelector:
             first_model = next(iter(self.available_models.values()))
             selected_provider = first_model.provider_type
             selected_model = first_model.model_id
-            confidence = 0.3  # Low confidence for random fallback
+            confidence = RANDOM_FALLBACK_CONFIDENCE  # Low confidence for random fallback
         
         # Absolute fallback (shouldn't happen in production)
         if not selected_provider:

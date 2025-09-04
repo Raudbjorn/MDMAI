@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
 from uuid import uuid4
 
 import structlog
@@ -16,6 +16,94 @@ from .performance_profiler import PerformanceBenchmark, MetricType, ModelPerform
 from ..ai_providers.models import ProviderType, ModelSpec
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class RuleCondition:
+    """Structured, secure rule condition for model optimization.
+    
+    This replaces string-based conditions to eliminate injection vulnerabilities.
+    All conditions are validated at creation time and evaluated safely.
+    """
+    
+    metric: str
+    operator: str
+    threshold: Union[float, int, str]
+    
+    # Valid operators for security
+    VALID_OPERATORS = frozenset(['>', '<', '>=', '<=', '==', '!=', 'in', 'not_in'])
+    
+    # Valid metrics for security
+    VALID_METRICS = frozenset([
+        'latency', 'error_rate', 'cost_per_hour', 'provider_health', 
+        'quality_score', 'response_time', 'tokens_per_second', 'accuracy',
+        'availability', 'concurrent_requests'
+    ])
+    
+    def __post_init__(self) -> None:
+        """Validate condition parameters to prevent injection attacks."""
+        if self.operator not in self.VALID_OPERATORS:
+            raise ValueError(f"Invalid operator '{self.operator}'. Must be one of {self.VALID_OPERATORS}")
+        
+        if self.metric not in self.VALID_METRICS:
+            raise ValueError(f"Invalid metric '{self.metric}'. Must be one of {self.VALID_METRICS}")
+        
+        # Validate threshold based on operator
+        if self.operator in ['in', 'not_in']:
+            if not isinstance(self.threshold, (list, tuple, set)):
+                raise ValueError(f"Threshold for '{self.operator}' must be a collection")
+        else:
+            if not isinstance(self.threshold, (int, float)):
+                try:
+                    object.__setattr__(self, 'threshold', float(self.threshold))
+                except (ValueError, TypeError) as e:
+                    raise ValueError(f"Threshold '{self.threshold}' must be numeric for operator '{self.operator}'") from e
+    
+    @classmethod
+    def from_string(cls, condition_str: str) -> 'RuleCondition':
+        """Parse a condition string into a structured RuleCondition.
+        
+        This is a secure migration helper for existing string conditions.
+        Only supports a limited, safe subset of conditions.
+        
+        Args:
+            condition_str: String like "latency > 2000" or "provider_health < 0.9"
+            
+        Returns:
+            RuleCondition instance
+            
+        Raises:
+            ValueError: If condition string is invalid or contains unsafe patterns
+        """
+        import re
+        
+        # Sanitize input
+        condition_str = condition_str.strip()
+        
+        # Only allow basic alphanumeric, spaces, dots, and safe operators
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*[><=!]+\s*[0-9.]+$', condition_str):
+            raise ValueError(f"Invalid condition format: '{condition_str}'")
+        
+        # Parse with strict pattern matching
+        pattern = r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*([><=!]+)\s*([0-9.]+)$'
+        match = re.match(pattern, condition_str)
+        
+        if not match:
+            raise ValueError(f"Failed to parse condition: '{condition_str}'")
+        
+        metric, operator, threshold_str = match.groups()
+        
+        # Additional security: normalize operators
+        operator = operator.strip()
+        if operator not in cls.VALID_OPERATORS:
+            raise ValueError(f"Unsupported operator '{operator}' in condition '{condition_str}'")
+        
+        try:
+            threshold = float(threshold_str)
+        except ValueError as e:
+            raise ValueError(f"Invalid threshold '{threshold_str}' in condition '{condition_str}'") from e
+        
+        return cls(metric=metric, operator=operator, threshold=threshold)
 
 
 class OptimizationStrategy(Enum):
@@ -40,17 +128,47 @@ class LoadBalancingStrategy(Enum):
 
 @dataclass
 class OptimizationRule:
-    """A rule for automatic model optimization."""
+    """A rule for automatic model optimization with secure condition evaluation."""
     
     rule_id: str = field(default_factory=lambda: str(uuid4()))
     task_type: Optional[TTRPGTaskType] = None
-    condition: str = ""  # e.g., "latency > 2000"
+    condition: Union[RuleCondition, str] = field(default="")  # Structured condition or legacy string
     action: str = ""     # e.g., "switch_to_faster_model"
     priority: int = 1    # Higher = more important
     enabled: bool = True
     created_at: datetime = field(default_factory=datetime.now)
     last_triggered: Optional[datetime] = None
     trigger_count: int = 0
+    
+    def __post_init__(self) -> None:
+        """Convert string conditions to structured conditions for security."""
+        if isinstance(self.condition, str) and self.condition:
+            try:
+                # Migrate legacy string condition to secure structured format
+                object.__setattr__(self, 'condition', RuleCondition.from_string(self.condition))
+            except ValueError as e:
+                logger.warning(
+                    "Failed to convert legacy condition to secure format",
+                    condition=self.condition,
+                    error=str(e),
+                    rule_id=self.rule_id
+                )
+                # Keep as string for backward compatibility, but log the issue
+    
+    def get_condition(self) -> Optional[RuleCondition]:
+        """Get the condition as a structured RuleCondition.
+        
+        Returns:
+            RuleCondition if available, None if condition is invalid
+        """
+        if isinstance(self.condition, RuleCondition):
+            return self.condition
+        elif isinstance(self.condition, str) and self.condition:
+            try:
+                return RuleCondition.from_string(self.condition)
+            except ValueError:
+                return None
+        return None
 
 
 @dataclass
@@ -123,45 +241,82 @@ class ModelOptimizer:
         self._initialize_default_rules()
     
     def _initialize_default_rules(self) -> None:
-        """Initialize default optimization rules.
+        """Initialize default optimization rules with secure structured conditions.
         
-        TODO: HIGH PRIORITY - Default optimization rules are hardcoded, making them
-        difficult to tune or expand upon without code changes. To improve maintainability,
-        consider loading these rules from an external configuration file (e.g., YAML or JSON).
-        This would allow for dynamic adjustments to the optimization logic.
+        Uses the new secure RuleCondition format to prevent injection attacks.
+        Legacy string-based conditions have been converted to structured conditions.
         """
         default_rules = [
             OptimizationRule(
                 task_type=TTRPGTaskType.COMBAT_RESOLUTION,
-                condition="latency > 500",
+                condition=RuleCondition(metric="latency", operator=">", threshold=500.0),
                 action="switch_to_fastest_model",
                 priority=10
             ),
             OptimizationRule(
                 task_type=TTRPGTaskType.RULE_LOOKUP,
-                condition="error_rate > 0.05",
+                condition=RuleCondition(metric="error_rate", operator=">", threshold=0.05),
                 action="switch_to_most_accurate_model",
                 priority=9
             ),
             OptimizationRule(
-                condition="cost_per_hour > user_budget",
+                condition=RuleCondition(metric="cost_per_hour", operator=">", threshold=100.0),
                 action="switch_to_cost_efficient_model",
                 priority=8
             ),
             OptimizationRule(
-                condition="provider_health < 0.8",
+                condition=RuleCondition(metric="provider_health", operator="<", threshold=0.8),
                 action="switch_provider",
                 priority=7
             ),
             OptimizationRule(
                 task_type=TTRPGTaskType.STORY_GENERATION,
-                condition="quality_score < 0.8",
+                condition=RuleCondition(metric="quality_score", operator="<", threshold=0.8),
                 action="switch_to_highest_quality_model",
                 priority=6
             )
         ]
         
         self.optimization_rules.extend(default_rules)
+    
+    def create_secure_rule(
+        self,
+        metric: str,
+        operator: str,
+        threshold: Union[float, int, str],
+        action: str,
+        task_type: Optional[TTRPGTaskType] = None,
+        priority: int = 1,
+        enabled: bool = True
+    ) -> OptimizationRule:
+        """Create a new optimization rule with secure structured condition.
+        
+        This is the recommended way to create new rules to ensure security.
+        
+        Args:
+            metric: Metric name to evaluate (must be in VALID_METRICS)
+            operator: Comparison operator (must be in VALID_OPERATORS)
+            threshold: Threshold value for comparison
+            action: Action to take when condition is met
+            task_type: Optional task type restriction
+            priority: Rule priority (higher = more important)
+            enabled: Whether rule is enabled
+            
+        Returns:
+            OptimizationRule with secure structured condition
+            
+        Raises:
+            ValueError: If metric, operator, or threshold is invalid
+        """
+        condition = RuleCondition(metric=metric, operator=operator, threshold=threshold)
+        
+        return OptimizationRule(
+            task_type=task_type,
+            condition=condition,
+            action=action,
+            priority=priority,
+            enabled=enabled
+        )
     
     async def register_model(self, model_spec: ModelSpec) -> None:
         """Register a model with the optimizer."""
@@ -810,8 +965,18 @@ class ModelOptimizer:
             if rule.task_type and rule.task_type != task_type:
                 continue
             
-            # Evaluate rule condition
-            if self._evaluate_rule_condition(rule.condition, recommendation, context):
+            # Get structured condition for secure evaluation
+            condition = rule.get_condition() if hasattr(rule, 'get_condition') else rule.condition
+            if condition is None:
+                logger.warning(
+                    "Skipping rule with invalid condition",
+                    rule_id=rule.rule_id,
+                    condition=rule.condition
+                )
+                continue
+            
+            # Evaluate rule condition using secure structured approach
+            if self._evaluate_rule_condition(condition, recommendation, context):
                 # Apply rule action
                 recommendation = await self._apply_rule_action(rule.action, recommendation, context)
                 
@@ -830,54 +995,180 @@ class ModelOptimizer:
     
     def _evaluate_rule_condition(
         self,
-        condition: str,
+        condition: Union[RuleCondition, str],
         recommendation: ModelRecommendation,
         context: Dict[str, Any]
     ) -> bool:
-        """Evaluate if a rule condition is met using safe pattern matching."""
-        import re
+        """Evaluate if a rule condition is met using secure structured evaluation.
+        
+        This replaces the previous regex-based approach to eliminate injection vulnerabilities.
+        Conditions are now validated at creation time and evaluated through a secure dispatch system.
+        
+        Args:
+            condition: Structured RuleCondition or legacy string condition
+            recommendation: Model recommendation to evaluate against
+            context: Additional context for evaluation
+            
+        Returns:
+            bool: True if condition is met, False otherwise
+        """
+        try:
+            # Convert to structured condition if needed
+            if isinstance(condition, str):
+                if not condition.strip():
+                    return True  # Empty condition always passes
+                try:
+                    condition = RuleCondition.from_string(condition)
+                except ValueError as e:
+                    logger.warning(
+                        "Failed to parse legacy condition string",
+                        condition=condition,
+                        error=str(e)
+                    )
+                    return False
+            
+            if not isinstance(condition, RuleCondition):
+                logger.error("Invalid condition type", condition_type=type(condition))
+                return False
+            
+            # Get metric value using secure dispatch
+            metric_value = self._get_metric_value(
+                condition.metric, recommendation, context
+            )
+            
+            if metric_value is None:
+                logger.warning(
+                    "Metric value not available for condition evaluation",
+                    metric=condition.metric,
+                    condition=condition
+                )
+                return False
+            
+            # Evaluate condition using secure operator dispatch
+            return self._evaluate_operator(
+                metric_value, condition.operator, condition.threshold
+            )
+            
+        except Exception as e:
+            logger.error(
+                "Failed to evaluate rule condition",
+                condition=condition,
+                error=str(e),
+                exc_info=True
+            )
+            # Fail-safe: return False for any evaluation errors
+            return False
+    
+    def _get_metric_value(
+        self,
+        metric: str,
+        recommendation: ModelRecommendation,
+        context: Dict[str, Any]
+    ) -> Optional[Union[float, int, str]]:
+        """Safely retrieve metric values for condition evaluation.
+        
+        This uses a dispatch table to securely map metric names to values,
+        preventing injection attacks that could occur with dynamic attribute access.
+        
+        Args:
+            metric: Name of the metric to retrieve
+            recommendation: Model recommendation containing metric data
+            context: Additional context data
+            
+        Returns:
+            Metric value or None if not available
+        """
+        # Secure dispatch table for metric retrieval
+        metric_getters: Dict[str, Callable[[], Optional[Union[float, int, str]]]] = {
+            'latency': lambda: recommendation.expected_performance.get('latency'),
+            'error_rate': lambda: recommendation.expected_performance.get('error_rate'),
+            'quality_score': lambda: recommendation.expected_performance.get('quality'),
+            'accuracy': lambda: recommendation.expected_performance.get('accuracy'),
+            'response_time': lambda: recommendation.expected_performance.get('response_time'),
+            'tokens_per_second': lambda: recommendation.expected_performance.get('tokens_per_second'),
+            
+            'cost_per_hour': lambda: (
+                recommendation.cost_estimate * 60
+                if recommendation.cost_estimate is not None else None
+            ),
+            
+            'provider_health': lambda: self.provider_health.get(
+                recommendation.provider_type, 1.0
+            ),
+            
+            'availability': lambda: context.get('provider_availability', {
+            }).get(recommendation.provider_type.value, 1.0),
+            
+            'concurrent_requests': lambda: self.provider_load.get(
+                recommendation.provider_type, 0
+            ),
+            
+            'user_budget': lambda: context.get('user_budget', float('inf')),
+        }
+        
+        # Secure metric retrieval
+        getter = metric_getters.get(metric)
+        if getter is None:
+            logger.warning(f"Unknown metric requested: {metric}")
+            return None
         
         try:
-            # Secure condition evaluation using regex patterns
-            # Only allow predefined safe patterns to prevent injection attacks
-            
-            # Pattern: "metric_name > threshold"
-            gt_pattern = r"^(\w+)\s*>\s*([0-9]+\.?[0-9]*)$"
-            gt_match = re.match(gt_pattern, condition.strip())
-            if gt_match:
-                metric_name, threshold_str = gt_match.groups()
-                threshold = float(threshold_str)
-                
-                if metric_name == "latency":
-                    return recommendation.expected_performance.get("latency", 0) > threshold
-                elif metric_name == "error_rate":
-                    return recommendation.expected_performance.get("error_rate", 0) > threshold
-                elif metric_name == "cost_per_hour":
-                    user_budget = context.get("user_budget", float('inf'))
-                    hourly_cost = recommendation.cost_estimate * 60
-                    return hourly_cost > threshold
-            
-            # Pattern: "metric_name < threshold"
-            lt_pattern = r"^(\w+)\s*<\s*([0-9]+\.?[0-9]*)$"
-            lt_match = re.match(lt_pattern, condition.strip())
-            if lt_match:
-                metric_name, threshold_str = lt_match.groups()
-                threshold = float(threshold_str)
-                
-                if metric_name == "provider_health":
-                    provider_health = self.provider_health.get(recommendation.provider_type, 1.0)
-                    return provider_health < threshold
-                elif metric_name == "quality_score":
-                    return recommendation.expected_performance.get("quality", 0) < threshold
-            
-            logger.warning("Unsupported or invalid rule condition", condition=condition)
-            return False
+            return getter()
+        except Exception as e:
+            logger.warning(
+                "Failed to retrieve metric value",
+                metric=metric,
+                error=str(e)
+            )
+            return None
+    
+    def _evaluate_operator(
+        self,
+        value: Union[float, int, str],
+        operator: str,
+        threshold: Union[float, int, str, list, tuple, set]
+    ) -> bool:
+        """Safely evaluate comparison operators.
         
-        except (ValueError, re.error) as e:
-            logger.warning("Failed to evaluate rule condition", condition=condition, error=str(e))
-            return False
+        Uses a dispatch table to prevent code injection through operator strings.
         
-        return False
+        Args:
+            value: Actual metric value
+            operator: Comparison operator
+            threshold: Threshold value to compare against
+            
+        Returns:
+            bool: Result of the comparison
+        """
+        try:
+            # Secure operator dispatch table
+            operators: Dict[str, Callable[[Any, Any], bool]] = {
+                '>': lambda v, t: float(v) > float(t),
+                '<': lambda v, t: float(v) < float(t),
+                '>=': lambda v, t: float(v) >= float(t),
+                '<=': lambda v, t: float(v) <= float(t),
+                '==': lambda v, t: v == t,
+                '!=': lambda v, t: v != t,
+                'in': lambda v, t: v in t,
+                'not_in': lambda v, t: v not in t,
+            }
+            
+            operator_func = operators.get(operator)
+            if operator_func is None:
+                logger.error(f"Unknown operator: {operator}")
+                return False
+            
+            return operator_func(value, threshold)
+            
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                "Failed to evaluate operator",
+                value=value,
+                operator=operator,
+                threshold=threshold,
+                error=str(e)
+            )
+            return False
     
     async def _apply_rule_action(
         self,
@@ -947,10 +1238,78 @@ class ModelOptimizer:
         logger.debug("Updated provider load", provider=provider_type.value, load=self.provider_load[provider_type])
     
     def add_optimization_rule(self, rule: OptimizationRule) -> None:
-        """Add a new optimization rule."""
+        """Add a new optimization rule with validation.
+        
+        Validates that the rule has a proper condition and logs warnings for legacy string conditions.
+        
+        Args:
+            rule: OptimizationRule to add
+        """
+        # Validate rule condition
+        condition = rule.get_condition() if hasattr(rule, 'get_condition') else rule.condition
+        if condition is None and rule.condition:
+            logger.warning(
+                "Added rule with invalid condition - may not function properly",
+                rule_id=rule.rule_id,
+                condition=rule.condition
+            )
+        elif isinstance(rule.condition, str) and rule.condition:
+            logger.info(
+                "Added rule with legacy string condition - consider migrating to structured format",
+                rule_id=rule.rule_id,
+                condition=rule.condition
+            )
+        
         self.optimization_rules.append(rule)
         self.optimization_rules.sort(key=lambda r: r.priority, reverse=True)
-        logger.info("Added optimization rule", rule_id=rule.rule_id, priority=rule.priority)
+        logger.info(
+            "Added optimization rule",
+            rule_id=rule.rule_id,
+            priority=rule.priority,
+            condition_type=type(rule.condition).__name__
+        )
+    
+    def add_secure_rule(
+        self,
+        metric: str,
+        operator: str,
+        threshold: Union[float, int, str],
+        action: str,
+        task_type: Optional[TTRPGTaskType] = None,
+        priority: int = 1,
+        enabled: bool = True
+    ) -> str:
+        """Add a new optimization rule using secure structured conditions.
+        
+        This is the recommended way to add rules programmatically.
+        
+        Args:
+            metric: Metric name to evaluate
+            operator: Comparison operator
+            threshold: Threshold value
+            action: Action to take when condition is met
+            task_type: Optional task type restriction
+            priority: Rule priority
+            enabled: Whether rule is enabled
+            
+        Returns:
+            str: Rule ID of the created rule
+            
+        Raises:
+            ValueError: If parameters are invalid
+        """
+        rule = self.create_secure_rule(
+            metric=metric,
+            operator=operator,
+            threshold=threshold,
+            action=action,
+            task_type=task_type,
+            priority=priority,
+            enabled=enabled
+        )
+        
+        self.add_optimization_rule(rule)
+        return rule.rule_id
     
     def remove_optimization_rule(self, rule_id: str) -> bool:
         """Remove an optimization rule."""

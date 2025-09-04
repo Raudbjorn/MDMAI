@@ -27,6 +27,7 @@ from structlog import get_logger
 
 from ..ai_providers.models import ProviderType, CostTier, ModelSpec
 from ..usage_tracking.storage.models import UsageRecord
+from .pricing_engine import get_pricing_engine
 
 logger = get_logger(__name__)
 
@@ -112,28 +113,44 @@ class ModelPerformanceMetrics:
 
 
 class PricingModel:
-    """Dynamic pricing model for providers."""
+    """Dynamic pricing model using centralized pricing engine."""
     
     def __init__(self, provider_type: ProviderType):
         self.provider_type = provider_type
-        self.base_rates = {}  # model_id -> (input_rate, output_rate)
-        self.volume_discounts = {}  # tier -> discount_factor
-        self.time_multipliers = {}  # hour -> multiplier
-        self.surge_pricing = 1.0
+        self._pricing_engine = get_pricing_engine()
         self.last_updated = datetime.utcnow()
     
     def set_base_rates(self, model_id: str, input_rate: float, output_rate: float) -> None:
-        """Set base pricing rates for a model (per 1K tokens)."""
-        self.base_rates[model_id] = (input_rate, output_rate)
+        """Set base pricing rates for a model (per 1K tokens).
+        
+        Note: This method is kept for backward compatibility but the actual
+        rates are managed centrally in the pricing engine via config file.
+        """
+        logger.warning(
+            f"Setting base rates for {model_id} is deprecated. "
+            f"Pricing should be configured in config/pricing.yaml"
+        )
         self.last_updated = datetime.utcnow()
     
     def set_volume_discount(self, monthly_spend: float, discount_factor: float) -> None:
-        """Set volume discount based on monthly spend."""
-        self.volume_discounts[monthly_spend] = discount_factor
+        """Set volume discount based on monthly spend.
+        
+        Note: Volume discounts are now managed centrally in the pricing engine.
+        """
+        logger.warning(
+            "Volume discounts are now managed centrally in the pricing engine. "
+            "Configure them in the pricing configuration file."
+        )
     
     def set_time_multiplier(self, hour: int, multiplier: float) -> None:
-        """Set time-based pricing multiplier (0-23 hours)."""
-        self.time_multipliers[hour] = multiplier
+        """Set time-based pricing multiplier (0-23 hours).
+        
+        Note: Time-based pricing is now managed centrally in the pricing engine.
+        """
+        logger.warning(
+            "Time-based pricing is now managed centrally in the pricing engine. "
+            "Configure it in the pricing configuration file."
+        )
     
     def calculate_cost(
         self,
@@ -143,30 +160,25 @@ class PricingModel:
         monthly_spend: float = 0.0,
         request_time: Optional[datetime] = None
     ) -> float:
-        """Calculate cost with all pricing factors applied."""
-        if model_id not in self.base_rates:
-            logger.warning(f"No base rates for model {model_id}")
+        """Calculate cost using centralized pricing engine."""
+        try:
+            from decimal import Decimal
+            monthly_usage = Decimal(str(monthly_spend))
+            
+            cost = self._pricing_engine.calculate_simple_cost(
+                provider=self.provider_type,
+                model=model_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                monthly_usage=monthly_usage,
+                request_time=request_time
+            )
+            
+            return float(cost)
+            
+        except Exception as e:
+            logger.error(f"Error calculating cost for {self.provider_type.value}:{model_id}: {e}")
             return 0.0
-        
-        input_rate, output_rate = self.base_rates[model_id]
-        base_cost = (input_tokens / 1000) * input_rate + (output_tokens / 1000) * output_rate
-        
-        # Apply volume discount
-        volume_discount = 1.0
-        for threshold in sorted(self.volume_discounts.keys(), reverse=True):
-            if monthly_spend >= threshold:
-                volume_discount = self.volume_discounts[threshold]
-                break
-        
-        # Apply time-based multiplier
-        time_multiplier = 1.0
-        if request_time:
-            hour = request_time.hour
-            time_multiplier = self.time_multipliers.get(hour, 1.0)
-        
-        # Apply surge pricing
-        total_cost = base_cost * volume_discount * time_multiplier * self.surge_pricing
-        return max(0.0, total_cost)
 
 
 class TokenOptimizer:
@@ -389,7 +401,8 @@ class AdvancedCostOptimizer:
     """Advanced cost optimization system with ML-based routing and prediction."""
     
     def __init__(self):
-        self.pricing_models = {}  # provider -> PricingModel
+        self.pricing_models = {}  # provider -> PricingModel (deprecated, for backward compatibility)
+        self._pricing_engine = get_pricing_engine()  # Use centralized pricing engine
         self.performance_metrics = {}  # (provider, model) -> ModelPerformanceMetrics
         self.usage_predictor = UsagePredictor()
         self.token_optimizer = TokenOptimizer()
@@ -409,7 +422,7 @@ class AdvancedCostOptimizer:
         self.circuit_breaker_timeout = 300  # 5 minutes
         self.circuit_breaker_recovery = {}  # provider -> recovery timestamp
         
-        logger.info("Advanced Cost Optimizer initialized")
+        logger.info("Advanced Cost Optimizer initialized with centralized pricing")
     
     def register_pricing_model(self, provider: ProviderType, pricing_model: PricingModel) -> None:
         """Register pricing model for a provider."""
@@ -576,15 +589,20 @@ class AdvancedCostOptimizer:
             if not self.is_provider_available(provider):
                 continue
             
-            # Estimate cost
+            # Estimate cost using centralized pricing engine
             estimated_cost = 0.0
-            if provider in self.pricing_models:
-                pricing_model = self.pricing_models[provider]
-                input_tokens = estimated_tokens
-                output_tokens = max_tokens
-                estimated_cost = pricing_model.calculate_cost(model, input_tokens, output_tokens)
-            else:
-                # Use predictor if available
+            try:
+                from decimal import Decimal
+                cost = self._pricing_engine.calculate_simple_cost(
+                    provider=provider,
+                    model=model,
+                    input_tokens=estimated_tokens,
+                    output_tokens=max_tokens
+                )
+                estimated_cost = float(cost)
+            except Exception as e:
+                logger.warning(f"Failed to estimate cost for {provider.value}:{model}, using predictor: {e}")
+                # Fallback to predictor if available
                 estimated_cost = self.usage_predictor.predict_cost(
                     provider.value, estimated_tokens, max_tokens
                 )

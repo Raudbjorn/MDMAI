@@ -32,6 +32,7 @@ from .models import (
     ProviderType, StreamingChunk, UsageRecord
 )
 from .token_estimator import TokenEstimator
+from ..cost_optimization.pricing_engine import get_pricing_engine
 
 logger = structlog.get_logger(__name__)
 
@@ -536,10 +537,10 @@ class AdvancedTokenCounter:
 # ==================== Real-time Cost Calculator ====================
 
 class CostCalculationEngine:
-    """Real-time cost calculation with dynamic pricing."""
+    """Real-time cost calculation using centralized pricing engine."""
     
     def __init__(self):
-        self._pricing_data: Dict[str, Dict[str, Any]] = {}
+        self._pricing_engine = get_pricing_engine()
         self._exchange_rates: Dict[CurrencyCode, Decimal] = {
             CurrencyCode.USD: Decimal("1.0"),
             CurrencyCode.EUR: Decimal("0.85"),
@@ -547,33 +548,6 @@ class CostCalculationEngine:
             CurrencyCode.JPY: Decimal("110.0"),
             CurrencyCode.CNY: Decimal("6.5"),
         }
-        self._load_pricing_data()
-    
-    def _load_pricing_data(self) -> None:
-        """Load pricing data from external configuration file."""
-        pricing_file = Path(__file__).parent.parent.parent / "config" / "pricing.yaml"
-        
-        try:
-            with open(pricing_file, 'r') as f:
-                config = yaml.safe_load(f)
-            
-            # Convert float values to Decimal for precision
-            self._pricing_data = {}
-            for provider_name, models in config.get("providers", {}).items():
-                self._pricing_data[provider_name] = {}
-                for model_name, pricing in models.items():
-                    self._pricing_data[provider_name][model_name] = {
-                        key: Decimal(str(value)) for key, value in pricing.items()
-                    }
-            
-            logger.info(f"Loaded pricing data for {len(self._pricing_data)} providers from {pricing_file}")
-            
-        except FileNotFoundError:
-            logger.error(f"Pricing configuration file not found: {pricing_file}")
-            self._pricing_data = {}
-        except Exception as e:
-            logger.error(f"Error loading pricing data: {e}")
-            self._pricing_data = {}
     
     def calculate_cost(
         self,
@@ -583,7 +557,7 @@ class CostCalculationEngine:
         currency: CurrencyCode = CurrencyCode.USD,
         apply_discounts: bool = True,
     ) -> CostBreakdown:
-        """Calculate detailed cost breakdown.
+        """Calculate detailed cost breakdown using centralized pricing engine.
         
         Args:
             provider: AI provider type
@@ -597,72 +571,55 @@ class CostCalculationEngine:
         """
         breakdown = CostBreakdown(currency=currency)
         
-        # Get pricing for model
-        provider_pricing = self._pricing_data.get(provider.value, {})
-        model_pricing = self._get_model_pricing(provider_pricing, model)
-        
-        if not model_pricing:
-            logger.warning(f"No pricing data for {provider.value}:{model}")
-            return breakdown
-        
-        # Calculate base costs (in USD)
-        input_tokens = token_metrics.total_tokens - token_metrics.cached_tokens
-        output_tokens = token_metrics.text_tokens  # Simplified
-        
-        # Input cost (considering cache)
-        if token_metrics.cached_tokens > 0 and "cached_input" in model_pricing:
-            cached_cost = (Decimal(token_metrics.cached_tokens) / 1000) * model_pricing["cached_input"]
-            regular_cost = (Decimal(input_tokens) / 1000) * model_pricing["input"]
-            breakdown.input_cost = cached_cost + regular_cost
-            breakdown.cache_discount = (
-                (Decimal(token_metrics.cached_tokens) / 1000) * 
-                (model_pricing["input"] - model_pricing["cached_input"])
+        try:
+            # Use centralized pricing engine for cost calculation
+            total_cost = self._pricing_engine.calculate_simple_cost(
+                provider=provider,
+                model=model,
+                input_tokens=token_metrics.total_tokens,
+                output_tokens=token_metrics.text_tokens,
+                cached_tokens=token_metrics.cached_tokens,
+                tool_call_tokens=token_metrics.tool_call_tokens,
+                image_tokens=token_metrics.image_tokens,
+                audio_tokens=token_metrics.audio_tokens
             )
-        else:
-            breakdown.input_cost = (Decimal(input_tokens) / 1000) * model_pricing["input"]
-        
-        # Output cost
-        breakdown.output_cost = (Decimal(output_tokens) / 1000) * model_pricing.get("output", Decimal("0"))
-        
-        # Tool cost (if applicable)
-        if token_metrics.tool_call_tokens > 0:
-            tool_rate = model_pricing.get("tool", model_pricing.get("output", Decimal("0")))
-            breakdown.tool_cost = (Decimal(token_metrics.tool_call_tokens) / 1000) * tool_rate
-        
-        # Image cost
-        if token_metrics.image_tokens > 0:
-            image_rate = model_pricing.get("image", Decimal("0.01"))  # Default rate
-            breakdown.image_cost = (Decimal(token_metrics.image_tokens) / 1000) * image_rate
-        
-        # Audio cost
-        if token_metrics.audio_tokens > 0:
-            audio_rate = model_pricing.get("audio", Decimal("0.006"))  # Default rate
-            breakdown.audio_cost = (Decimal(token_metrics.audio_tokens) / 1000) * audio_rate
-        
-        # Apply discounts if enabled
-        if apply_discounts:
-            breakdown = self._apply_discounts(breakdown, token_metrics)
-        
-        # Convert currency if needed
-        if currency != CurrencyCode.USD:
-            breakdown = breakdown.convert_currency(currency, self._exchange_rates[currency])
+            
+            # For backward compatibility, distribute total cost across components
+            # This provides the detailed breakdown expected by existing code
+            total_tokens = token_metrics.total_tokens
+            
+            if total_tokens > 0:
+                # Proportionally distribute costs
+                input_ratio = (token_metrics.total_tokens - token_metrics.cached_tokens) / total_tokens
+                output_ratio = token_metrics.text_tokens / total_tokens
+                tool_ratio = token_metrics.tool_call_tokens / total_tokens
+                image_ratio = token_metrics.image_tokens / total_tokens
+                audio_ratio = token_metrics.audio_tokens / total_tokens
+                
+                breakdown.input_cost = total_cost * Decimal(str(input_ratio))
+                breakdown.output_cost = total_cost * Decimal(str(output_ratio))
+                breakdown.tool_cost = total_cost * Decimal(str(tool_ratio))
+                breakdown.image_cost = total_cost * Decimal(str(image_ratio))
+                breakdown.audio_cost = total_cost * Decimal(str(audio_ratio))
+                
+                # Handle cached tokens discount
+                if token_metrics.cached_tokens > 0:
+                    cached_ratio = token_metrics.cached_tokens / total_tokens
+                    breakdown.cache_discount = total_cost * Decimal(str(cached_ratio)) * Decimal("0.5")
+            
+            # Apply discounts if enabled
+            if apply_discounts:
+                breakdown = self._apply_discounts(breakdown, token_metrics)
+            
+            # Convert currency if needed
+            if currency != CurrencyCode.USD:
+                breakdown = breakdown.convert_currency(currency, self._exchange_rates[currency])
+                
+        except Exception as e:
+            logger.error(f"Error calculating cost for {provider.value}:{model}: {e}")
         
         return breakdown
     
-    def _get_model_pricing(self, provider_pricing: Dict, model: str) -> Dict[str, Decimal]:
-        """Get pricing for a specific model."""
-        # Direct match
-        if model in provider_pricing:
-            return provider_pricing[model]
-
-        # Partial match (e.g., "gpt-4-turbo" for "gpt-4-turbo-2024-04-09")
-        # Sort keys by length descending to match more specific names first.
-        sorted_keys = sorted(provider_pricing.keys(), key=len, reverse=True)
-        for model_key in sorted_keys:
-            if model.startswith(model_key):
-                return provider_pricing[model_key]
-
-        return {}
     
     def _apply_discounts(
         self,

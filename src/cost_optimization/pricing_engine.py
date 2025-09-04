@@ -9,6 +9,9 @@ This module provides sophisticated pricing models for different AI providers:
 - Enterprise tier pricing
 - Currency conversion and regional pricing
 - Cost optimization recommendations
+
+This is the single source of truth for all pricing calculations across the system.
+All other modules should use this engine instead of implementing their own pricing logic.
 """
 
 import asyncio
@@ -21,6 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import aiohttp
+import yaml
 from structlog import get_logger
 
 from ..ai_providers.models import ProviderType
@@ -295,13 +299,13 @@ class PricingEngine:
         logger.info("Pricing Engine initialized")
     
     def _load_pricing_from_config(self, config_path: Optional[Path] = None) -> None:
-        """Load pricing configuration from JSON file."""
+        """Load pricing configuration from YAML file."""
         if config_path is None:
-            config_path = Path(__file__).parent.parent.parent / "config" / "pricing.json"
+            config_path = Path(__file__).parent.parent.parent / "config" / "pricing.yaml"
         
         try:
             with open(config_path, 'r') as f:
-                config_data = json.load(f)
+                config_data = yaml.safe_load(f)
             
             self._initialize_pricing_from_data(config_data)
             logger.info("Loaded pricing configuration from file", config_path=str(config_path))
@@ -310,7 +314,7 @@ class PricingEngine:
             logger.warning("Pricing config file not found, falling back to default pricing", 
                          config_path=str(config_path))
             self._initialize_default_pricing()
-        except json.JSONDecodeError as e:
+        except yaml.YAMLError as e:
             logger.error("Failed to parse pricing config file", error=str(e))
             self._initialize_default_pricing()
     
@@ -713,3 +717,167 @@ class PricingEngine:
             config_export['providers'][provider.value] = provider_data
         
         return config_export
+    
+    def calculate_simple_cost(
+        self,
+        provider: ProviderType,
+        model: str,
+        input_tokens: int,
+        output_tokens: int = 0,
+        cached_tokens: int = 0,
+        tool_call_tokens: int = 0,
+        image_tokens: int = 0,
+        audio_tokens: int = 0,
+        monthly_usage: Decimal = Decimal("0"),
+        request_time: Optional[datetime] = None
+    ) -> Decimal:
+        """
+        Simple cost calculation interface for backward compatibility.
+        Used by other modules that need basic pricing calculations.
+        
+        Returns:
+            Total cost as Decimal
+        """
+        usage_amounts = {}
+        
+        if input_tokens > 0:
+            # Consider cached tokens for input
+            effective_input = input_tokens - cached_tokens
+            if effective_input > 0:
+                usage_amounts[CostComponent.INPUT_TOKENS] = effective_input
+                
+            # Add cached input cost if applicable
+            if cached_tokens > 0:
+                # This would need special handling in the pricing model
+                pass
+        
+        if output_tokens > 0:
+            usage_amounts[CostComponent.OUTPUT_TOKENS] = output_tokens
+            
+        if tool_call_tokens > 0:
+            usage_amounts[CostComponent.TOOL_CALLS] = tool_call_tokens
+            
+        if image_tokens > 0:
+            usage_amounts[CostComponent.IMAGE_PROCESSING] = image_tokens
+            
+        if audio_tokens > 0:
+            usage_amounts[CostComponent.AUDIO_PROCESSING] = audio_tokens
+        
+        result = self.calculate_cost(
+            provider=provider,
+            model_id=model,
+            usage_amounts=usage_amounts,
+            monthly_usage=monthly_usage,
+            request_time=request_time
+        )
+        
+        if result:
+            total_cost = Decimal(str(result['total_cost']))
+            
+            # Handle cached token discount separately if needed
+            if cached_tokens > 0:
+                cached_discount = self._calculate_cached_discount(
+                    provider, model, cached_tokens, input_tokens
+                )
+                total_cost -= cached_discount
+            
+            return total_cost
+        
+        return Decimal("0")
+    
+    def _calculate_cached_discount(
+        self,
+        provider: ProviderType,
+        model: str,
+        cached_tokens: int,
+        total_input_tokens: int
+    ) -> Decimal:
+        """Calculate discount for cached tokens."""
+        if provider not in self.provider_configs:
+            return Decimal("0")
+            
+        provider_config = self.provider_configs[provider]
+        model_pricing = provider_config.get_model_pricing(model)
+        
+        if not model_pricing or CostComponent.INPUT_TOKENS not in model_pricing.base_prices:
+            return Decimal("0")
+        
+        # Assume 50% discount for cached tokens (this could be configurable)
+        input_price = model_pricing.base_prices[CostComponent.INPUT_TOKENS]
+        discount_rate = Decimal("0.5")  # 50% discount
+        
+        return (Decimal(cached_tokens) / 1000) * input_price * discount_rate
+    
+    def get_provider_pricing_data(self, provider: ProviderType) -> Dict[str, Any]:
+        """
+        Get raw pricing data for a provider in the format expected by other modules.
+        Used for backward compatibility with existing code.
+        """
+        if provider not in self.provider_configs:
+            return {}
+        
+        provider_config = self.provider_configs[provider]
+        pricing_data = {}
+        
+        for model_id, model_pricing in provider_config.models.items():
+            model_data = {}
+            
+            for component, price in model_pricing.base_prices.items():
+                if component == CostComponent.INPUT_TOKENS:
+                    model_data['input'] = price
+                elif component == CostComponent.OUTPUT_TOKENS:
+                    model_data['output'] = price
+                elif component == CostComponent.TOOL_CALLS:
+                    model_data['tool'] = price
+                elif component == CostComponent.IMAGE_PROCESSING:
+                    model_data['image'] = price
+                elif component == CostComponent.AUDIO_PROCESSING:
+                    model_data['audio'] = price
+            
+            # Add cached input pricing (typically 50% of regular input)
+            if 'input' in model_data:
+                model_data['cached_input'] = model_data['input'] / 2
+            
+            pricing_data[model_id] = model_data
+        
+        return pricing_data
+    
+    def get_model_base_rates(self, provider: ProviderType, model: str) -> Tuple[float, float]:
+        """
+        Get base input and output rates for a model.
+        Used for backward compatibility with advanced_optimizer.py
+        
+        Returns:
+            Tuple of (input_rate, output_rate) per 1K tokens
+        """
+        if provider not in self.provider_configs:
+            return (0.0, 0.0)
+        
+        provider_config = self.provider_configs[provider]
+        model_pricing = provider_config.get_model_pricing(model)
+        
+        if not model_pricing:
+            return (0.0, 0.0)
+        
+        input_rate = float(model_pricing.base_prices.get(CostComponent.INPUT_TOKENS, Decimal("0")))
+        output_rate = float(model_pricing.base_prices.get(CostComponent.OUTPUT_TOKENS, Decimal("0")))
+        
+        return (input_rate, output_rate)
+
+
+# Global pricing engine instance - single source of truth
+_global_pricing_engine: Optional[PricingEngine] = None
+
+
+def get_pricing_engine() -> PricingEngine:
+    """Get the global pricing engine instance."""
+    global _global_pricing_engine
+    if _global_pricing_engine is None:
+        _global_pricing_engine = PricingEngine()
+    return _global_pricing_engine
+
+
+def set_pricing_engine(engine: PricingEngine) -> None:
+    """Set the global pricing engine instance."""
+    global _global_pricing_engine
+    _global_pricing_engine = engine

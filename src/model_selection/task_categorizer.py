@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import re
 from datetime import datetime
 
@@ -470,6 +470,7 @@ class TaskCategorizer:
         """Get characteristics for a specific task type."""
         return self.task_characteristics.get(task_type, self.task_characteristics[TTRPGTaskType.RULE_LOOKUP])
     
+    def analyze_request_complexity(self, user_input: str) -> TaskComplexity:
         """
         Analyze the complexity of a user request based on its content.
 

@@ -17,6 +17,7 @@ and cost optimization logic to prevent inconsistencies and reduce maintenance bu
 """
 
 import asyncio
+import calendar
 import logging
 import math
 from datetime import datetime, timedelta
@@ -231,6 +232,26 @@ class TimeSeriesAggregator:
             "count": 0, "total_time": 0.0, "cache_hits": 0
         })
     
+    def _add_months(self, date: datetime, months: int) -> datetime:
+        """Add accurate number of months to a datetime, handling variable month lengths."""
+        month = date.month - 1 + months
+        year = date.year + month // 12
+        month = month % 12 + 1
+        
+        # Handle day overflow (e.g., Jan 31 + 1 month = Feb 28/29)
+        max_days_in_month = calendar.monthrange(year, month)[1]
+        day = min(date.day, max_days_in_month)
+        
+        return date.replace(year=year, month=month, day=day)
+    
+    def _add_years(self, date: datetime, years: int) -> datetime:
+        """Add accurate number of years to a datetime, handling leap years."""
+        try:
+            return date.replace(year=date.year + years)
+        except ValueError:
+            # Handle leap year edge case (Feb 29 -> Feb 28)
+            return date.replace(year=date.year + years, day=28)
+    
     def _create_time_windows(
         self,
         start_time: datetime,
@@ -241,25 +262,25 @@ class TimeSeriesAggregator:
         windows = []
         current = start_time
         
-        # Determine window size
-        if aggregation_type == TimeAggregation.HOURLY:
-            delta = timedelta(hours=1)
-        elif aggregation_type == TimeAggregation.DAILY:
-            delta = timedelta(days=1)
-        elif aggregation_type == TimeAggregation.WEEKLY:
-            delta = timedelta(weeks=1)
-        elif aggregation_type == TimeAggregation.MONTHLY:
-            delta = timedelta(days=30)  # Approximate
-        elif aggregation_type == TimeAggregation.YEARLY:
-            delta = timedelta(days=365)  # Approximate
-        else:
-            delta = timedelta(hours=1)  # Default
-        
         # Align to period boundaries
         current = self._align_to_period(current, aggregation_type)
         
         while current < end_time:
-            window_end = current + delta
+            if aggregation_type == TimeAggregation.HOURLY:
+                window_end = current + timedelta(hours=1)
+            elif aggregation_type == TimeAggregation.DAILY:
+                window_end = current + timedelta(days=1)
+            elif aggregation_type == TimeAggregation.WEEKLY:
+                window_end = current + timedelta(weeks=1)
+            elif aggregation_type == TimeAggregation.MONTHLY:
+                # Use accurate month calculation
+                window_end = self._add_months(current, 1)
+            elif aggregation_type == TimeAggregation.YEARLY:
+                # Use accurate year calculation
+                window_end = self._add_years(current, 1)
+            else:
+                window_end = current + timedelta(hours=1)  # Default
+                
             duration_seconds = int((window_end - current).total_seconds())
             
             window = TimeWindow(current, window_end, duration_seconds)

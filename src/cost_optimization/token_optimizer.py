@@ -21,9 +21,19 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+# Optional ML dependencies with graceful fallbacks
+try:
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    ML_AVAILABLE = True
+except ImportError:
+    # Fallback implementations for basic functionality
+    np = None
+    TfidfVectorizer = None
+    cosine_similarity = None
+    ML_AVAILABLE = False
+
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -149,16 +159,27 @@ class MessageImportanceScorer:
     """Score message importance for compression decisions."""
     
     def __init__(self):
-        self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=1000,
-            stop_words='english',
-            ngram_range=(1, 2)
-        )
+        if ML_AVAILABLE:
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=1000,
+                stop_words='english',
+                ngram_range=(1, 2)
+            )
+        else:
+            self.tfidf_vectorizer = None
+            logger.warning(
+                "ML dependencies not available. Using fallback importance scoring. "
+                "Install numpy and scikit-learn for advanced features: pip install numpy scikit-learn"
+            )
         self.importance_cache = {}
         self.cache_ttl = 3600  # 1 hour
     
     def score_messages(self, messages: List[Dict[str, Any]]) -> List[float]:
         """Score importance of each message in the conversation."""
+        
+        # If ML dependencies aren't available, use fallback scoring immediately
+        if not ML_AVAILABLE or self.tfidf_vectorizer is None:
+            return self._fallback_position_scoring(messages)
         
         # Extract text content from messages
         texts = []
@@ -228,7 +249,11 @@ class MessageImportanceScorer:
         
         # Content-based scoring (TF-IDF density)
         if hasattr(tfidf_vector, 'data') and len(tfidf_vector.data) > 0:
-            content_score = np.mean(tfidf_vector.data)
+            if ML_AVAILABLE and np is not None:
+                content_score = np.mean(tfidf_vector.data)
+            else:
+                # Fallback: calculate mean manually
+                content_score = sum(tfidf_vector.data) / len(tfidf_vector.data)
             base_score += content_score * 0.5
         
         # Position-based scoring (recent messages more important)
@@ -293,7 +318,18 @@ class SemanticCache:
         self.embeddings = {}  # hash -> embedding
         self.max_cache_size = max_cache_size
         self.similarity_threshold = similarity_threshold
-        self.tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+        
+        if ML_AVAILABLE:
+            self.tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+            self.semantic_enabled = True
+        else:
+            self.tfidf_vectorizer = None
+            self.semantic_enabled = False
+            logger.warning(
+                "ML dependencies not available. Semantic caching disabled - using simple hash-based caching only. "
+                "Install numpy and scikit-learn for semantic similarity: pip install numpy scikit-learn"
+            )
+        
         self.cache_hits = 0
         self.cache_misses = 0
         
@@ -324,8 +360,11 @@ class SemanticCache:
         signature_text = '|'.join(content_parts) + f"|model:{model}"
         return hashlib.sha256(signature_text.encode()).hexdigest()[:16]
     
-    def _get_content_embedding(self, messages: List[Dict[str, Any]]) -> Optional[np.ndarray]:
+    def _get_content_embedding(self, messages: List[Dict[str, Any]]):
         """Get content embedding for similarity matching."""
+        if not self.semantic_enabled or self.tfidf_vectorizer is None:
+            return None
+            
         # Extract text content
         all_text = []
         for message in messages:
@@ -409,10 +448,19 @@ class SemanticCache:
                 
                 # Calculate similarity
                 try:
-                    similarity = cosine_similarity(
-                        current_embedding.reshape(1, -1),
-                        cached_embedding.reshape(1, -1)
-                    )[0][0]
+                    if ML_AVAILABLE and cosine_similarity is not None:
+                        similarity = cosine_similarity(
+                            current_embedding.reshape(1, -1),
+                            cached_embedding.reshape(1, -1)
+                        )[0][0]
+                    else:
+                        # Fallback: basic dot product similarity (not as accurate)
+                        flat_current = current_embedding.flatten()
+                        flat_cached = cached_embedding.flatten()
+                        dot_product = sum(a * b for a, b in zip(flat_current, flat_cached))
+                        norm_current = (sum(x * x for x in flat_current) ** 0.5)
+                        norm_cached = (sum(x * x for x in flat_cached) ** 0.5)
+                        similarity = dot_product / (norm_current * norm_cached) if norm_current and norm_cached else 0
                     
                     if similarity > best_similarity and similarity >= self.similarity_threshold:
                         best_similarity = similarity

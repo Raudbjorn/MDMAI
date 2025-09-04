@@ -17,6 +17,10 @@ from ..ai_providers.models import ProviderType
 
 logger = structlog.get_logger(__name__)
 
+# Response time thresholds in milliseconds
+SLOW_RESPONSE_THRESHOLD_MS = 5000  # 5 seconds
+FAST_RESPONSE_THRESHOLD_MS = 1000  # 1 second
+
 
 class FeedbackType(Enum):
     """Types of user feedback."""
@@ -237,9 +241,9 @@ class PreferenceLearner:
         
         # Update speed vs quality preference based on response time and feedback
         if feedback.response_time > 0:
-            if feedback.response_time > 5000 and feedback_weight > 0:  # Slow but good response
+            if feedback.response_time > SLOW_RESPONSE_THRESHOLD_MS and feedback_weight > 0:  # Slow but good response
                 task_prefs["speed_importance"] -= 0.05
-            elif feedback.response_time < 1000 and feedback_weight > 0:  # Fast and good response
+            elif feedback.response_time < FAST_RESPONSE_THRESHOLD_MS and feedback_weight > 0:  # Fast and good response
                 task_prefs["speed_importance"] += 0.05
         
         # Update cost sensitivity based on cost and feedback

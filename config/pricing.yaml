@@ -1,35 +1,72 @@
 # AI Provider Pricing Configuration
+# This is the single source of truth for all pricing data across the system
 # Prices are per 1,000 tokens unless otherwise specified
 # Last updated: 2025-01-15
 
 providers:
   openai:
+    gpt-4:
+      input: 0.03
+      output: 0.06
+      cached_input: 0.015
+      tool_calls: 0.06
+      image_processing: 0.01
+      audio_processing: 0.006
     gpt-4-turbo:
       input: 0.01
       output: 0.03
       cached_input: 0.005
+      tool_calls: 0.03
+      image_processing: 0.01
+      audio_processing: 0.006
     gpt-3.5-turbo:
       input: 0.0005
       output: 0.0015
+      cached_input: 0.00025
+      tool_calls: 0.0015
       
   anthropic:
     claude-3-opus:
       input: 0.015
       output: 0.075
       cached_input: 0.0075
+      tool_calls: 0.075
+      image_processing: 0.015
     claude-3-sonnet:
       input: 0.003
       output: 0.015
       cached_input: 0.0015
+      tool_calls: 0.015
+      image_processing: 0.003
     claude-3-haiku:
       input: 0.00025
       output: 0.00125
       cached_input: 0.000125
+      tool_calls: 0.00125
       
   google:
     gemini-1.5-pro:
       input: 0.00125
       output: 0.005
+      cached_input: 0.000625
+      tool_calls: 0.005
+      image_processing: 0.0025
     gemini-1.5-flash:
       input: 0.000075
       output: 0.0003
+      cached_input: 0.0000375
+      tool_calls: 0.0003
+
+# Volume discount tiers (threshold in USD monthly spend -> discount factor)
+volume_discounts:
+  1000: 0.95    # 5% discount for $1000+ monthly
+  5000: 0.90    # 10% discount for $5000+ monthly
+  25000: 0.85   # 15% discount for $25000+ monthly
+
+# Exchange rates (base currency: USD)
+exchange_rates:
+  USD: 1.0
+  EUR: 0.85
+  GBP: 0.73
+  JPY: 110.0
+  CNY: 6.5
