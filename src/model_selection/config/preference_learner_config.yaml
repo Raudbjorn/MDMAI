@@ -1,0 +1,68 @@
+# Preference Learner Configuration for Model Selection
+# This file defines the weights and parameters for learning user preferences
+
+# Learning parameters
+learning_rate: 0.1
+decay_factor: 0.95
+min_confidence: 0.3
+max_sessions_per_user: 50
+
+# Feedback type weights for preference learning
+# Values range from -1.0 (strong negative) to 1.0 (strong positive)
+feedback_weights:
+  EXPLICIT_RATING: 1.0        # Direct user rating (most important)
+  REGENERATION_REQUEST: -0.8  # User asked to regenerate (strong negative)
+  ACCEPTANCE: 0.6             # User accepted the response
+  MODIFICATION: -0.3          # User had to modify the response
+  BOOKMARK: 0.9               # User bookmarked/saved the response
+  SHARE: 0.8                  # User shared the response
+  IMPLICIT_USAGE: 0.3         # General usage without explicit feedback
+
+# Confidence thresholds for different actions
+confidence_thresholds:
+  min_for_recommendation: 0.3
+  high_confidence: 0.7
+  very_high_confidence: 0.9
+
+# Session analysis parameters
+session_analysis:
+  min_interactions_for_pattern: 5
+  max_session_length_hours: 8
+  pattern_cache_size: 1000
+  correlation_threshold: 0.3
+
+# User profile parameters
+user_profile:
+  initial_provider_preference: 0.5
+  initial_model_preference: 0.5
+  max_feedback_history: 1000
+  preference_update_threshold: 0.1
+
+# Pattern detection parameters
+pattern_detection:
+  min_pattern_frequency: 3
+  time_window_hours: 168  # 1 week
+  similarity_threshold: 0.7
+  max_patterns_per_user: 50
+
+# Data retention settings
+data_retention:
+  feedback_retention_days: 90
+  session_retention_days: 30
+  inactive_user_threshold_days: 365
+  cleanup_frequency_hours: 24
+
+# Advanced learning parameters
+advanced_learning:
+  enable_behavioral_patterns: true
+  enable_time_based_learning: true
+  enable_context_adaptation: true
+  enable_collaborative_filtering: false  # Disabled for privacy
+  
+  # Behavioral pattern weights
+  behavioral_weights:
+    time_of_day: 0.1
+    session_length: 0.15
+    task_sequence: 0.2
+    response_time: 0.1
+    interaction_depth: 0.15

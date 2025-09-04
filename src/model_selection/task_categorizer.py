@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 import re
 from datetime import datetime
 

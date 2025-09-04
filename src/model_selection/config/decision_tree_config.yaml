@@ -1,0 +1,153 @@
+# Decision Tree Configuration for Model Selection
+# This file defines the structure and logic of the model selection decision tree
+
+# Scoring weights for model evaluation
+scoring_weights:
+  task_suitability: 0.25
+  performance: 0.20
+  cost: 0.15
+  reliability: 0.15
+  user_preference: 0.15
+  context_match: 0.10
+
+# Performance thresholds for different requirements
+performance_thresholds:
+  latency:
+    fast: 1000    # ms
+    medium: 3000  # ms
+    slow: 5000    # ms
+  quality:
+    high: 0.9
+    medium: 0.7
+    low: 0.5
+  cost:
+    budget: 0.01    # per 1k tokens
+    moderate: 0.05
+    premium: 0.10
+
+# Decision tree structure
+# Each node can have conditions and children or be a leaf with model recommendations
+decision_tree:
+  name: "Root"
+  description: "Root decision node for model selection"
+  children:
+    - name: "Combat Tasks"
+      description: "Fast responses for combat scenarios"
+      conditions:
+        - field: "task_type"
+          operator: "in"
+          values: ["combat_resolution", "initiative_tracking", "damage_calculation"]
+      children:
+        - name: "Budget Combat"
+          description: "Cost-optimized combat responses"
+          conditions:
+            - field: "cost_budget"
+              operator: "less_than"
+              value: 0.005
+          recommended_models:
+            - provider: "google"
+              model: "gemini-1.5-flash"
+              score: 0.95
+            - provider: "openai" 
+              model: "gpt-4o-mini"
+              score: 0.90
+            - provider: "anthropic"
+              model: "claude-3-5-haiku"
+              score: 0.85
+        - name: "Quality Combat"
+          description: "Quality-focused combat responses"
+          recommended_models:
+            - provider: "anthropic"
+              model: "claude-3-5-haiku"
+              score: 0.95
+            - provider: "openai"
+              model: "gpt-4o"
+              score: 0.90
+            - provider: "google"
+              model: "gemini-1.5-pro"
+              score: 0.85
+
+    - name: "Creative Tasks"
+      description: "Narrative and character generation"
+      conditions:
+        - field: "task_type"
+          operator: "in"
+          values: ["character_generation", "story_creation", "world_building", "narrative_generation"]
+      children:
+        - name: "Budget Creative"
+          description: "Cost-effective creative content"
+          conditions:
+            - field: "cost_budget"
+              operator: "less_than"
+              value: 0.01
+          recommended_models:
+            - provider: "anthropic"
+              model: "claude-3-5-haiku"
+              score: 0.90
+            - provider: "openai"
+              model: "gpt-4o-mini"
+              score: 0.85
+            - provider: "google"
+              model: "gemini-1.5-flash"
+              score: 0.80
+        - name: "Premium Creative"
+          description: "High-quality creative content"
+          recommended_models:
+            - provider: "anthropic"
+              model: "claude-3-5-sonnet"
+              score: 0.95
+            - provider: "anthropic"
+              model: "claude-3-opus"
+              score: 0.98
+            - provider: "openai"
+              model: "gpt-4o"
+              score: 0.92
+
+    - name: "Rules Tasks"
+      description: "Rule lookups and references"
+      conditions:
+        - field: "task_type"
+          operator: "in"
+          values: ["rule_lookup", "spell_reference", "monster_reference"]
+      recommended_models:
+        - provider: "anthropic"
+          model: "claude-3-5-haiku"
+          score: 0.95
+        - provider: "google"
+          model: "gemini-1.5-flash"
+          score: 0.90
+        - provider: "google"
+          model: "gemini-1.5-pro"
+          score: 0.88
+        - provider: "openai"
+          model: "gpt-4o-mini"
+          score: 0.85
+
+    - name: "Session Management"
+      description: "Notes and campaign management"
+      conditions:
+        - field: "task_type"
+          operator: "in"
+          values: ["session_notes", "campaign_management", "quest_tracking"]
+      recommended_models:
+        - provider: "anthropic"
+          model: "claude-3-5-haiku"
+          score: 0.90
+        - provider: "openai"
+          model: "gpt-4o-mini"
+          score: 0.85
+        - provider: "google"
+          model: "gemini-1.5-flash"
+          score: 0.80
+
+# Default fallback for unmatched tasks
+default_recommendations:
+  - provider: "anthropic"
+    model: "claude-3-5-sonnet"
+    score: 0.85
+  - provider: "openai"
+    model: "gpt-4o"
+    score: 0.80
+  - provider: "google"
+    model: "gemini-1.5-pro"
+    score: 0.75
