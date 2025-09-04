@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from enum import Enum
-from ..models import ProviderType, FeedbackType
+from ...ai_providers.models import ProviderType
+from ..preference_learner import FeedbackType
 
 
 @dataclass
