@@ -111,6 +111,7 @@ class UserPreferenceProfile:
     # Behavioral patterns
     typical_session_length: float = 0.0   # minutes
     preferred_interaction_times: List[int] = field(default_factory=list)  # hours of day
+    interaction_time_counts: Dict[int, int] = field(default_factory=dict)  # hour -> count mapping
     common_task_sequences: Dict[str, int] = field(default_factory=dict)
 
 
@@ -269,19 +270,20 @@ class PreferenceLearner:
     async def _detect_patterns(self, profile: UserPreferenceProfile, feedback: UserFeedback) -> None:
         """Detect behavioral patterns from user feedback."""
         user_id = profile.user_id
-
-        # Update interaction time patterns
+        
+        # Update interaction time patterns efficiently
         current_hour = feedback.timestamp.hour
-        if current_hour not in profile.preferred_interaction_times:
-            profile.preferred_interaction_times.append(current_hour)
-
-        # Keep only the most common hours (limit to top 6 hours)
-        if len(profile.preferred_interaction_times) > 6:
-            hour_counts = defaultdict(int)
-            for hour in profile.preferred_interaction_times:
-                hour_counts[hour] += 1
-
-            top_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)[:6]
+        
+        # Update count for current hour
+        profile.interaction_time_counts[current_hour] = profile.interaction_time_counts.get(current_hour, 0) + 1
+        
+        # Rebuild preferred_interaction_times from counts (maintain top 6 hours)
+        if profile.interaction_time_counts:
+            top_hours = sorted(
+                profile.interaction_time_counts.items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )[:6]
             profile.preferred_interaction_times = [hour for hour, count in top_hours]
 
         # Track task transition patterns
@@ -342,6 +344,7 @@ class PreferenceLearner:
             # Behavioral patterns
             "typical_session_length": profile.typical_session_length,
             "preferred_interaction_times": profile.preferred_interaction_times,
+            "interaction_time_counts": dict(profile.interaction_time_counts),
             "common_task_sequences": dict(profile.common_task_sequences)
         }
 

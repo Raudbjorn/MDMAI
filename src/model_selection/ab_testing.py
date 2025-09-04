@@ -13,7 +13,14 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 import structlog
-from ..utils.scipy_utils import perform_t_test, perform_one_way_anova, calculate_p_value_from_t_stat
+
+try:
+    from scipy import stats
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    import warnings
+    warnings.warn("scipy not available - statistical tests will use approximations")
 from .task_categorizer import TTRPGTaskType
 from .performance_profiler import PerformanceBenchmark, MetricType
 from ..ai_providers.models import ProviderType
@@ -605,6 +612,30 @@ class ABTestingFramework:
                 result.rollout_timeline = "gradual_over_2_weeks"
         
         return result
+    
+    def _t_cdf(self, t: float, df: int) -> float:
+        """Calculate t-distribution CDF using scipy if available, otherwise approximation."""
+        if SCIPY_AVAILABLE:
+            # Use proper t-distribution from scipy
+            return stats.t.cdf(t, df)
+        else:
+            # Fallback approximation for when scipy is not available
+            # This is less accurate but better than the previous tanh approximation
+            if df > 30:
+                # Approximate with normal distribution for large df
+                return 0.5 * (1 + math.erf(t / math.sqrt(2)))
+            else:
+                # Better approximation for small df using continued fraction
+                # Based on Abramowitz and Stegun approximation
+                x = t / math.sqrt(df)
+                a = 0.5 * math.atan(x)
+                term = x
+                for k in range(1, 10):  # Limited series for computational efficiency
+                    term *= -(x * x) / (2 * k + 1)
+                    a += term / (2 * k + 1)
+                    if abs(term) < 1e-10:
+                        break
+                return 0.5 + a / math.pi
     
     def _generate_recommendations(
         self, 
