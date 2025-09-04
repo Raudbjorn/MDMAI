@@ -543,19 +543,15 @@ class IntelligentModelSelector:
         # Check if default is available
         if f"{default_provider.value}:{default_model}" not in self.available_models:
             # Find any available model with safe iteration
-            try:
-                if self.available_models:
-                    first_model = next(iter(self.available_models.values()))
-                    default_provider = first_model.provider_type
-                    default_model = first_model.model_id
-                else:
-                    raise StopIteration("No models available")
-            except (StopIteration, KeyError, AttributeError) as e:
+            if self.available_models:
+                first_model = next(iter(self.available_models.values()))
+                default_provider = first_model.provider_type
+                default_model = first_model.model_id
+            else:
                 # No models available - this shouldn't happen in normal operation
-                logger.error("No models available for fallback", request_id=request.request_id, error=str(e))
+                logger.error("No models available for fallback", request_id=request.request_id, error="No models available")
                 default_provider = ProviderType.ANTHROPIC
                 default_model = "claude-3-5-sonnet"
-        
         return SelectionResult(
             request_id=request.request_id,
             selected_provider=default_provider,
