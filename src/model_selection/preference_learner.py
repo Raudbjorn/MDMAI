@@ -615,32 +615,53 @@ class PreferenceLearner:
         }
     
     async def cleanup_old_data(self, retention_days: int = 90) -> int:
-        """Clean up old preference data."""
+        """Clean up old preference data efficiently."""
         cutoff_time = datetime.now() - timedelta(days=retention_days)
         cleaned_count = 0
+        users_to_remove = set()
+        sessions_to_remove = set()
         
-        # Clean up feedback history
-        for user_id in list(self.feedback_history.keys()):
-            original_length = len(self.feedback_history[user_id])
-            
-            # Filter out old feedback
-            filtered_feedback = deque(
-                (f for f in self.feedback_history[user_id] if f.timestamp > cutoff_time),
-                maxlen=1000
-            )
-            
-            self.feedback_history[user_id] = filtered_feedback
-            cleaned_count += original_length - len(filtered_feedback)
-            
-            # Remove user profiles with no recent activity
-            if len(filtered_feedback) == 0 and user_id in self.user_profiles:
-                del self.user_profiles[user_id]
+        # Combined cleanup loop for all user-related data
+        all_users = set(self.feedback_history.keys()) | set(self.session_data.keys())
         
-        # Clean up session data
-        for user_id in list(self.session_data.keys()):
-            last_update = self.session_data[user_id].get("last_update")
-            if last_update and last_update < cutoff_time:
-                del self.session_data[user_id]
+        for user_id in all_users:
+            # Clean up feedback history if user has any
+            if user_id in self.feedback_history:
+                original_feedback = self.feedback_history[user_id]
+                original_length = len(original_feedback)
+                
+                # Process feedback in chunks to optimize memory usage
+                new_deque = deque(maxlen=1000)
+                removed_count = 0
+                
+                for feedback in original_feedback:
+                    if feedback.timestamp > cutoff_time:
+                        new_deque.append(feedback)
+                    else:
+                        removed_count += 1
+                
+                if removed_count > 0:
+                    # Only update if data was actually filtered
+                    self.feedback_history[user_id] = new_deque
+                    cleaned_count += removed_count
+                
+                # Mark user for removal if no recent activity
+                if len(new_deque) == 0:
+                    users_to_remove.add(user_id)
+            
+            # Clean up session data if user has any
+            if user_id in self.session_data:
+                last_update = self.session_data[user_id].get("last_update")
+                if last_update and last_update < cutoff_time:
+                    sessions_to_remove.add(user_id)
+        
+        # Batch remove users and sessions
+        for user_id in users_to_remove:
+            self.user_profiles.pop(user_id, None)
+            self.feedback_history.pop(user_id, None)
+        
+        for user_id in sessions_to_remove:
+            del self.session_data[user_id]
         
         # Clear pattern cache
         self.pattern_cache.clear()

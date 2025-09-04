@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 import structlog
+from scipy import stats
 from .task_categorizer import TTRPGTaskType
 from .performance_profiler import PerformanceBenchmark, MetricType
 from ..ai_providers.models import ProviderType
@@ -489,13 +490,21 @@ class ABTestingFramework:
             result.recommendation = "Insufficient data for statistical comparison"
             return result
         
-        # Perform statistical test (simplified t-test)
+        # Perform appropriate statistical test based on number of variants
         variant_ids = list(variant_samples.keys())
-        samples_a = variant_samples[variant_ids[0]]
-        samples_b = variant_samples[variant_ids[1]]
+        valid_samples = {vid: samples for vid, samples in variant_samples.items() if len(samples) > 1}
         
-        if len(samples_a) > 1 and len(samples_b) > 1:
-            # Calculate t-statistic and p-value (simplified)
+        if len(valid_samples) < 2:
+            result.recommendation = "Insufficient data for statistical comparison (need at least 2 samples per variant)"
+            return result
+        
+        if len(valid_samples) == 2:
+            # Use t-test for exactly two variants
+            variant_ids = list(valid_samples.keys())
+            samples_a = valid_samples[variant_ids[0]]
+            samples_b = valid_samples[variant_ids[1]]
+            
+            # Calculate t-statistic and p-value
             mean_a = statistics.mean(samples_a)
             mean_b = statistics.mean(samples_b)
             std_a = statistics.stdev(samples_a)
@@ -509,32 +518,63 @@ class ABTestingFramework:
             if pooled_se > 0:
                 t_stat = abs(mean_a - mean_b) / pooled_se
                 
-                # Simplified p-value calculation (this would use proper t-distribution in production)
+                # Use scipy's t-distribution CDF for accurate p-value
                 degrees_of_freedom = n_a + n_b - 2
-                p_value = 2 * (1 - self._t_cdf(abs(t_stat), degrees_of_freedom))
+                p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=degrees_of_freedom))
                 
                 result.p_value = p_value
                 result.effect_size = abs(mean_a - mean_b) / max(std_a, std_b, 0.001)
                 
-                # Determine statistical significance
-                if p_value <= 0.001:
-                    result.statistical_significance = StatisticalSignificance.HIGHLY_SIGNIFICANT
-                elif p_value <= 0.01:
-                    result.statistical_significance = StatisticalSignificance.SIGNIFICANT
-                elif p_value <= 0.05:
-                    result.statistical_significance = StatisticalSignificance.MARGINAL
-                else:
-                    result.statistical_significance = StatisticalSignificance.NOT_SIGNIFICANT
-                
                 # Determine winning variant
-                if result.statistical_significance in [StatisticalSignificance.SIGNIFICANT, 
-                                                     StatisticalSignificance.HIGHLY_SIGNIFICANT]:
-                    if primary_metric == "cost":  # Lower is better for cost
-                        result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
-                    elif primary_metric == "latency":  # Lower is better for latency
-                        result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
-                    else:  # Higher is better for quality/satisfaction
-                        result.winning_variant = variant_ids[0] if mean_a > mean_b else variant_ids[1]
+                if primary_metric == "cost":  # Lower is better for cost
+                    result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
+                elif primary_metric == "latency":  # Lower is better for latency
+                    result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
+                else:  # Higher is better for quality/satisfaction
+                    result.winning_variant = variant_ids[0] if mean_a > mean_b else variant_ids[1]
+        
+        else:
+            # Use ANOVA for multiple variants (more than 2)
+            sample_groups = list(valid_samples.values())
+            
+            # Perform one-way ANOVA
+            f_stat, p_value = stats.f_oneway(*sample_groups)
+            result.p_value = p_value
+            
+            # Calculate effect size using eta-squared
+            # First, calculate overall mean and sum of squares
+            all_values = [val for samples in sample_groups for val in samples]
+            overall_mean = statistics.mean(all_values)
+            total_ss = sum((val - overall_mean) ** 2 for val in all_values)
+            
+            # Calculate between-group sum of squares
+            between_ss = sum(len(samples) * (statistics.mean(samples) - overall_mean) ** 2 
+                           for samples in sample_groups)
+            
+            result.effect_size = between_ss / total_ss if total_ss > 0 else 0.0
+            
+            # For multiple variants, determine the best performing variant
+            if primary_metric == "cost":  # Lower is better
+                best_variant_id = min(valid_samples.keys(), 
+                                    key=lambda vid: statistics.mean(valid_samples[vid]))
+            elif primary_metric == "latency":  # Lower is better
+                best_variant_id = min(valid_samples.keys(), 
+                                    key=lambda vid: statistics.mean(valid_samples[vid]))
+            else:  # Higher is better for quality/satisfaction
+                best_variant_id = max(valid_samples.keys(), 
+                                    key=lambda vid: statistics.mean(valid_samples[vid]))
+            
+            result.winning_variant = best_variant_id
+        
+        # Determine statistical significance (common for both t-test and ANOVA)
+        if result.p_value <= 0.001:
+            result.statistical_significance = StatisticalSignificance.HIGHLY_SIGNIFICANT
+        elif result.p_value <= 0.01:
+            result.statistical_significance = StatisticalSignificance.SIGNIFICANT
+        elif result.p_value <= 0.05:
+            result.statistical_significance = StatisticalSignificance.MARGINAL
+        else:
+            result.statistical_significance = StatisticalSignificance.NOT_SIGNIFICANT
         
         # Generate recommendations
         result.reasoning = self._generate_recommendations(experiment, result)
@@ -554,15 +594,6 @@ class ABTestingFramework:
         
         return result
     
-    def _t_cdf(self, t: float, df: int) -> float:
-        """Simplified t-distribution CDF (would use scipy.stats in production)."""
-        # Very simplified approximation - use proper statistical library in production
-        if df > 30:
-            # Approximate with normal distribution for large df
-            return 0.5 * (1 + math.erf(t / math.sqrt(2)))
-        else:
-            # Simplified approximation for small df
-            return 0.5 + 0.5 * math.tanh(t / 2)
     
     def _generate_recommendations(
         self, 

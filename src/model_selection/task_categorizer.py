@@ -1,7 +1,7 @@
 """Task-based categorization system for TTRPG operations."""
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Dict, List, Optional, Set, Tuple
 import re
 from datetime import datetime
@@ -61,13 +61,13 @@ class TaskComplexity(Enum):
     CREATIVE = "creative"      # High creativity, improvisational content
 
 
-class TaskLatencyRequirement(Enum):
-    """Latency requirements for different task types."""
+class TaskLatencyRequirement(IntEnum):
+    """Latency requirements for different task types (in milliseconds)."""
     
-    IMMEDIATE = "immediate"    # <500ms - Combat, initiative
-    FAST = "fast"             # <2s - Rule lookups, simple queries
-    STANDARD = "standard"     # <5s - Character generation, descriptions
-    RELAXED = "relaxed"       # <15s - Complex narratives, world building
+    IMMEDIATE = 500     # <500ms - Combat, initiative
+    FAST = 2000         # <2s - Rule lookups, simple queries
+    STANDARD = 5000     # <5s - Character generation, descriptions
+    RELAXED = 15000     # <15s - Complex narratives, world building
 
 
 @dataclass
@@ -102,12 +102,12 @@ class TaskCategorizer:
     """Categorizes TTRPG requests into task types for optimal model selection."""
     
     def __init__(self):
-        self.task_patterns = self._initialize_task_patterns()
-        self.task_characteristics = self._initialize_task_characteristics()
-        self.keyword_weights = self._initialize_keyword_weights()
+        self.task_patterns = self._build_task_patterns()
+        self.task_characteristics = self._build_task_characteristics()
+        self.keyword_weights = self._build_keyword_weights()
         
-    def _initialize_task_patterns(self) -> Dict[TTRPGTaskType, List[re.Pattern]]:
-        """Initialize regex patterns for task detection."""
+    def _build_task_patterns(self) -> Dict[TTRPGTaskType, List[re.Pattern]]:
+        """Build regex patterns for task detection."""
         return {
             TTRPGTaskType.RULE_LOOKUP: [
                 re.compile(r'\b(?:what|how|rule|mechanic|stat|roll|check)\b.*\b(?:for|when|if)\b', re.I),
@@ -170,8 +170,8 @@ class TaskCategorizer:
             ],
         }
     
-    def _initialize_task_characteristics(self) -> Dict[TTRPGTaskType, TaskCharacteristics]:
-        """Initialize characteristics for each task type."""
+    def _build_task_characteristics(self) -> Dict[TTRPGTaskType, TaskCharacteristics]:
+        """Build characteristics for each task type."""
         return {
             TTRPGTaskType.RULE_LOOKUP: TaskCharacteristics(
                 task_type=TTRPGTaskType.RULE_LOOKUP,
@@ -328,8 +328,8 @@ class TaskCategorizer:
             ),
         }
     
-    def _initialize_keyword_weights(self) -> Dict[str, Dict[TTRPGTaskType, float]]:
-        """Initialize keyword-to-task weights for classification."""
+    def _build_keyword_weights(self) -> Dict[str, Dict[TTRPGTaskType, float]]:
+        """Build keyword-to-task weights for classification."""
         return {
             # Rule-related keywords
             "rule": {TTRPGTaskType.RULE_LOOKUP: 0.8, TTRPGTaskType.RULE_CLARIFICATION: 0.6},
@@ -384,7 +384,7 @@ class TaskCategorizer:
     def categorize_task(
         self,
         user_input: str,
-        context: Optional[Dict[str, any]] = None
+        context: Optional[Dict[str, Any]] = None
     ) -> Tuple[TTRPGTaskType, float]:
         """Categorize a user input into a TTRPG task type.
         
@@ -436,7 +436,7 @@ class TaskCategorizer:
     def _apply_context_adjustments(
         self,
         scores: Dict[TTRPGTaskType, float],
-        context: Dict[str, any]
+        context: Dict[str, Any]
     ) -> Dict[TTRPGTaskType, float]:
         """Apply context-based adjustments to task scores."""
         adjusted_scores = scores.copy()

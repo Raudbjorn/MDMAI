@@ -284,7 +284,14 @@ class ModelSelectionDecisionTree:
         }
     
     def _build_default_decision_tree(self) -> DecisionTreeNode:
-        """Build the default decision tree for model selection."""
+        """Build the default decision tree for model selection.
+        
+        TODO: HIGH PRIORITY - The entire decision tree structure is hardcoded, making
+        the logic rigid and difficult to modify or extend. For a production system,
+        it would be much more maintainable to define the tree structure in an external
+        configuration file (e.g., JSON or YAML) and load it at runtime. This allows
+        easier tuning and experimentation with decision logic without code changes.
+        """
         root = DecisionTreeNode(
             name="Root",
             description="Root decision node for model selection"
@@ -556,13 +563,13 @@ class ModelSelectionDecisionTree:
             elif condition.operator == ComparisonOperator.NOT_EQUALS:
                 return context_value != condition.value
             elif condition.operator == ComparisonOperator.GREATER_THAN:
-                return float(context_value) > float(condition.value)
+                return self._safe_numeric_compare(context_value, condition.value, lambda a, b: a > b)
             elif condition.operator == ComparisonOperator.LESS_THAN:
-                return float(context_value) < float(condition.value)
+                return self._safe_numeric_compare(context_value, condition.value, lambda a, b: a < b)
             elif condition.operator == ComparisonOperator.GREATER_EQUAL:
-                return float(context_value) >= float(condition.value)
+                return self._safe_numeric_compare(context_value, condition.value, lambda a, b: a >= b)
             elif condition.operator == ComparisonOperator.LESS_EQUAL:
-                return float(context_value) <= float(condition.value)
+                return self._safe_numeric_compare(context_value, condition.value, lambda a, b: a <= b)
             elif condition.operator == ComparisonOperator.IN:
                 return context_value in condition.value
             elif condition.operator == ComparisonOperator.NOT_IN:
@@ -575,6 +582,66 @@ class ModelSelectionDecisionTree:
         except (ValueError, TypeError, KeyError) as e:
             logger.warning("Error evaluating decision condition", condition=condition, error=str(e))
             return False
+    
+    def _safe_numeric_compare(self, context_value: Any, condition_value: Any, compare_fn) -> bool:
+        """Safely compare numeric values with proper type conversion and error handling."""
+        try:
+            # Try to convert both values to float for comparison
+            context_num = self._safe_to_numeric(context_value)
+            condition_num = self._safe_to_numeric(condition_value)
+            
+            if context_num is None or condition_num is None:
+                logger.warning(
+                    "Failed to convert values to numeric for comparison",
+                    context_value=context_value,
+                    condition_value=condition_value
+                )
+                return False
+            
+            return compare_fn(context_num, condition_num)
+            
+        except (ValueError, TypeError, OverflowError) as e:
+            logger.warning(
+                "Error in numeric comparison",
+                context_value=context_value,
+                condition_value=condition_value,
+                error=str(e)
+            )
+            return False
+    
+    def _safe_to_numeric(self, value: Any) -> Optional[float]:
+        """Safely convert a value to numeric (float) with comprehensive type handling."""
+        if value is None:
+            return None
+        
+        # Already numeric types
+        if isinstance(value, (int, float)):
+            if isinstance(value, float) and (value != value or abs(value) == float('inf')):  # NaN or inf
+                return None
+            return float(value)
+        
+        # String conversion
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+            try:
+                return float(value)
+            except ValueError:
+                return None
+        
+        # Boolean conversion
+        if isinstance(value, bool):
+            return float(value)
+        
+        # Try to get numeric attribute for other types
+        if hasattr(value, '__float__'):
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                pass
+        
+        return None
     
     def _get_context_value(self, criterion: DecisionCriterion, context: Dict[str, Any]) -> Any:
         """Extract the relevant context value for a criterion."""
