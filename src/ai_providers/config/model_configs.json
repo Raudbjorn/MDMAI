@@ -1,0 +1,139 @@
+{
+  "model_profiles": {
+    "claude-3-opus": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.015,
+        "output_cost_per_1k_tokens": 0.075
+      },
+      "performance": {
+        "avg_latency_ms": 8000,
+        "reliability_score": 0.98,
+        "quality_score": 0.95
+      }
+    },
+    "claude-3-sonnet": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.003,
+        "output_cost_per_1k_tokens": 0.015
+      },
+      "performance": {
+        "avg_latency_ms": 5000,
+        "reliability_score": 0.97,
+        "quality_score": 0.88
+      }
+    },
+    "claude-3-haiku": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.00025,
+        "output_cost_per_1k_tokens": 0.00125
+      },
+      "performance": {
+        "avg_latency_ms": 1500,
+        "reliability_score": 0.96,
+        "quality_score": 0.75
+      }
+    },
+    "gpt-4": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.03,
+        "output_cost_per_1k_tokens": 0.06
+      },
+      "performance": {
+        "avg_latency_ms": 10000,
+        "reliability_score": 0.99,
+        "quality_score": 0.93
+      }
+    },
+    "gpt-3.5-turbo": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.0015,
+        "output_cost_per_1k_tokens": 0.002
+      },
+      "performance": {
+        "avg_latency_ms": 2000,
+        "reliability_score": 0.98,
+        "quality_score": 0.70
+      }
+    },
+    "gemini-pro": {
+      "cost_config": {
+        "input_cost_per_1k_tokens": 0.0005,
+        "output_cost_per_1k_tokens": 0.0015
+      },
+      "performance": {
+        "avg_latency_ms": 3000,
+        "reliability_score": 0.94,
+        "quality_score": 0.78
+      }
+    }
+  },
+  "routing_rules": [
+    {
+      "rule_id": "coding_preference",
+      "name": "Coding Task Routing",
+      "priority": 10,
+      "enabled": true,
+      "conditions": {
+        "task_type": "coding",
+        "complexity": "high"
+      }
+    },
+    {
+      "rule_id": "budget_constraint",
+      "name": "Budget Constrained Routing",
+      "priority": 5,
+      "enabled": true,
+      "conditions": {
+        "budget_remaining_percentage": "<20"
+      }
+    },
+    {
+      "rule_id": "speed_critical",
+      "name": "Speed Critical Routing",
+      "priority": 15,
+      "enabled": true,
+      "conditions": {
+        "speed_requirement": "critical"
+      }
+    }
+  ],
+  "fallback_tiers": {
+    "primary": {
+      "providers": ["ANTHROPIC", "OPENAI"],
+      "selection_strategy": "weighted_composite",
+      "max_attempts": 2,
+      "retry_delay_seconds": 1.0,
+      "exponential_backoff": true,
+      "failure_threshold": 5,
+      "recovery_timeout_seconds": 300
+    },
+    "secondary": {
+      "providers": ["GOOGLE", "OPENAI"],
+      "selection_strategy": "speed_optimized",
+      "max_attempts": 2,
+      "retry_delay_seconds": 2.0,
+      "exponential_backoff": true,
+      "allow_higher_cost_factor": 1.5,
+      "allow_higher_latency_factor": 2.0,
+      "failure_threshold": 5,
+      "recovery_timeout_seconds": 300
+    },
+    "emergency": {
+      "providers": ["ANTHROPIC", "OPENAI", "GOOGLE"],
+      "selection_strategy": "any_available",
+      "max_attempts": 3,
+      "retry_delay_seconds": 3.0,
+      "exponential_backoff": true,
+      "allow_higher_cost_factor": 3.0,
+      "allow_higher_latency_factor": 3.0,
+      "failure_threshold": 10,
+      "recovery_timeout_seconds": 600
+    }
+  },
+  "normalization": {
+    "cost_range": [0.0001, 1.0],
+    "latency_range": [100, 30000],
+    "quality_range": [0.0, 1.0],
+    "reliability_range": [0.0, 1.0]
+  }
+}
