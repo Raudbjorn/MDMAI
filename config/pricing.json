@@ -6,8 +6,8 @@
           "input_tokens": "0.01",
           "output_tokens": "0.03",
           "volume_discounts": [
-            {"threshold": "1000", "multiplier": 0.95},
-            {"threshold": "5000", "multiplier": 0.9}
+            {"threshold": 1000, "multiplier": 0.95},
+            {"threshold": 5000, "multiplier": 0.9}
           ]
         },
         "gpt-4": {
