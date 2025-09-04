@@ -1,0 +1,147 @@
+# Default Model Profiles Configuration
+# This file contains the default model profiles for AI providers
+# that define the capabilities, performance characteristics, and recommended use cases
+# for each model.
+
+model_profiles:
+  # Anthropic Claude Models
+  claude-3-opus:
+    provider_type: "anthropic"
+    category: "quality_optimized"
+    tier: "flagship"
+    context_length: 200000
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: true
+    capabilities:
+      quality_score: 0.95
+      reasoning_capability: 0.95
+      creativity_capability: 0.90
+      coding_capability: 0.90
+      multimodal_capability: 0.85
+      tool_use_capability: 0.90
+    cost_tier: "premium"
+    recommended_for:
+      - "complex reasoning"
+      - "creative writing"
+      - "code analysis"
+      - "vision tasks"
+
+  claude-3-sonnet:
+    provider_type: "anthropic"
+    category: "balanced"
+    tier: "balanced"
+    context_length: 200000
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: true
+    capabilities:
+      quality_score: 0.85
+      reasoning_capability: 0.85
+      creativity_capability: 0.80
+      coding_capability: 0.85
+      multimodal_capability: 0.80
+      tool_use_capability: 0.85
+    cost_tier: "medium"
+    recommended_for:
+      - "general tasks"
+      - "balanced performance"
+      - "most use cases"
+
+  claude-3-haiku:
+    provider_type: "anthropic"
+    category: "speed_optimized"
+    tier: "efficient"
+    context_length: 200000
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: false
+    capabilities:
+      quality_score: 0.75
+      reasoning_capability: 0.75
+      creativity_capability: 0.70
+      coding_capability: 0.75
+      multimodal_capability: 0.0
+      tool_use_capability: 0.80
+    cost_tier: "low"
+    recommended_for:
+      - "fast responses"
+      - "simple tasks"
+      - "cost-effective operations"
+
+  # OpenAI GPT Models
+  gpt-4:
+    provider_type: "openai"
+    category: "quality_optimized"
+    tier: "flagship"
+    context_length: 8192
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: false
+    capabilities:
+      quality_score: 0.92
+      reasoning_capability: 0.90
+      creativity_capability: 0.85
+      coding_capability: 0.90
+      multimodal_capability: 0.0
+      tool_use_capability: 0.85
+    cost_tier: "premium"
+    recommended_for:
+      - "complex reasoning"
+      - "detailed analysis"
+      - "high-quality output"
+
+  gpt-4-turbo:
+    provider_type: "openai"
+    category: "balanced"
+    tier: "balanced"
+    context_length: 128000
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: true
+    capabilities:
+      quality_score: 0.90
+      reasoning_capability: 0.88
+      creativity_capability: 0.80
+      coding_capability: 0.88
+      multimodal_capability: 0.85
+      tool_use_capability: 0.85
+    cost_tier: "medium"
+    recommended_for:
+      - "general use"
+      - "vision tasks"
+      - "tool calling"
+
+  gpt-3.5-turbo:
+    provider_type: "openai"
+    category: "speed_optimized"
+    tier: "efficient"
+    context_length: 16384
+    max_output_tokens: 4096
+    supports_streaming: true
+    supports_tools: true
+    supports_vision: false
+    capabilities:
+      quality_score: 0.75
+      reasoning_capability: 0.75
+      creativity_capability: 0.70
+      coding_capability: 0.75
+      multimodal_capability: 0.0
+      tool_use_capability: 0.80
+    cost_tier: "low"
+    recommended_for:
+      - "quick responses"
+      - "simple tasks"
+      - "cost optimization"
+
+# Configuration metadata
+metadata:
+  version: "1.0.0"
+  last_updated: "2025-01-01"
+  description: "Default model profiles for AI provider routing system"
+  maintainer: "AI Provider System"
