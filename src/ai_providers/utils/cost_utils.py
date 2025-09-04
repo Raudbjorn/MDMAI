@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from enum import Enum
 
 from ..models import ProviderType, ModelSpec, AIRequest
+from ...cost_optimization.pricing_engine import get_pricing_engine
 
 
 class ErrorClassification(Enum):
@@ -213,45 +214,30 @@ def estimate_request_cost(
     config_manager: Optional[Any] = None
 ) -> float:
     """
-    Centralized cost estimation function.
-    Uses configuration manager if available, otherwise uses defaults.
+    Centralized cost estimation function using the centralized pricing engine.
     """
-    # Try to use config manager if provided
-    if config_manager:
-        try:
-            from ..config.model_config import get_model_config_manager
-            config_mgr = config_manager or get_model_config_manager()
-            return config_mgr.get_model_cost(model_id, input_tokens, output_tokens)
-        except ImportError:
-            pass
-    
-    # Fallback to hardcoded rates (these should match the config defaults)
-    default_rates = {
-        ProviderType.ANTHROPIC: {
-            "claude-3-opus": {"input": 0.015, "output": 0.075},
-            "claude-3-sonnet": {"input": 0.003, "output": 0.015},
-            "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
-        },
-        ProviderType.OPENAI: {
-            "gpt-4": {"input": 0.03, "output": 0.06},
-            "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-            "gpt-3.5-turbo": {"input": 0.0015, "output": 0.002},
-        },
-        ProviderType.GOOGLE: {
-            "gemini-pro": {"input": 0.0005, "output": 0.0015},
-            "gemini-ultra": {"input": 0.001, "output": 0.003},
-        },
-    }
-    
-    # Get rates for provider and model
-    provider_rates = default_rates.get(provider_type, {})
-    model_rates = provider_rates.get(model_id, {"input": 0.001, "output": 0.002})
-    
-    # Calculate cost
-    input_cost = (input_tokens / 1000.0) * model_rates["input"]
-    output_cost = (output_tokens / 1000.0) * model_rates["output"]
-    
-    return input_cost + output_cost
+    try:
+        # Use centralized pricing engine
+        pricing_engine = get_pricing_engine()
+        from decimal import Decimal
+        
+        cost = pricing_engine.calculate_simple_cost(
+            provider=provider_type,
+            model=model_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+        
+        return float(cost)
+        
+    except Exception as e:
+        # Fallback to minimal default calculation
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to use centralized pricing engine: {e}")
+        
+        # Ultra-minimal fallback
+        total_tokens = input_tokens + output_tokens
+        return (total_tokens / 1000.0) * 0.002  # $0.002 per 1K tokens default
 
 
 def calculate_token_efficiency(

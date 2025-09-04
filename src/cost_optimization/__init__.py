@@ -64,6 +64,11 @@ from .token_optimizer import (
     MessageType
 )
 
+from .cost_management_system import (
+    CostManagementSystem,
+    CostManagementConfig
+)
+
 __all__ = [
     # Advanced Optimizer
     'AdvancedCostOptimizer',
@@ -112,6 +117,10 @@ __all__ = [
     'SemanticCache',
     'CompressionStrategy',
     'MessageType',
+    
+    # Cost Management System
+    'CostManagementSystem',
+    'CostManagementConfig',
 ]
 
 # Version info

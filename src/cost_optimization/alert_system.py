@@ -14,7 +14,6 @@ This module provides intelligent alerting for cost management:
 import asyncio
 import hashlib
 import json
-import smtplib
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -27,6 +26,12 @@ from statistics import mean, stdev
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import aiohttp
+try:
+    import aiosmtplib
+    AIOSMTPLIB_AVAILABLE = True
+except ImportError:
+    import smtplib
+    AIOSMTPLIB_AVAILABLE = False
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -151,7 +156,11 @@ class TrendAnalyzer:
         sum_xy = sum(x * y for x, y in zip(x_values, y_values))
         sum_x2 = sum(x * x for x in x_values)
         
-        slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x)
+        denominator = (n * sum_x2 - sum_x * sum_x)
+        if denominator == 0:
+            return TrendDirection.STABLE
+        
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
         
         # Calculate coefficient of variation for volatility
         if len(y_values) > 1:
@@ -263,12 +272,29 @@ Alert ID: {alert.alert_id}
             
             msg.attach(MIMEText(body, 'plain'))
             
-            # Send email
-            with smtplib.SMTP(smtp_server, smtp_port) as server:
+            # Send email using async-safe method
+            if AIOSMTPLIB_AVAILABLE:
+                # Use aiosmtplib for truly async email sending
+                smtp_client = aiosmtplib.SMTP(hostname=smtp_server, port=smtp_port)
+                await smtp_client.connect()
+                
                 if username and password:
-                    server.starttls()
-                    server.login(username, password)
-                server.send_message(msg)
+                    await smtp_client.starttls()
+                    await smtp_client.login(username, password)
+                
+                await smtp_client.send_message(msg)
+                await smtp_client.quit()
+            else:
+                # Fall back to using asyncio.to_thread for thread-safe execution
+                def send_email():
+                    import smtplib
+                    with smtplib.SMTP(smtp_server, smtp_port) as server:
+                        if username and password:
+                            server.starttls()
+                            server.login(username, password)
+                        server.send_message(msg)
+                
+                await asyncio.to_thread(send_email)
             
             logger.info(f"Email alert sent for {alert.alert_id}")
             return True

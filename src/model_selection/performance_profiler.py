@@ -239,8 +239,14 @@ class PerformanceBenchmark:
         
         if latencies:
             profile.avg_latency = statistics.mean(latencies)
+            # Enhanced P95 calculation with better edge case handling
             if len(latencies) >= 20:
+                sorted_latencies = sorted(latencies)
+                p95_index = int(len(sorted_latencies) * 0.95)
                 profile.p95_latency = sorted_latencies[max(p95_index, len(sorted_latencies) - 1)]
+            else:
+                # For small sample sizes, use max as a conservative estimate
+                profile.p95_latency = max(latencies)
         
         if throughputs:
             profile.avg_throughput = statistics.mean(throughputs)

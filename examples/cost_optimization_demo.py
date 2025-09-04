@@ -24,19 +24,32 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 
 # Import the cost optimization system
-import sys
-import os
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-from cost_optimization import (
-    CostManagementSystem,
-    CostManagementConfig,
-    ProviderType,
-    AlertSeverity,
-    BudgetLimitType,
-    CompressionStrategy,
-    ForecastHorizon
-)
+# Note: To run this demo, install the package in development mode first:
+# pip install -e .
+try:
+    from src.cost_optimization import (
+        CostManagementSystem,
+        CostManagementConfig,
+        AlertSeverity,
+        BudgetLimitType,
+        CompressionStrategy,
+        ForecastHorizon
+    )
+    from src.ai_providers.models import ProviderType
+except ImportError:
+    # Fallback for direct execution from examples directory
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+    from cost_optimization import (
+        CostManagementSystem,
+        CostManagementConfig,
+        AlertSeverity,
+        BudgetLimitType,
+        CompressionStrategy,
+        ForecastHorizon
+    )
+    from ai_providers.models import ProviderType
 
 # Demo configuration
 DEMO_USER_ID = "demo_user_123"

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 from structlog import get_logger
 
 from .models import ProviderType
+from ..cost_optimization.pricing_engine import get_pricing_engine
 
 logger = get_logger(__name__)
 
@@ -376,7 +377,7 @@ class TokenEstimator:
         provider_type: ProviderType,
         model: Optional[str] = None,
     ) -> Dict[str, float]:
-        """Get pricing per 1K tokens for provider/model.
+        """Get pricing per 1K tokens for provider/model using centralized pricing engine.
         
         Args:
             provider_type: AI provider type
@@ -385,36 +386,34 @@ class TokenEstimator:
         Returns:
             Dict with input/output pricing
         """
-        # Default pricing (should be kept updated)
-        default_pricing = {
-            ProviderType.OPENAI: {
-                "gpt-4": {"input": 0.03, "output": 0.06},
-                "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-                "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
-                "default": {"input": 0.002, "output": 0.002},
-            },
-            ProviderType.ANTHROPIC: {
-                "claude-3-opus": {"input": 0.015, "output": 0.075},
-                "claude-3-sonnet": {"input": 0.003, "output": 0.015},
-                "claude-3-haiku": {"input": 0.00025, "output": 0.00125},
-                "default": {"input": 0.008, "output": 0.024},
-            },
-            ProviderType.GOOGLE: {
-                "gemini-1.5-pro": {"input": 0.00125, "output": 0.005},
-                "gemini-1.5-flash": {"input": 0.000075, "output": 0.0003},
-                "gemini-pro": {"input": 0.0005, "output": 0.0015},
-                "default": {"input": 0.001, "output": 0.002},
-            },
-        }
-        
-        provider_pricing = default_pricing.get(provider_type, {})
-        
-        if model:
-            for model_prefix, pricing in provider_pricing.items():
-                if model_prefix in model.lower():
-                    return pricing
-        
-        return provider_pricing.get("default", {"input": 0.001, "output": 0.002})
+        # Use centralized pricing engine for accurate, up-to-date pricing
+        try:
+            pricing_engine = get_pricing_engine()
+            
+            # If no model specified, try to get a default model pricing
+            if not model:
+                # Get available pricing data and pick first available model
+                provider_data = pricing_engine.get_provider_pricing_data(provider_type)
+                if provider_data:
+                    # Use first available model pricing as default
+                    first_model = next(iter(provider_data.keys()))
+                    model = first_model
+                else:
+                    # Ultimate fallback
+                    return {"input": 0.001, "output": 0.002}
+            
+            input_rate, output_rate = pricing_engine.get_model_base_rates(provider_type, model)
+            
+            return {
+                "input": input_rate,
+                "output": output_rate
+            }
+            
+        except Exception as e:
+            logger.warning(f"Failed to get pricing from centralized engine for {provider_type.value}:{model}: {e}")
+            
+            # Fallback to minimal default pricing
+            return {"input": 0.001, "output": 0.002}
 
 
 # Global instance for convenience
