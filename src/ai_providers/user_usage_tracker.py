@@ -430,12 +430,66 @@ class UserUsageTracker:
                         )
                         self.user_profiles[profile.user_id] = profile
             
-            # Load spending limits
-            limits_file = self.storage_path / "spending_limits.json"
-            if limits_file.exists():
+            # Load spending limits - support both partitioned and legacy format
+            limits_dir = self.storage_path / "spending_limits"
+            legacy_limits_file = self.storage_path / "spending_limits.json"
+            
+            # First try loading from partitioned storage (scalable format)
+            if limits_dir.exists() and limits_dir.is_dir():
+                # Load index if it exists for faster lookups
+                index_file = limits_dir / "index.json"
+                user_files = []
+                
+                if index_file.exists():
+                    try:
+                        index_data = await asyncio.to_thread(
+                            self._read_json_file,
+                            index_file
+                        )
+                        # Load specific user files from index
+                        import hashlib
+                        for user_id, user_hash in index_data.get("user_index", {}).items():
+                            user_file = limits_dir / f"user_{user_hash}.json"
+                            if user_file.exists():
+                                user_files.append(user_file)
+                    except Exception as e:
+                        logger.warning(f"Failed to load index file, scanning directory: {e}")
+                        # Fall back to scanning directory
+                        user_files = list(limits_dir.glob("user_*.json"))
+                else:
+                    # No index, scan directory
+                    user_files = list(limits_dir.glob("user_*.json"))
+                
+                # Load each user's limits
+                for user_file in user_files:
+                    try:
+                        limit_data = await asyncio.to_thread(
+                            self._read_json_file,
+                            user_file
+                        )
+                        limits = UserSpendingLimits(
+                            user_id=limit_data["user_id"],
+                            daily_limit=limit_data.get("daily_limit"),
+                            weekly_limit=limit_data.get("weekly_limit"),
+                            monthly_limit=limit_data.get("monthly_limit"),
+                            per_request_limit=limit_data.get("per_request_limit"),
+                            per_session_limit=limit_data.get("per_session_limit"),
+                            provider_limits=limit_data.get("provider_limits", {}),
+                            model_limits=limit_data.get("model_limits", {}),
+                            alert_thresholds=limit_data.get("alert_thresholds", [0.5, 0.8, 0.95]),
+                            enabled=limit_data.get("enabled", True),
+                            created_at=datetime.fromisoformat(limit_data["created_at"]),
+                            updated_at=datetime.fromisoformat(limit_data["updated_at"])
+                        )
+                        self.user_limits[limit_data["user_id"]] = limits
+                    except Exception as e:
+                        logger.warning(f"Failed to load user limits from {user_file}: {e}")
+                        
+            # Fall back to legacy single file if partitioned storage doesn't exist
+            elif legacy_limits_file.exists():
                 limits_data = await asyncio.to_thread(
                     self._read_json_file,
-                    limits_file
+                    legacy_limits_file
                 )
                 for limit_data in limits_data.get("limits", []):
                         limits = UserSpendingLimits(
@@ -453,6 +507,9 @@ class UserUsageTracker:
                             updated_at=datetime.fromisoformat(limit_data["updated_at"])
                         )
                         self.user_limits[limits.user_id] = limits
+                
+                # Migrate to partitioned storage on next save
+                logger.info("Loaded spending limits from legacy format, will migrate on next save")
             
             # Load recent usage aggregations
             await self._load_usage_aggregations()
@@ -1039,13 +1096,16 @@ class UserUsageTracker:
                 await asyncio.to_thread(temp_file.unlink)
     
     async def _save_spending_limits(self) -> None:
-        """Save spending limits to JSON file."""
+        """Save spending limits using partitioned storage for scalability."""
         try:
-            limits_data = {
-                "last_updated": datetime.now().isoformat(),
-                "limits": []
-            }
+            # Create spending_limits directory if it doesn't exist
+            limits_dir = self.storage_path / "spending_limits"
+            limits_dir.mkdir(exist_ok=True)
             
+            # Keep track of which user files exist for cleanup
+            existing_files = set()
+            
+            # Save each user's limits to a separate file (partitioned by user_id)
             for limits in self.user_limits.values():
                 limit_data = {
                     "user_id": limits.user_id,
@@ -1059,16 +1119,53 @@ class UserUsageTracker:
                     "alert_thresholds": limits.alert_thresholds,
                     "enabled": limits.enabled,
                     "created_at": limits.created_at.isoformat(),
-                    "updated_at": limits.updated_at.isoformat()
+                    "updated_at": limits.updated_at.isoformat(),
+                    "last_updated": datetime.now().isoformat()
                 }
-                limits_data["limits"].append(limit_data)
+                
+                # Use user ID hash for consistent filename (avoid special chars in filenames)
+                import hashlib
+                user_hash = hashlib.sha256(limits.user_id.encode()).hexdigest()[:16]
+                user_file = limits_dir / f"user_{user_hash}.json"
+                existing_files.add(user_file.name)
+                
+                # Use atomic write with temp file
+                temp_file = user_file.with_suffix('.tmp')
+                await asyncio.to_thread(
+                    self._write_json_file,
+                    temp_file,
+                    limit_data
+                )
+                # Atomic rename
+                temp_file.replace(user_file)
             
-            limits_file = self.storage_path / "spending_limits.json"
+            # Create index file for quick lookups (small file with user_id -> hash mapping)
+            index_data = {
+                "last_updated": datetime.now().isoformat(),
+                "user_index": {
+                    limits.user_id: hashlib.sha256(limits.user_id.encode()).hexdigest()[:16]
+                    for limits in self.user_limits.values()
+                }
+            }
+            
+            index_file = limits_dir / "index.json"
+            temp_index = index_file.with_suffix('.tmp')
             await asyncio.to_thread(
                 self._write_json_file,
-                limits_file,
-                limits_data
+                temp_index,
+                index_data
             )
+            temp_index.replace(index_file)
+            
+            # Optional: Clean up old user files that are no longer in use
+            # This prevents accumulation of orphaned files
+            for existing_file in limits_dir.glob("user_*.json"):
+                if existing_file.name not in existing_files:
+                    try:
+                        existing_file.unlink()
+                        logger.debug(f"Removed orphaned limits file: {existing_file.name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to remove orphaned file {existing_file.name}: {e}")
                 
         except Exception as e:
             logger.error("Failed to save spending limits", error=str(e))
