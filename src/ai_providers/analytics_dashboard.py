@@ -1,9 +1,10 @@
 """Usage analytics dashboard with comprehensive data models and aggregation strategies."""
 
 import asyncio
+import aiosqlite
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, AsyncIterator
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
@@ -585,15 +586,14 @@ class AnalyticsDashboard:
         time_buckets = self._generate_time_buckets(start_time, end_time, aggregation_period)
         data_points: List[MetricDataPoint] = []
         
-        # Get raw usage data
-        usage_data = await self._get_usage_data(start_time, end_time, user_id, metric.filters)
-        
-        # Aggregate data into time buckets
+        # Stream and aggregate data into time buckets efficiently
         for bucket_start, bucket_end in time_buckets:
-            bucket_data = [
-                data_point for data_point in usage_data
-                if bucket_start <= data_point["timestamp"] < bucket_end
-            ]
+            bucket_data = []
+            
+            # Stream data points for this time bucket
+            async for data_point in self._get_usage_data(start_time, end_time, user_id, metric.filters):
+                if bucket_start <= data_point["timestamp"] < bucket_end:
+                    bucket_data.append(data_point)
             
             # Apply aggregation method
             value = self._apply_aggregation(bucket_data, metric)
@@ -671,20 +671,105 @@ class AnalyticsDashboard:
         end_time: datetime,
         user_id: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
-        """Get aggregated usage data from storage."""
-        # Return aggregated data structures instead of reconstructed UsageRecord objects
-        # This is more accurate and efficient for analytics purposes
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Get aggregated usage data using streaming approach for scalability."""
         
-        all_data = []
+        # Use database-backed streaming for better scalability
+        if self.usage_tracker._db_initialized:
+            async for data_point in self._stream_usage_data_from_db(start_time, end_time, user_id, filters):
+                yield data_point
+        else:
+            # Fallback to in-memory cache streaming (still more efficient than loading all)
+            async for data_point in self._stream_usage_data_from_cache(start_time, end_time, user_id, filters):
+                yield data_point
+    
+    async def _stream_usage_data_from_db(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        user_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream usage data from database efficiently."""
+        try:
+            async with aiosqlite.connect(self.usage_tracker.db_path) as db:
+                # Prepare query based on user_id
+                if user_id:
+                    query = """
+                        SELECT user_id, date, total_requests, successful_requests, failed_requests,
+                               total_input_tokens, total_output_tokens, total_cost, avg_latency_ms,
+                               session_count, providers_used, models_used
+                        FROM daily_aggregations 
+                        WHERE user_id = ? AND date >= ? AND date <= ?
+                        ORDER BY date
+                    """
+                    params = (user_id, start_time.date().isoformat(), end_time.date().isoformat())
+                else:
+                    query = """
+                        SELECT user_id, date, total_requests, successful_requests, failed_requests,
+                               total_input_tokens, total_output_tokens, total_cost, avg_latency_ms,
+                               session_count, providers_used, models_used
+                        FROM daily_aggregations 
+                        WHERE date >= ? AND date <= ?
+                        ORDER BY date
+                    """
+                    params = (start_time.date().isoformat(), end_time.date().isoformat())
+                
+                # Stream results in chunks to avoid memory issues
+                async with db.execute(query, params) as cursor:
+                    batch = await cursor.fetchmany(1000)  # Process in chunks of 1000
+                    
+                    while batch:
+                        for row in batch:
+                            record_date = datetime.fromisoformat(row[1]).replace(tzinfo=timezone.utc)
+                            if start_time <= record_date <= end_time:
+                                data_point = {
+                                    "date": row[1],
+                                    "timestamp": record_date,
+                                    "user_id": row[0],
+                                    "total_requests": row[2],
+                                    "successful_requests": row[3],
+                                    "failed_requests": row[4],
+                                    "total_input_tokens": row[5],
+                                    "total_output_tokens": row[6],
+                                    "total_cost": row[7],
+                                    "avg_latency_ms": row[8],
+                                    "session_count": row[9],
+                                    "providers_used": json.loads(row[10]),
+                                    "models_used": json.loads(row[11]),
+                                    "aggregation_type": "daily"
+                                }
+                                
+                                # Apply filters
+                                if self._matches_filters(data_point, filters):
+                                    yield data_point
+                        
+                        # Get next batch
+                        batch = await cursor.fetchmany(1000)
+                        
+        except Exception as e:
+            logger.error(f"Failed to stream usage data from database: {e}")
+            # Fallback to cache streaming
+            async for data_point in self._stream_usage_data_from_cache(start_time, end_time, user_id, filters):
+                yield data_point
+    
+    async def _stream_usage_data_from_cache(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        user_id: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
+        """Stream usage data from in-memory cache efficiently."""
+        processed_count = 0
+        batch_size = 100
         
-        # Get data from daily usage aggregations
+        # Get data from daily usage cache
         if user_id:
-            user_daily = self.usage_tracker.daily_usage.get(user_id, {})
+            user_daily = self.usage_tracker._daily_usage_cache.get(user_id, {})
             for date_str, agg in user_daily.items():
                 record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                 if start_time <= record_date <= end_time:
-                    # Return aggregation data directly - more accurate than synthetic records
                     data_point = {
                         "date": date_str,
                         "timestamp": record_date,
@@ -701,14 +786,20 @@ class AnalyticsDashboard:
                         "session_count": agg.session_count,
                         "aggregation_type": "daily"
                     }
-                    all_data.append(data_point)
+                    
+                    if self._matches_filters(data_point, filters):
+                        yield data_point
+                        
+                    # Yield control periodically to prevent blocking
+                    processed_count += 1
+                    if processed_count % batch_size == 0:
+                        await asyncio.sleep(0)
         else:
-            # Aggregate across all users
-            for user_id_iter, user_daily in self.usage_tracker.daily_usage.items():
+            # Stream across all users with periodic yielding
+            for user_id_iter, user_daily in self.usage_tracker._daily_usage_cache.items():
                 for date_str, agg in user_daily.items():
                     record_date = datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
                     if start_time <= record_date <= end_time:
-                        # Return aggregation data directly
                         data_point = {
                             "date": date_str,
                             "timestamp": record_date,
@@ -725,25 +816,26 @@ class AnalyticsDashboard:
                             "session_count": agg.session_count,
                             "aggregation_type": "daily"
                         }
-                        all_data.append(data_point)
-        
-        # Apply filters to aggregated data
-        if filters:
-            filtered_data = []
-            for data_point in all_data:
-                include_record = True
-                for filter_key, filter_value in filters.items():
-                    if filter_key in data_point:
-                        if data_point[filter_key] != filter_value:
-                            include_record = False
-                            break
-                
-                if include_record:
-                    filtered_data.append(data_point)
+                        
+                        if self._matches_filters(data_point, filters):
+                            yield data_point
+                            
+                        # Yield control periodically
+                        processed_count += 1
+                        if processed_count % batch_size == 0:
+                            await asyncio.sleep(0)
+    
+    def _matches_filters(self, data_point: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> bool:
+        """Check if data point matches the given filters."""
+        if not filters:
+            return True
             
-            all_data = filtered_data
+        for filter_key, filter_value in filters.items():
+            if filter_key in data_point:
+                if data_point[filter_key] != filter_value:
+                    return False
         
-        return all_data
+        return True
     
     def _apply_aggregation(self, data_points: List[Dict[str, Any]], metric: MetricDefinition) -> float:
         """Apply aggregation method to aggregated data points."""
