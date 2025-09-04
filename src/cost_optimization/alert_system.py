@@ -98,9 +98,7 @@ class Alert:
 class AlertRule:
     """Alert rule configuration."""
     rule_id: str
-    name: str
     alert_type: AlertType
-    condition: Dict[str, Any]  # Condition parameters
     severity: AlertSeverity
     channels: List[AlertChannel]
     enabled: bool = True

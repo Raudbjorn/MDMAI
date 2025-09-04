@@ -7,6 +7,13 @@ This module provides:
 - Trend analysis and forecasting
 - Cost optimization insights
 - Performance monitoring
+
+TODO: CRITICAL - This module has significant functional overlap with:
+- src/cost_optimization/advanced_optimizer.py
+- src/ai_providers/enhanced_usage_tracker.py
+The cost optimization analysis here duplicates logic from the cost_optimization package.
+This should be refactored to create a single source of truth for analytics, trend analysis,
+and cost optimization logic to prevent inconsistencies and reduce maintenance burden.
 """
 
 import asyncio

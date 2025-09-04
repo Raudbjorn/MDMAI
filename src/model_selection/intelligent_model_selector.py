@@ -535,38 +535,82 @@ class IntelligentModelSelector:
         return context
     
     async def _create_fallback_result(self, request: SelectionRequest) -> SelectionResult:
-        """Create a fallback result when other methods fail."""
-        # Use a reliable default model
-        default_provider = ProviderType.ANTHROPIC
-        default_model = "claude-3-5-sonnet"
+        """Create a fallback result using intelligent fallback hierarchy."""
+        # Define fallback hierarchy: (provider, model, reliability_score)
+        fallback_hierarchy = [
+            (ProviderType.ANTHROPIC, "claude-3-5-sonnet", 0.95),
+            (ProviderType.ANTHROPIC, "claude-3-5-haiku", 0.93),
+            (ProviderType.OPENAI, "gpt-4o-mini", 0.91),
+            (ProviderType.OPENAI, "gpt-4o", 0.90),
+            (ProviderType.GOOGLE, "gemini-1.5-flash", 0.89),
+            (ProviderType.GOOGLE, "gemini-1.5-pro", 0.87),
+        ]
         
-        # Check if default is available
-        if f"{default_provider.value}:{default_model}" not in self.available_models:
-            # Find any available model with safe iteration
-            if self.available_models:
-                first_model = next(iter(self.available_models.values()))
-                default_provider = first_model.provider_type
-                default_model = first_model.model_id
-            else:
-                # No models available - this shouldn't happen in normal operation
-                logger.error("No models available for fallback", request_id=request.request_id, error="No models available")
-                default_provider = ProviderType.ANTHROPIC
-                default_model = "claude-3-5-sonnet"
+        # Try each fallback option in order of reliability
+        selected_provider = None
+        selected_model = None
+        confidence = 0.0
+        
+        for provider, model, reliability in fallback_hierarchy:
+            model_key = f"{provider.value}:{model}"
+            if model_key in self.available_models:
+                selected_provider = provider
+                selected_model = model
+                confidence = reliability * 0.6  # Reduced confidence for fallback
+                break
+        
+        # Final fallback: use any available model
+        if not selected_provider and self.available_models:
+            first_model = next(iter(self.available_models.values()))
+            selected_provider = first_model.provider_type
+            selected_model = first_model.model_id
+            confidence = 0.3  # Low confidence for random fallback
+        
+        # Absolute fallback (shouldn't happen in production)
+        if not selected_provider:
+            logger.error("No models available for fallback", request_id=request.request_id)
+            selected_provider = ProviderType.ANTHROPIC
+            selected_model = "claude-3-5-sonnet"
+            confidence = 0.1  # Very low confidence
+        
+        # Determine expected performance based on selected model
+        expected_performance = self._get_fallback_performance_estimates(selected_provider, selected_model)
+        
         return SelectionResult(
             request_id=request.request_id,
-            selected_provider=default_provider,
-            selected_model=default_model,
-            confidence=0.5,
-            selection_method="fallback",
+            selected_provider=selected_provider,
+            selected_model=selected_model,
+            confidence=confidence,
+            selection_method="intelligent_fallback",
             reasoning=[
-                "Fallback selection due to error in primary selection methods",
-                f"Using reliable default: {default_provider.value}:{default_model}"
+                "Intelligent fallback selection due to error in primary selection methods",
+                f"Selected from hierarchy: {selected_provider.value}:{selected_model}",
+                f"Reliability score: {confidence:.2f}"
             ],
-            factors_considered=["fallback_logic", "model_availability"],
-            expected_latency_ms=3000,
-            expected_quality_score=0.8,
-            expected_cost=0.02
+            factors_considered=["fallback_hierarchy", "model_availability", "reliability_scores"],
+            expected_latency_ms=expected_performance["latency"],
+            expected_quality_score=expected_performance["quality"],
+            expected_cost=expected_performance["cost"]
         )
+    
+    def _get_fallback_performance_estimates(self, provider: ProviderType, model: str) -> Dict[str, float]:
+        """Get performance estimates for fallback models."""
+        # Define performance profiles for common fallback models
+        performance_profiles = {
+            ("anthropic", "claude-3-5-sonnet"): {"latency": 2500, "quality": 0.92, "cost": 0.015},
+            ("anthropic", "claude-3-5-haiku"): {"latency": 1200, "quality": 0.85, "cost": 0.0025},
+            ("openai", "gpt-4o"): {"latency": 2800, "quality": 0.90, "cost": 0.03},
+            ("openai", "gpt-4o-mini"): {"latency": 1500, "quality": 0.82, "cost": 0.0015},
+            ("google", "gemini-1.5-pro"): {"latency": 2200, "quality": 0.88, "cost": 0.0105},
+            ("google", "gemini-1.5-flash"): {"latency": 800, "quality": 0.78, "cost": 0.0008},
+        }
+        
+        profile_key = (provider.value, model)
+        return performance_profiles.get(profile_key, {
+            "latency": 3000,  # Conservative default
+            "quality": 0.75,
+            "cost": 0.02
+        })
     
     async def _record_selection(
         self,

@@ -15,11 +15,13 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_UP
 from enum import Enum
 from functools import lru_cache, wraps
+from collections import OrderedDict
 from pathlib import Path
 from typing import (
     Any, AsyncIterator, Callable, Deque, Dict, Generator, Iterator, 
     List, Optional, Set, Tuple, Union
 )
+import yaml
 from uuid import UUID, uuid4
 
 import structlog
@@ -263,7 +265,8 @@ class AdvancedTokenCounter:
     
     def __init__(self):
         self._estimator = TokenEstimator()
-        self._cache: Dict[str, int] = {}
+        self._cache: OrderedDict[str, int] = OrderedDict()
+        self._cache_maxsize = 2048  # Bounded cache size
         self._cache_lock = threading.Lock()
         
         # Provider-specific tokenizers
@@ -336,6 +339,8 @@ class AdvancedTokenCounter:
             cache_key = self._get_cache_key(text, provider, model)
             with self._cache_lock:
                 if cache_key in self._cache:
+                    # Move to end for LRU
+                    self._cache.move_to_end(cache_key)
                     return self._cache[cache_key]
         
         # Use provider-specific counting
@@ -346,7 +351,11 @@ class AdvancedTokenCounter:
         
         if cache:
             with self._cache_lock:
+                # Implement LRU eviction when cache is full
+                if len(self._cache) >= self._cache_maxsize and cache_key not in self._cache:
+                    self._cache.popitem(last=False)  # Remove oldest item
                 self._cache[cache_key] = count
+                self._cache.move_to_end(cache_key)  # Mark as most recent
         
         return count
     
@@ -541,48 +550,30 @@ class CostCalculationEngine:
         self._load_pricing_data()
     
     def _load_pricing_data(self) -> None:
-        """Load pricing data from configuration."""
-        # This would typically load from a config file or API
-        self._pricing_data = {
-            "openai": {
-                "gpt-4-turbo": {
-                    "input": Decimal("0.01"),
-                    "output": Decimal("0.03"),
-                    "cached_input": Decimal("0.005"),
-                },
-                "gpt-3.5-turbo": {
-                    "input": Decimal("0.0005"),
-                    "output": Decimal("0.0015"),
-                },
-            },
-            "anthropic": {
-                "claude-3-opus": {
-                    "input": Decimal("0.015"),
-                    "output": Decimal("0.075"),
-                    "cached_input": Decimal("0.0075"),
-                },
-                "claude-3-sonnet": {
-                    "input": Decimal("0.003"),
-                    "output": Decimal("0.015"),
-                    "cached_input": Decimal("0.0015"),
-                },
-                "claude-3-haiku": {
-                    "input": Decimal("0.00025"),
-                    "output": Decimal("0.00125"),
-                    "cached_input": Decimal("0.000125"),
-                },
-            },
-            "google": {
-                "gemini-1.5-pro": {
-                    "input": Decimal("0.00125"),
-                    "output": Decimal("0.005"),
-                },
-                "gemini-1.5-flash": {
-                    "input": Decimal("0.000075"),
-                    "output": Decimal("0.0003"),
-                },
-            },
-        }
+        """Load pricing data from external configuration file."""
+        pricing_file = Path(__file__).parent.parent.parent / "config" / "pricing.yaml"
+        
+        try:
+            with open(pricing_file, 'r') as f:
+                config = yaml.safe_load(f)
+            
+            # Convert float values to Decimal for precision
+            self._pricing_data = {}
+            for provider_name, models in config.get("providers", {}).items():
+                self._pricing_data[provider_name] = {}
+                for model_name, pricing in models.items():
+                    self._pricing_data[provider_name][model_name] = {
+                        key: Decimal(str(value)) for key, value in pricing.items()
+                    }
+            
+            logger.info(f"Loaded pricing data for {len(self._pricing_data)} providers from {pricing_file}")
+            
+        except FileNotFoundError:
+            logger.error(f"Pricing configuration file not found: {pricing_file}")
+            self._pricing_data = {}
+        except Exception as e:
+            logger.error(f"Error loading pricing data: {e}")
+            self._pricing_data = {}
     
     def calculate_cost(
         self,

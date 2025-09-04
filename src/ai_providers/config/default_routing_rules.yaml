@@ -1,0 +1,115 @@
+# Default Routing Rules Configuration
+# This file defines the routing rules for directing AI requests to appropriate models
+# based on request patterns, required capabilities, and performance characteristics.
+
+routing_rules:
+  - name: "coding_tasks"
+    description: "Route coding tasks to code-optimized models"
+    priority: 100
+    request_patterns:
+      - "(write|create|generate).*(code|function|class|script)"
+      - "(python|javascript|java|c\\+\\+|rust|go)\\s+(code|function)"
+      - "(debug|fix|optimize).*(code|bug|error)"
+    preferred_categories:
+      - "code_generation"
+      - "quality_optimized"
+    preferred_tiers:
+      - "flagship"
+      - "balanced"
+    min_quality_score: 0.8
+    required_capabilities: []
+    max_latency_ms: null
+
+  - name: "vision_tasks"
+    description: "Route vision tasks to multimodal models"
+    priority: 95
+    request_patterns: []
+    preferred_categories:
+      - "multimodal"
+    preferred_tiers: []
+    min_quality_score: 0.7
+    required_capabilities:
+      - "vision"
+    max_latency_ms: null
+
+  - name: "tool_calling"
+    description: "Route function calling to tool-capable models"
+    priority: 90
+    request_patterns: []
+    preferred_categories:
+      - "function_calling"
+    preferred_tiers: []
+    min_quality_score: 0.75
+    required_capabilities:
+      - "tool_calling"
+    max_latency_ms: null
+
+  - name: "creative_writing"
+    description: "Route creative tasks to creative-optimized models"
+    priority: 80
+    request_patterns:
+      - "(write|create|compose).*(story|poem|article|creative)"
+      - "(creative|artistic|imaginative)"
+    preferred_categories:
+      - "creative_writing"
+      - "quality_optimized"
+    preferred_tiers: []
+    min_quality_score: 0.8
+    required_capabilities: []
+    max_latency_ms: null
+
+  - name: "quick_responses"
+    description: "Route simple tasks to fast models"
+    priority: 70
+    request_patterns:
+      - "(quick|fast|brief|short).*(answer|response|reply)"
+      - "(simple|easy|basic).*(question|task)"
+    preferred_categories:
+      - "speed_optimized"
+    preferred_tiers:
+      - "efficient"
+    min_quality_score: null
+    required_capabilities: []
+    max_latency_ms: 5000
+
+  - name: "reasoning_tasks"
+    description: "Route complex reasoning to high-quality models"
+    priority: 85
+    request_patterns:
+      - "(analyze|reason|think).*(complex|deep|thorough)"
+      - "(problem|puzzle|logic).*(solving|reasoning)"
+      - "(explain|elaborate).*(detailed|comprehensive)"
+    preferred_categories:
+      - "quality_optimized"
+      - "reasoning"
+    preferred_tiers:
+      - "flagship"
+    min_quality_score: 0.85
+    required_capabilities: []
+    max_latency_ms: null
+
+  - name: "cost_optimized_tasks"
+    description: "Route cost-sensitive tasks to efficient models"
+    priority: 60
+    request_patterns:
+      - "(budget|cheap|cost).*(effective|efficient|optimized)"
+      - "(simple|basic|quick).*(task|question|request)"
+    preferred_categories:
+      - "speed_optimized"
+    preferred_tiers:
+      - "efficient"
+    min_quality_score: 0.6
+    required_capabilities: []
+    max_latency_ms: 3000
+
+# Configuration metadata
+metadata:
+  version: "1.0.0"
+  last_updated: "2025-01-01"
+  description: "Default routing rules for AI provider routing system"
+  maintainer: "AI Provider System"
+  notes:
+    - "Rules are processed in priority order (highest first)"
+    - "Request patterns use regex matching"
+    - "Required capabilities are mandatory for rule matching"
+    - "Preferred categories and tiers are used for model scoring"

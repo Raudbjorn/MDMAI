@@ -26,9 +26,14 @@ from sklearn.preprocessing import StandardScaler
 from structlog import get_logger
 
 from ..ai_providers.models import ProviderType, CostTier, ModelSpec
-from ..usage_tracking.storage.models import UsageRecord, ProviderType as TrackingProviderType
+from ..usage_tracking.storage.models import UsageRecord
 
 logger = get_logger(__name__)
+
+# Constants for configurable parameters
+DEFAULT_LATENCY_SAMPLE_SIZE = 100
+DEFAULT_COST_SAMPLE_SIZE = 100
+DEFAULT_QUALITY_SAMPLE_SIZE = 50
 
 
 class CostOptimizationStrategy:
@@ -45,9 +50,9 @@ class ModelPerformanceMetrics:
     """Performance metrics for model evaluation."""
     
     def __init__(self):
-        self.latency_samples = deque(maxlen=100)
-        self.cost_samples = deque(maxlen=100)
-        self.quality_scores = deque(maxlen=50)
+        self.latency_samples = deque(maxlen=DEFAULT_LATENCY_SAMPLE_SIZE)
+        self.cost_samples = deque(maxlen=DEFAULT_COST_SAMPLE_SIZE)
+        self.quality_scores = deque(maxlen=DEFAULT_QUALITY_SAMPLE_SIZE)
         self.error_rate = 0.0
         self.success_count = 0
         self.total_requests = 0
