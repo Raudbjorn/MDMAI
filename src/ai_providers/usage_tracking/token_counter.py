@@ -2,7 +2,7 @@
 
 import json
 import threading
-from typing import Any, Dict, Generator, Iterator, List, Union
+from typing import Any, Dict, Generator, Iterator, List, Optional, Union
 
 import structlog
 
@@ -20,6 +20,7 @@ class AdvancedTokenCounter:
         self._estimator = TokenEstimator()
         self._cache: Dict[str, int] = {}
         self._cache_lock = threading.Lock()
+        self._pricing_engine: Optional[Any] = None  # Lazy-loaded pricing engine
         
         # Provider-specific tokenizers
         self._tokenizers: Dict[ProviderType, Any] = {}
@@ -42,6 +43,17 @@ class AdvancedTokenCounter:
             logger.info("Anthropic SDK available for token estimation")
         except ImportError:
             logger.debug("Anthropic SDK not available")
+    
+    def _get_pricing_engine(self):
+        """Lazy-load the pricing engine to avoid circular imports."""
+        if self._pricing_engine is None:
+            try:
+                from src.cost_optimization.pricing_engine import get_pricing_engine
+                self._pricing_engine = get_pricing_engine()
+            except ImportError as e:
+                logger.warning(f"Failed to import pricing engine: {e}, falling back to hardcoded values")
+                self._pricing_engine = False  # Mark as failed
+        return self._pricing_engine if self._pricing_engine is not False else None
     
     def _get_cache_key(self, content: str, provider: ProviderType, model: str) -> str:
         """Generate cache key for token counting."""
@@ -214,7 +226,15 @@ class AdvancedTokenCounter:
         model: str,
     ) -> int:
         """Estimate tokens for image content."""
-        # Provider-specific image token estimation
+        # Try to get estimate from pricing engine first
+        pricing_engine = self._get_pricing_engine()
+        if pricing_engine:
+            try:
+                return pricing_engine.get_image_token_estimate(provider, image_data)
+            except Exception as e:
+                logger.warning(f"Failed to get image token estimate from pricing engine: {e}")
+        
+        # Fallback to hardcoded values if pricing engine unavailable
         if provider == ProviderType.OPENAI:
             # GPT-4 Vision pricing model
             detail = image_data.get("detail", "auto")
@@ -239,7 +259,15 @@ class AdvancedTokenCounter:
         model: str,
     ) -> int:
         """Estimate tokens for audio content."""
-        # Simplified estimation based on duration
+        # Try to get estimate from pricing engine first
+        pricing_engine = self._get_pricing_engine()
+        if pricing_engine:
+            try:
+                return pricing_engine.get_audio_token_estimate(provider, audio_data)
+            except Exception as e:
+                logger.warning(f"Failed to get audio token estimate from pricing engine: {e}")
+        
+        # Fallback to hardcoded values if pricing engine unavailable
         duration_seconds = audio_data.get("duration_seconds", 0)
         if duration_seconds:
             # Approximate: 1 second of audio ≈ 50 tokens

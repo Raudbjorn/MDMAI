@@ -292,6 +292,7 @@ class PricingEngine:
         self.currency_rates = {'USD': Decimal('1.0')}  # Base currency rates
         self.pricing_cache = {}  # Cache for calculated prices
         self.cache_ttl = 300  # 5 minutes cache TTL
+        self.token_estimation_config = {}  # Token estimation configuration
         
         # Initialize pricing from configuration file
         self._load_pricing_from_config(config_path)
@@ -354,6 +355,9 @@ class PricingEngine:
                 provider_config.add_model(model_pricing)
             
             self.provider_configs[provider_type] = provider_config
+        
+        # Load token estimation configuration
+        self.token_estimation_config = config_data.get('token_estimation', {})
     
     def _initialize_default_pricing(self) -> None:
         """Initialize with default pricing for all providers.
@@ -376,6 +380,24 @@ class PricingEngine:
         openai_config.add_model(gpt4_turbo)
         
         self.provider_configs[ProviderType.OPENAI] = openai_config
+        
+        # Set default token estimation configuration
+        self.token_estimation_config = {
+            'image': {
+                'openai': {
+                    'low_detail': 85,
+                    'high_detail_base': 170,
+                    'high_detail_per_tile': 85
+                },
+                'anthropic': {'default': 250},
+                'google': {'default': 258},
+                'fallback': 200
+            },
+            'audio': {
+                'tokens_per_second': 50,
+                'default_fallback': 1000
+            }
+        }
     
     def register_provider_config(self, config: ProviderPricingConfig) -> None:
         """Register a provider pricing configuration."""
@@ -863,6 +885,97 @@ class PricingEngine:
         output_rate = float(model_pricing.base_prices.get(CostComponent.OUTPUT_TOKENS, Decimal("0")))
         
         return (input_rate, output_rate)
+    
+    def get_image_token_estimate(
+        self, 
+        provider: ProviderType, 
+        image_data: Optional[Dict[str, Any]] = None
+    ) -> int:
+        """
+        Get estimated tokens for image processing based on provider and image properties.
+        
+        Args:
+            provider: The AI provider type
+            image_data: Optional dictionary containing image metadata (e.g., detail level)
+            
+        Returns:
+            Estimated token count for the image
+        """
+        try:
+            image_config = self.token_estimation_config.get('image', {})
+            
+            if provider == ProviderType.OPENAI:
+                openai_config = image_config.get('openai', {})
+                if image_data and image_data.get('detail') == 'low':
+                    return openai_config.get('low_detail', 85)
+                else:
+                    # High detail: base + estimated tiles (simplified calculation)
+                    base = openai_config.get('high_detail_base', 170)
+                    per_tile = openai_config.get('high_detail_per_tile', 85)
+                    return base + (per_tile * 4)  # Assume 4 tiles for simplification
+                    
+            elif provider == ProviderType.ANTHROPIC:
+                return image_config.get('anthropic', {}).get('default', 250)
+                
+            elif provider == ProviderType.GOOGLE:
+                return image_config.get('google', {}).get('default', 258)
+            
+            # Fallback for unknown providers
+            return image_config.get('fallback', 200)
+            
+        except Exception as e:
+            logger.warning(f"Failed to get image token estimate from config: {e}")
+            # Hard fallback to original values
+            if provider == ProviderType.OPENAI:
+                detail = image_data.get('detail', 'auto') if image_data else 'auto'
+                return 85 if detail == 'low' else 170 + 85 * 4
+            elif provider == ProviderType.ANTHROPIC:
+                return 250
+            elif provider == ProviderType.GOOGLE:
+                return 258
+            return 200
+    
+    def get_audio_token_estimate(
+        self, 
+        provider: ProviderType, 
+        audio_data: Optional[Dict[str, Any]] = None
+    ) -> int:
+        """
+        Get estimated tokens for audio processing based on duration.
+        
+        Args:
+            provider: The AI provider type (not currently used, but for future extensibility)
+            audio_data: Optional dictionary containing audio metadata (e.g., duration_seconds)
+            
+        Returns:
+            Estimated token count for the audio
+        """
+        try:
+            audio_config = self.token_estimation_config.get('audio', {})
+            
+            if audio_data and 'duration_seconds' in audio_data:
+                duration_seconds = audio_data['duration_seconds']
+                tokens_per_second = audio_config.get('tokens_per_second', 50)
+                return int(duration_seconds * tokens_per_second)
+            
+            # Default fallback when duration unavailable
+            return audio_config.get('default_fallback', 1000)
+            
+        except Exception as e:
+            logger.warning(f"Failed to get audio token estimate from config: {e}")
+            # Hard fallback to original values
+            if audio_data and 'duration_seconds' in audio_data:
+                return int(audio_data['duration_seconds'] * 50)
+            return 1000
+    
+    def get_token_estimation_config(self) -> Dict[str, Any]:
+        """
+        Get the raw token estimation configuration for advanced usage.
+        
+        Returns:
+            Dictionary containing the token estimation configuration
+        """
+        return self.token_estimation_config.copy()
 
 
 # Global pricing engine instance - single source of truth

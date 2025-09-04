@@ -1,18 +1,15 @@
 """Automatic model optimization algorithms for intelligent AI model selection."""
 
-import asyncio
-import math
-import random
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable
+from typing import Any, Dict, List, Optional, Tuple, Union, Callable
 from uuid import uuid4
 
 import structlog
 from .task_categorizer import TTRPGTaskType, TaskCharacteristics, TaskCategorizer
-from .performance_profiler import PerformanceBenchmark, MetricType, ModelPerformanceProfile
+from .performance_profiler import PerformanceBenchmark
 from ..ai_providers.models import ProviderType, ModelSpec
 
 logger = structlog.get_logger(__name__)
@@ -21,33 +18,33 @@ logger = structlog.get_logger(__name__)
 @dataclass(frozen=True)
 class RuleCondition:
     """Structured, secure rule condition for model optimization.
-    
+
     This replaces string-based conditions to eliminate injection vulnerabilities.
     All conditions are validated at creation time and evaluated safely.
     """
-    
+
     metric: str
     operator: str
     threshold: Union[float, int, str]
-    
+
     # Valid operators for security
     VALID_OPERATORS = frozenset(['>', '<', '>=', '<=', '==', '!=', 'in', 'not_in'])
-    
+
     # Valid metrics for security
     VALID_METRICS = frozenset([
-        'latency', 'error_rate', 'cost_per_hour', 'provider_health', 
+        'latency', 'error_rate', 'cost_per_hour', 'provider_health',
         'quality_score', 'response_time', 'tokens_per_second', 'accuracy',
         'availability', 'concurrent_requests'
     ])
-    
+
     def __post_init__(self) -> None:
         """Validate condition parameters to prevent injection attacks."""
         if self.operator not in self.VALID_OPERATORS:
             raise ValueError(f"Invalid operator '{self.operator}'. Must be one of {self.VALID_OPERATORS}")
-        
+
         if self.metric not in self.VALID_METRICS:
             raise ValueError(f"Invalid metric '{self.metric}'. Must be one of {self.VALID_METRICS}")
-        
+
         # Validate threshold based on operator
         if self.operator in ['in', 'not_in']:
             if not isinstance(self.threshold, (list, tuple, set)):
@@ -58,57 +55,57 @@ class RuleCondition:
                     object.__setattr__(self, 'threshold', float(self.threshold))
                 except (ValueError, TypeError) as e:
                     raise ValueError(f"Threshold '{self.threshold}' must be numeric for operator '{self.operator}'") from e
-    
+
     @classmethod
     def from_string(cls, condition_str: str) -> 'RuleCondition':
         """Parse a condition string into a structured RuleCondition.
-        
+
         This is a secure migration helper for existing string conditions.
         Only supports a limited, safe subset of conditions.
-        
+
         Args:
             condition_str: String like "latency > 2000" or "provider_health < 0.9"
-            
+
         Returns:
             RuleCondition instance
-            
+
         Raises:
             ValueError: If condition string is invalid or contains unsafe patterns
         """
         import re
-        
+
         # Sanitize input
         condition_str = condition_str.strip()
-        
+
         # Only allow basic alphanumeric, spaces, dots, and safe operators
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*[><=!]+\s*[0-9.]+$', condition_str):
             raise ValueError(f"Invalid condition format: '{condition_str}'")
-        
+
         # Parse with strict pattern matching
         pattern = r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*([><=!]+)\s*([0-9.]+)$'
         match = re.match(pattern, condition_str)
-        
+
         if not match:
             raise ValueError(f"Failed to parse condition: '{condition_str}'")
-        
+
         metric, operator, threshold_str = match.groups()
-        
+
         # Additional security: normalize operators
         operator = operator.strip()
         if operator not in cls.VALID_OPERATORS:
             raise ValueError(f"Unsupported operator '{operator}' in condition '{condition_str}'")
-        
+
         try:
             threshold = float(threshold_str)
         except ValueError as e:
             raise ValueError(f"Invalid threshold '{threshold_str}' in condition '{condition_str}'") from e
-        
+
         return cls(metric=metric, operator=operator, threshold=threshold)
 
 
 class OptimizationStrategy(Enum):
     """Strategies for automatic model optimization."""
-    
+
     COST_OPTIMAL = "cost_optimal"           # Minimize cost while meeting quality thresholds
     QUALITY_OPTIMAL = "quality_optimal"    # Maximize quality regardless of cost
     BALANCED = "balanced"                   # Balance cost, quality, and latency
@@ -118,7 +115,7 @@ class OptimizationStrategy(Enum):
 
 class LoadBalancingStrategy(Enum):
     """Load balancing strategies across providers."""
-    
+
     ROUND_ROBIN = "round_robin"            # Simple round-robin
     WEIGHTED_ROUND_ROBIN = "weighted_round_robin"  # Weight by performance
     LEAST_CONNECTIONS = "least_connections"  # Route to least busy provider
@@ -129,7 +126,7 @@ class LoadBalancingStrategy(Enum):
 @dataclass
 class OptimizationRule:
     """A rule for automatic model optimization with secure condition evaluation."""
-    
+
     rule_id: str = field(default_factory=lambda: str(uuid4()))
     task_type: Optional[TTRPGTaskType] = None
     condition: Union[RuleCondition, str] = field(default="")  # Structured condition or legacy string
@@ -139,7 +136,7 @@ class OptimizationRule:
     created_at: datetime = field(default_factory=datetime.now)
     last_triggered: Optional[datetime] = None
     trigger_count: int = 0
-    
+
     def __post_init__(self) -> None:
         """Convert string conditions to structured conditions for security."""
         if isinstance(self.condition, str) and self.condition:
@@ -154,10 +151,10 @@ class OptimizationRule:
                     rule_id=self.rule_id
                 )
                 # Keep as string for backward compatibility, but log the issue
-    
+
     def get_condition(self) -> Optional[RuleCondition]:
         """Get the condition as a structured RuleCondition.
-        
+
         Returns:
             RuleCondition if available, None if condition is invalid
         """
@@ -174,7 +171,7 @@ class OptimizationRule:
 @dataclass
 class ModelRecommendation:
     """A model recommendation from the optimizer."""
-    
+
     provider_type: ProviderType
     model_id: str
     confidence: float
@@ -186,7 +183,7 @@ class ModelRecommendation:
 
 class ModelOptimizer:
     """Automatic model optimization system for TTRPG Assistant."""
-    
+
     def __init__(
         self,
         task_categorizer: TaskCategorizer,
@@ -196,25 +193,25 @@ class ModelOptimizer:
         self.task_categorizer = task_categorizer
         self.performance_benchmark = performance_benchmark
         self.optimization_strategy = optimization_strategy
-        
+
         # Model and performance data
         self.available_models: Dict[str, ModelSpec] = {}
         self.model_capabilities: Dict[str, Dict[str, float]] = {}
         self.provider_health: Dict[ProviderType, float] = {}
-        
+
         # Optimization state
         self.optimization_rules: List[OptimizationRule] = []
         self.learning_history: deque = deque(maxlen=10000)
         self.model_usage_stats: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        
+
         # Load balancing
         self.load_balancer_state: Dict[str, Any] = {}
         self.provider_load: Dict[ProviderType, int] = defaultdict(int)
-        
+
         # Predictive modeling
         self.prediction_cache: Dict[str, Tuple[datetime, ModelRecommendation]] = {}
         self.pattern_detection: Dict[str, List[Tuple[datetime, str]]] = defaultdict(list)
-        
+
         # Performance thresholds
         self.quality_thresholds = {
             TTRPGTaskType.RULE_LOOKUP: 0.9,
@@ -228,7 +225,7 @@ class ModelOptimizer:
             TTRPGTaskType.SESSION_SUMMARIZATION: 0.8,
             TTRPGTaskType.IMPROVISATION: 0.7
         }
-        
+
         self.latency_thresholds = {
             TTRPGTaskType.COMBAT_RESOLUTION: 500,      # 500ms
             TTRPGTaskType.RULE_LOOKUP: 1000,           # 1s
@@ -236,13 +233,13 @@ class ModelOptimizer:
             TTRPGTaskType.CHARACTER_GENERATION: 5000,  # 5s
             TTRPGTaskType.IMPROVISATION: 1500,         # 1.5s
         }
-        
+
         # Initialize default optimization rules
         self._initialize_default_rules()
-    
+
     def _initialize_default_rules(self) -> None:
         """Initialize default optimization rules with secure structured conditions.
-        
+
         Uses the new secure RuleCondition format to prevent injection attacks.
         Legacy string-based conditions have been converted to structured conditions.
         """
@@ -276,9 +273,9 @@ class ModelOptimizer:
                 priority=6
             )
         ]
-        
+
         self.optimization_rules.extend(default_rules)
-    
+
     def create_secure_rule(
         self,
         metric: str,
@@ -290,9 +287,9 @@ class ModelOptimizer:
         enabled: bool = True
     ) -> OptimizationRule:
         """Create a new optimization rule with secure structured condition.
-        
+
         This is the recommended way to create new rules to ensure security.
-        
+
         Args:
             metric: Metric name to evaluate (must be in VALID_METRICS)
             operator: Comparison operator (must be in VALID_OPERATORS)
@@ -301,15 +298,15 @@ class ModelOptimizer:
             task_type: Optional task type restriction
             priority: Rule priority (higher = more important)
             enabled: Whether rule is enabled
-            
+
         Returns:
             OptimizationRule with secure structured condition
-            
+
         Raises:
             ValueError: If metric, operator, or threshold is invalid
         """
         condition = RuleCondition(metric=metric, operator=operator, threshold=threshold)
-        
+
         return OptimizationRule(
             task_type=task_type,
             condition=condition,
@@ -317,12 +314,12 @@ class ModelOptimizer:
             priority=priority,
             enabled=enabled
         )
-    
+
     async def register_model(self, model_spec: ModelSpec) -> None:
         """Register a model with the optimizer."""
         model_key = f"{model_spec.provider_type.value}:{model_spec.model_id}"
         self.available_models[model_key] = model_spec
-        
+
         # Initialize capabilities mapping
         capabilities = {}
         if model_spec.supports_tools:
@@ -331,30 +328,30 @@ class ModelOptimizer:
             capabilities["streaming"] = 1.0
         if model_spec.supports_vision:
             capabilities["vision"] = 1.0
-        
+
         # Estimate task suitability based on model characteristics
         capabilities["rule_lookup"] = 0.9 if model_spec.supports_tools else 0.7
         capabilities["character_generation"] = 0.8
         capabilities["story_generation"] = min(1.0, model_spec.context_length / 8192)
         capabilities["combat_resolution"] = 0.9 if model_spec.supports_tools else 0.6
-        
+
         # Factor in cost tier
         cost_multiplier = {
             "free": 1.2, "low": 1.1, "medium": 1.0, "high": 0.9, "premium": 0.8
         }.get(model_spec.cost_tier.value, 1.0)
-        
+
         for capability in capabilities:
             capabilities[capability] *= cost_multiplier
-        
+
         self.model_capabilities[model_key] = capabilities
-        
+
         logger.info(
             "Registered model with optimizer",
             model_key=model_key,
             capabilities=capabilities,
             cost_tier=model_spec.cost_tier.value
         )
-    
+
     async def optimize_model_selection(
         self,
         task_type: TTRPGTaskType,
@@ -365,13 +362,13 @@ class ModelOptimizer:
         """Optimize model selection for a specific task."""
         context = context or {}
         user_preferences = user_preferences or {}
-        
+
         logger.info(
             "Starting model optimization",
             task_type=task_type.value,
             strategy=self.optimization_strategy.value
         )
-        
+
         # Check prediction cache first
         cache_key = self._generate_cache_key(task_type, task_characteristics, context)
         if cache_key in self.prediction_cache:
@@ -379,13 +376,13 @@ class ModelOptimizer:
             if datetime.now() - cached_time < timedelta(minutes=5):  # 5-minute cache
                 logger.debug("Using cached model recommendation", cache_key=cache_key)
                 return cached_recommendation
-        
+
         # Get candidate models
         candidates = await self._get_candidate_models(task_type, task_characteristics, context)
-        
+
         if not candidates:
             raise ValueError(f"No suitable models available for task type: {task_type}")
-        
+
         # Apply optimization strategy
         if self.optimization_strategy == OptimizationStrategy.COST_OPTIMAL:
             recommendation = await self._optimize_for_cost(candidates, task_type, task_characteristics)
@@ -397,13 +394,13 @@ class ModelOptimizer:
             recommendation = await self._optimize_adaptive(candidates, task_type, task_characteristics, user_preferences)
         else:  # BALANCED
             recommendation = await self._optimize_balanced(candidates, task_type, task_characteristics, user_preferences)
-        
+
         # Apply optimization rules
         recommendation = await self._apply_optimization_rules(recommendation, task_type, context)
-        
+
         # Cache the recommendation
         self.prediction_cache[cache_key] = (datetime.now(), recommendation)
-        
+
         # Record the decision for learning
         self.learning_history.append({
             "timestamp": datetime.now(),
@@ -412,16 +409,16 @@ class ModelOptimizer:
             "context": context,
             "strategy": self.optimization_strategy.value
         })
-        
+
         logger.info(
             "Model optimization completed",
             recommended_model=f"{recommendation.provider_type.value}:{recommendation.model_id}",
             confidence=recommendation.confidence,
             reasoning_points=len(recommendation.reasoning)
         )
-        
+
         return recommendation
-    
+
     async def _get_candidate_models(
         self,
         task_type: TTRPGTaskType,
@@ -430,41 +427,41 @@ class ModelOptimizer:
     ) -> List[Tuple[str, ModelSpec, float]]:
         """Get candidate models with suitability scores."""
         candidates = []
-        
+
         for model_key, model_spec in self.available_models.items():
             if not model_spec.is_available:
                 continue
-            
+
             # Check provider health
             provider_health = self.provider_health.get(model_spec.provider_type, 1.0)
             if provider_health < 0.5:  # Skip unhealthy providers
                 continue
-            
+
             # Calculate base suitability score
             suitability_score = self._calculate_suitability_score(
                 model_spec, task_type, task_characteristics
             )
-            
+
             # Apply context adjustments
             suitability_score *= self._apply_context_adjustments(
                 model_spec, context, provider_health
             )
-            
+
             if suitability_score > 0.1:  # Minimum threshold
                 candidates.append((model_key, model_spec, suitability_score))
-        
+
         # Sort by suitability score
         candidates.sort(key=lambda x: x[2], reverse=True)
-        
+
         logger.debug(
             "Generated model candidates",
             task_type=task_type.value,
             candidates_count=len(candidates),
             top_candidate=candidates[0][0] if candidates else None
         )
-        
+
         return candidates
-    
+
     def _calculate_suitability_score(
         self,
         model_spec: ModelSpec,
@@ -473,38 +470,38 @@ class ModelOptimizer:
     ) -> float:
         """Calculate base suitability score for a model."""
         score = 0.0
-        
+
         # Capability matching
         model_key = f"{model_spec.provider_type.value}:{model_spec.model_id}"
         capabilities = self.model_capabilities.get(model_key, {})
-        
+
         task_capability = capabilities.get(task_type.value.replace("_", ""), 0.5)
         score += task_capability * 0.3
-        
+
         # Context length requirement
         if model_spec.context_length >= task_characteristics.context_length_needed:
             score += 0.2
         else:
             penalty = (task_characteristics.context_length_needed - model_spec.context_length) / task_characteristics.context_length_needed
             score += 0.2 * (1 - penalty)
-        
+
         # Tool calling requirement
         if task_characteristics.needs_tool_calling:
             if model_spec.supports_tools:
                 score += 0.15
             else:
                 score -= 0.1  # Penalty for missing required capability
-        
+
         # Streaming requirement for immediate tasks
         if task_characteristics.latency_requirement.value == "immediate":
             if model_spec.supports_streaming:
                 score += 0.1
-        
+
         # Performance-based adjustments
         performance_profile = self.performance_benchmark.get_model_performance(
             model_spec.provider_type, model_spec.model_id, task_type.value
         )
-        
+
         if performance_profile:
             # Latency scoring
             target_latency = self.latency_thresholds.get(task_type, 5000)
@@ -513,7 +510,7 @@ class ModelOptimizer:
             else:
                 latency_penalty = min(0.15, (performance_profile.avg_latency - target_latency) / target_latency * 0.15)
                 score -= latency_penalty
-            
+
             # Quality scoring
             target_quality = self.quality_thresholds.get(task_type, 0.8)
             if performance_profile.avg_quality_score >= target_quality:
@@ -521,15 +518,15 @@ class ModelOptimizer:
             else:
                 quality_penalty = (target_quality - performance_profile.avg_quality_score) * 0.1
                 score -= quality_penalty
-            
+
             # Success rate
             score += performance_profile.success_rate * 0.1
-            
+
             # Confidence adjustment
             score *= performance_profile.confidence_score
-        
+
         return max(0.0, score)
-    
+
     def _apply_context_adjustments(
         self,
         model_spec: ModelSpec,
@@ -538,35 +535,35 @@ class ModelOptimizer:
     ) -> float:
         """Apply context-based adjustments to suitability score."""
         adjustment = 1.0
-        
+
         # Provider health adjustment
         adjustment *= provider_health
-        
+
         # Load balancing adjustment
         current_load = self.provider_load.get(model_spec.provider_type, 0)
         if current_load > 10:  # High load
             adjustment *= 0.8
         elif current_load < 3:  # Low load
             adjustment *= 1.1
-        
+
         # Time-based adjustments (some models perform better at certain times)
         current_hour = datetime.now().hour
         if model_spec.provider_type == ProviderType.ANTHROPIC and 9 <= current_hour <= 17:
             adjustment *= 1.05  # Slightly prefer during business hours
-        
+
         # Budget constraints
         if context.get("user_budget_remaining", float('inf')) < model_spec.cost_per_input_token * 1000:
             adjustment *= 0.5  # Heavily penalize expensive models when budget is low
-        
+
         # Campaign genre preferences
         genre = context.get("campaign_genre", "").lower()
         if "horror" in genre and "creative" in model_spec.metadata.get("strengths", []):
             adjustment *= 1.1
         elif "tactical" in genre and "precise" in model_spec.metadata.get("strengths", []):
             adjustment *= 1.1
-        
+
         return adjustment
-    
+
     async def _optimize_for_cost(
         self,
         candidates: List[Tuple[str, ModelSpec, float]],
@@ -577,36 +574,36 @@ class ModelOptimizer:
         # Filter candidates that meet minimum quality threshold
         quality_threshold = self.quality_thresholds.get(task_type, 0.8)
         suitable_candidates = []
-        
+
         for model_key, model_spec, suitability in candidates:
             performance_profile = self.performance_benchmark.get_model_performance(
                 model_spec.provider_type, model_spec.model_id, task_type.value
             )
-            
+
             if performance_profile and performance_profile.avg_quality_score >= quality_threshold:
                 suitable_candidates.append((model_key, model_spec, suitability, performance_profile))
             elif not performance_profile and suitability > 0.7:  # High suitability but no data
                 suitable_candidates.append((model_key, model_spec, suitability, None))
-        
+
         if not suitable_candidates:
             # Fallback to best available if no candidates meet quality threshold
             suitable_candidates = [(candidates[0][0], candidates[0][1], candidates[0][2], None)]
-        
+
         # Sort by cost (ascending)
         suitable_candidates.sort(key=lambda x: x[1].cost_per_input_token + x[1].cost_per_output_token)
-        
+
         best_candidate = suitable_candidates[0]
         model_key, model_spec, suitability, performance_profile = best_candidate
-        
+
         reasoning = [
             "Optimized for cost efficiency",
             f"Model cost: ${model_spec.cost_per_input_token:.6f} input + ${model_spec.cost_per_output_token:.6f} output per token"
         ]
-        
+
         if performance_profile:
             reasoning.append(f"Historical quality score: {performance_profile.avg_quality_score:.2f}")
             reasoning.append(f"Average request cost: ${performance_profile.avg_cost_per_request:.4f}")
-        
+
         return ModelRecommendation(
             provider_type=model_spec.provider_type,
             model_id=model_spec.model_id,
@@ -620,7 +617,7 @@ class ModelOptimizer:
             cost_estimate=performance_profile.avg_cost_per_request if performance_profile else 0.01,
             fallback_options=[(c[1].provider_type, c[1].model_id) for c in suitable_candidates[1:3]]
         )
-    
+
     async def _optimize_for_quality(
         self,
         candidates: List[Tuple[str, ModelSpec, float]],
@@ -630,12 +627,12 @@ class ModelOptimizer:
         """Optimize model selection for quality."""
         # Sort by performance data first, then by suitability
         quality_candidates = []
-        
+
         for model_key, model_spec, suitability in candidates:
             performance_profile = self.performance_benchmark.get_model_performance(
                 model_spec.provider_type, model_spec.model_id, task_type.value
             )
-            
+
             if performance_profile:
                 quality_score = performance_profile.avg_quality_score
                 confidence_adjusted_quality = quality_score * performance_profile.confidence_score
@@ -643,27 +640,27 @@ class ModelOptimizer:
                 # Use suitability as proxy for quality when no performance data
                 quality_score = suitability * 0.8  # Conservative estimate
                 confidence_adjusted_quality = quality_score * 0.5  # Low confidence
-            
+
             quality_candidates.append((model_key, model_spec, quality_score, confidence_adjusted_quality, performance_profile))
-        
+
         # Sort by confidence-adjusted quality (descending)
         quality_candidates.sort(key=lambda x: x[3], reverse=True)
-        
+
         best_candidate = quality_candidates[0]
         model_key, model_spec, quality_score, confidence_adjusted_quality, performance_profile = best_candidate
-        
+
         reasoning = [
             "Optimized for highest quality output",
             f"Estimated quality score: {quality_score:.2f}"
         ]
-        
+
         if performance_profile:
             reasoning.append(f"Based on {performance_profile.total_requests} historical requests")
             reasoning.append(f"Average latency: {performance_profile.avg_latency:.0f}ms")
             reasoning.append(f"Success rate: {performance_profile.success_rate:.1%}")
         else:
             reasoning.append("Based on model capabilities and specifications")
-        
+
         return ModelRecommendation(
             provider_type=model_spec.provider_type,
             model_id=model_spec.model_id,
@@ -677,7 +674,7 @@ class ModelOptimizer:
             cost_estimate=performance_profile.avg_cost_per_request if performance_profile else 0.02,
             fallback_options=[(c[1].provider_type, c[1].model_id) for c in quality_candidates[1:3]]
         )
-    
+
     async def _optimize_for_latency(
         self,
         candidates: List[Tuple[str, ModelSpec, float]],
@@ -686,12 +683,12 @@ class ModelOptimizer:
     ) -> ModelRecommendation:
         """Optimize model selection for lowest latency."""
         latency_candidates = []
-        
+
         for model_key, model_spec, suitability in candidates:
             performance_profile = self.performance_benchmark.get_model_performance(
                 model_spec.provider_type, model_spec.model_id, task_type.value
             )
-            
+
             if performance_profile:
                 avg_latency = performance_profile.avg_latency
                 p95_latency = performance_profile.p95_latency
@@ -704,29 +701,29 @@ class ModelOptimizer:
                     base_latency *= 1.3
                 avg_latency = base_latency
                 p95_latency = base_latency * 1.5
-            
+
             latency_candidates.append((model_key, model_spec, avg_latency, p95_latency, performance_profile))
-        
+
         # Sort by average latency (ascending)
         latency_candidates.sort(key=lambda x: x[2])
-        
+
         best_candidate = latency_candidates[0]
         model_key, model_spec, avg_latency, p95_latency, performance_profile = best_candidate
-        
+
         reasoning = [
             "Optimized for fastest response time",
             f"Average latency: {avg_latency:.0f}ms",
             f"95th percentile latency: {p95_latency:.0f}ms"
         ]
-        
+
         if performance_profile:
             reasoning.append(f"Based on {performance_profile.total_requests} historical requests")
         else:
             reasoning.append("Based on estimated model performance")
-        
+
         if model_spec.supports_streaming:
             reasoning.append("Supports streaming for even faster perceived response")
-        
+
         return ModelRecommendation(
             provider_type=model_spec.provider_type,
             model_id=model_spec.model_id,
@@ -740,7 +737,7 @@ class ModelOptimizer:
             cost_estimate=performance_profile.avg_cost_per_request if performance_profile else 0.01,
             fallback_options=[(c[1].provider_type, c[1].model_id) for c in latency_candidates[1:3]]
         )
-    
+
     async def _optimize_balanced(
         self,
         candidates: List[Tuple[str, ModelSpec, float]],
@@ -756,7 +753,7 @@ class ModelOptimizer:
             "cost": 0.25,
             "suitability": 0.15
         }
-        
+
         # Adjust weights based on task characteristics
         if task_characteristics.latency_requirement.value == "immediate":
             weights["latency"] = 0.4
@@ -770,7 +767,7 @@ class ModelOptimizer:
             weights["cost"] = 0.4
             weights["quality"] = 0.3
             weights["latency"] = 0.2
-        
+
         # Apply user preferences
         if user_preferences.get("prioritize_speed"):
             weights["latency"] *= 1.5
@@ -778,21 +775,21 @@ class ModelOptimizer:
             weights["cost"] *= 1.5
         if user_preferences.get("quality_focused"):
             weights["quality"] *= 1.5
-        
+
         # Normalize weights
         total_weight = sum(weights.values())
         weights = {k: v / total_weight for k, v in weights.items()}
-        
+
         scored_candidates = []
-        
+
         for model_key, model_spec, suitability in candidates:
             performance_profile = self.performance_benchmark.get_model_performance(
                 model_spec.provider_type, model_spec.model_id, task_type.value
             )
-            
+
             # Normalize scores (0-1 scale)
             quality_score = performance_profile.avg_quality_score if performance_profile else suitability * 0.8
-            
+
             if performance_profile:
                 # Normalize latency (inverse: lower is better)
                 latency_score = max(0, 1 - (performance_profile.avg_latency / 10000))  # 10s = 0 score
@@ -802,7 +799,7 @@ class ModelOptimizer:
                 latency_score = 0.7 if model_spec.supports_streaming else 0.5
                 cost_score = 1 - (model_spec.cost_per_input_token + model_spec.cost_per_output_token) / 0.001
                 cost_score = max(0, min(1, cost_score))
-            
+
             # Calculate weighted score
             total_score = (
                 quality_score * weights["quality"] +
@@ -810,20 +807,20 @@ class ModelOptimizer:
                 cost_score * weights["cost"] +
                 suitability * weights["suitability"]
             )
-            
+
             scored_candidates.append((model_key, model_spec, total_score, performance_profile, {
                 "quality": quality_score,
                 "latency": latency_score,
                 "cost": cost_score,
                 "suitability": suitability
             }))
-        
+
         # Sort by total score (descending)
         scored_candidates.sort(key=lambda x: x[2], reverse=True)
-        
+
         best_candidate = scored_candidates[0]
         model_key, model_spec, total_score, performance_profile, component_scores = best_candidate
-        
+
         reasoning = [
             "Balanced optimization across quality, latency, and cost",
             f"Overall score: {total_score:.2f}",
@@ -831,10 +828,10 @@ class ModelOptimizer:
             f"Latency score: {component_scores['latency']:.2f} (weight: {weights['latency']:.1%})",
             f"Cost score: {component_scores['cost']:.2f} (weight: {weights['cost']:.1%})"
         ]
-        
+
         if performance_profile:
             reasoning.append(f"Based on {performance_profile.total_requests} historical requests")
-        
+
         return ModelRecommendation(
             provider_type=model_spec.provider_type,
             model_id=model_spec.model_id,
@@ -849,7 +846,7 @@ class ModelOptimizer:
             cost_estimate=performance_profile.avg_cost_per_request if performance_profile else 0.015,
             fallback_options=[(c[1].provider_type, c[1].model_id) for c in scored_candidates[1:3]]
         )
-    
+
     async def _optimize_adaptive(
         self,
         candidates: List[Tuple[str, ModelSpec, float]],
@@ -863,7 +860,7 @@ class ModelOptimizer:
             entry for entry in self.learning_history
             if entry["task_type"] == task_type.value
         ]
-        
+
         # Extract patterns from usage
         if len(task_history) >= 5:
             # Calculate user's implied preferences based on past selections
@@ -871,38 +868,38 @@ class ModelOptimizer:
         else:
             # Use balanced approach for new users
             preference_weights = {"quality": 0.35, "latency": 0.25, "cost": 0.25, "suitability": 0.15}
-        
+
         # Apply time-based learning
-        recent_history = [entry for entry in task_history if 
+        recent_history = [entry for entry in task_history if
                          (datetime.now() - entry["timestamp"]).days <= 7]
-        
+
         if recent_history:
             # Weight recent preferences more heavily
             recent_weights = self._analyze_user_patterns(recent_history)
             # Blend with long-term patterns (70% recent, 30% historical)
             for key in preference_weights:
                 preference_weights[key] = 0.7 * recent_weights.get(key, preference_weights[key]) + 0.3 * preference_weights[key]
-        
+
         # Use balanced optimization with learned weights
         return await self._optimize_balanced(candidates, task_type, task_characteristics, user_preferences)
-    
+
     def _analyze_user_patterns(self, history: List[Dict[str, Any]]) -> Dict[str, float]:
         """Analyze user patterns from historical data using comprehensive pattern analysis."""
         if not history:
             return {"quality": 0.25, "latency": 0.25, "cost": 0.25, "suitability": 0.25}
-        
+
         weights = {"quality": 0.25, "latency": 0.25, "cost": 0.25, "suitability": 0.25}
-        
+
         # Extract metrics for pattern analysis
         costs = [entry["recommendation"].cost_estimate for entry in history if "recommendation" in entry]
         latencies = [entry.get("actual_latency", 0) for entry in history if entry.get("actual_latency")]
         quality_scores = [entry.get("quality_score", 0) for entry in history if entry.get("quality_score")]
-        
+
         # Analyze cost sensitivity patterns
         if costs:
             cost_variance = self._calculate_variance(costs)
             avg_cost = sum(costs) / len(costs)
-            
+
             # High cost variance suggests user is cost-flexible, low variance suggests cost-conscious
             if cost_variance < 0.001:  # Low variance - consistent cost preferences
                 if avg_cost < 0.01:  # Consistently low cost
@@ -913,43 +910,43 @@ class ModelOptimizer:
                     weights["cost"] = 0.1
             else:  # High variance - user varies cost based on context
                 weights["suitability"] = 0.35  # Context becomes more important
-        
+
         # Analyze latency sensitivity patterns
         if latencies:
             avg_latency = sum(latencies) / len(latencies)
             latency_variance = self._calculate_variance(latencies)
-            
+
             if latency_variance < 100:  # Consistent latency preferences (ms²)
                 if avg_latency < 1000:  # Prefers fast responses
                     weights["latency"] = 0.4
                 elif avg_latency > 5000:  # Accepts slower responses for quality
                     weights["quality"] = max(weights["quality"], 0.35)
-        
+
         # Analyze quality patterns
         if quality_scores:
             avg_quality = sum(quality_scores) / len(quality_scores)
             quality_variance = self._calculate_variance(quality_scores)
-            
+
             if avg_quality > 0.8 and quality_variance < 0.01:  # Consistently high quality
                 weights["quality"] = max(weights["quality"], 0.4)
             elif avg_quality < 0.6:  # User accepts lower quality (speed/cost focused)
                 weights["latency"] = max(weights["latency"], 0.3)
                 weights["cost"] = max(weights["cost"], 0.3)
-        
+
         # Normalize weights to sum to 1.0
         total_weight = sum(weights.values())
         if total_weight > 0:
             weights = {k: v / total_weight for k, v in weights.items()}
-        
+
         return weights
-    
+
     def _calculate_variance(self, values: List[float]) -> float:
         """Calculate variance of a list of values."""
         if len(values) < 2:
             return 0.0
         mean = sum(values) / len(values)
         return sum((x - mean) ** 2 for x in values) / len(values)
-    
+
     async def _apply_optimization_rules(
         self,
         recommendation: ModelRecommendation,
@@ -960,11 +957,11 @@ class ModelOptimizer:
         for rule in self.optimization_rules:
             if not rule.enabled:
                 continue
-            
+
             # Check if rule applies to this task type
             if rule.task_type and rule.task_type != task_type:
                 continue
-            
+
             # Get structured condition for secure evaluation
             condition = rule.get_condition() if hasattr(rule, 'get_condition') else rule.condition
             if condition is None:
@@ -974,25 +971,25 @@ class ModelOptimizer:
                     condition=rule.condition
                 )
                 continue
-            
+
             # Evaluate rule condition using secure structured approach
             if self._evaluate_rule_condition(condition, recommendation, context):
                 # Apply rule action
                 recommendation = await self._apply_rule_action(rule.action, recommendation, context)
-                
+
                 # Update rule statistics
                 rule.last_triggered = datetime.now()
                 rule.trigger_count += 1
-                
+
                 logger.info(
                     "Applied optimization rule",
                     rule_id=rule.rule_id,
                     condition=rule.condition,
                     action=rule.action
                 )
-        
+
         return recommendation
-    
+
     def _evaluate_rule_condition(
         self,
         condition: Union[RuleCondition, str],
@@ -1000,15 +997,15 @@ class ModelOptimizer:
         context: Dict[str, Any]
     ) -> bool:
         """Evaluate if a rule condition is met using secure structured evaluation.
-        
+
         This replaces the previous regex-based approach to eliminate injection vulnerabilities.
         Conditions are now validated at creation time and evaluated through a secure dispatch system.
-        
+
         Args:
             condition: Structured RuleCondition or legacy string condition
             recommendation: Model recommendation to evaluate against
             context: Additional context for evaluation
-            
+
         Returns:
             bool: True if condition is met, False otherwise
         """
@@ -1026,16 +1023,16 @@ class ModelOptimizer:
                         error=str(e)
                     )
                     return False
-            
+
             if not isinstance(condition, RuleCondition):
                 logger.error("Invalid condition type", condition_type=type(condition))
                 return False
-            
+
             # Get metric value using secure dispatch
             metric_value = self._get_metric_value(
                 condition.metric, recommendation, context
             )
-            
+
             if metric_value is None:
                 logger.warning(
                     "Metric value not available for condition evaluation",
@@ -1043,12 +1040,12 @@ class ModelOptimizer:
                     condition=condition
                 )
                 return False
-            
+
             # Evaluate condition using secure operator dispatch
             return self._evaluate_operator(
                 metric_value, condition.operator, condition.threshold
             )
-            
+
         except Exception as e:
             logger.error(
                 "Failed to evaluate rule condition",
@@ -1058,7 +1055,7 @@ class ModelOptimizer:
             )
             # Fail-safe: return False for any evaluation errors
             return False
-    
+
     def _get_metric_value(
         self,
         metric: str,
@@ -1066,15 +1063,15 @@ class ModelOptimizer:
         context: Dict[str, Any]
     ) -> Optional[Union[float, int, str]]:
         """Safely retrieve metric values for condition evaluation.
-        
+
         This uses a dispatch table to securely map metric names to values,
         preventing injection attacks that could occur with dynamic attribute access.
-        
+
         Args:
             metric: Name of the metric to retrieve
             recommendation: Model recommendation containing metric data
             context: Additional context data
-            
+
         Returns:
             Metric value or None if not available
         """
@@ -1086,32 +1083,32 @@ class ModelOptimizer:
             'accuracy': lambda: recommendation.expected_performance.get('accuracy'),
             'response_time': lambda: recommendation.expected_performance.get('response_time'),
             'tokens_per_second': lambda: recommendation.expected_performance.get('tokens_per_second'),
-            
+
             'cost_per_hour': lambda: (
                 recommendation.cost_estimate * 60
                 if recommendation.cost_estimate is not None else None
             ),
-            
+
             'provider_health': lambda: self.provider_health.get(
                 recommendation.provider_type, 1.0
             ),
-            
+
             'availability': lambda: context.get('provider_availability', {
             }).get(recommendation.provider_type.value, 1.0),
-            
+
             'concurrent_requests': lambda: self.provider_load.get(
                 recommendation.provider_type, 0
             ),
-            
+
             'user_budget': lambda: context.get('user_budget', float('inf')),
         }
-        
+
         # Secure metric retrieval
         getter = metric_getters.get(metric)
         if getter is None:
             logger.warning(f"Unknown metric requested: {metric}")
             return None
-        
+
         try:
             return getter()
         except Exception as e:
@@ -1121,7 +1118,7 @@ class ModelOptimizer:
                 error=str(e)
             )
             return None
-    
+
     def _evaluate_operator(
         self,
         value: Union[float, int, str],
@@ -1129,14 +1126,14 @@ class ModelOptimizer:
         threshold: Union[float, int, str, list, tuple, set]
     ) -> bool:
         """Safely evaluate comparison operators.
-        
+
         Uses a dispatch table to prevent code injection through operator strings.
-        
+
         Args:
             value: Actual metric value
             operator: Comparison operator
             threshold: Threshold value to compare against
-            
+
         Returns:
             bool: Result of the comparison
         """
@@ -1152,14 +1149,14 @@ class ModelOptimizer:
                 'in': lambda v, t: v in t,
                 'not_in': lambda v, t: v not in t,
             }
-            
+
             operator_func = operators.get(operator)
             if operator_func is None:
                 logger.error(f"Unknown operator: {operator}")
                 return False
-            
+
             return operator_func(value, threshold)
-            
+
         except (ValueError, TypeError) as e:
             logger.warning(
                 "Failed to evaluate operator",
@@ -1169,7 +1166,7 @@ class ModelOptimizer:
                 error=str(e)
             )
             return False
-    
+
     async def _apply_rule_action(
         self,
         action: str,
@@ -1186,15 +1183,15 @@ class ModelOptimizer:
                 recommendation.provider_type = fastest_option[0]
                 recommendation.model_id = fastest_option[1]
                 recommendation.reasoning.append("Switched to fastest model due to latency rule")
-        
+
         elif action == "switch_to_most_accurate_model":
             # Similar logic for most accurate model
             pass
-        
+
         elif action == "switch_to_cost_efficient_model":
             # Switch to most cost-efficient model
             pass
-        
+
         elif action == "switch_provider":
             # Switch to different provider
             if recommendation.fallback_options:
@@ -1204,9 +1201,9 @@ class ModelOptimizer:
                         recommendation.model_id = fallback_model
                         recommendation.reasoning.append("Switched provider due to health rule")
                         break
-        
+
         return recommendation
-    
+
     def _generate_cache_key(
         self,
         task_type: TTRPGTaskType,
@@ -1224,24 +1221,24 @@ class ModelOptimizer:
             context.get("campaign_genre", ""),
             str(context.get("user_budget_remaining", 0))
         ]
-        
+
         return "|".join(key_parts)
-    
+
     async def update_provider_health(self, provider_type: ProviderType, health_score: float) -> None:
         """Update provider health score."""
         self.provider_health[provider_type] = max(0.0, min(1.0, health_score))
         logger.debug("Updated provider health", provider=provider_type.value, health=health_score)
-    
+
     async def update_provider_load(self, provider_type: ProviderType, load_change: int) -> None:
         """Update provider load tracking."""
         self.provider_load[provider_type] = max(0, self.provider_load[provider_type] + load_change)
         logger.debug("Updated provider load", provider=provider_type.value, load=self.provider_load[provider_type])
-    
+
     def add_optimization_rule(self, rule: OptimizationRule) -> None:
         """Add a new optimization rule with validation.
-        
+
         Validates that the rule has a proper condition and logs warnings for legacy string conditions.
-        
+
         Args:
             rule: OptimizationRule to add
         """
@@ -1259,7 +1256,7 @@ class ModelOptimizer:
                 rule_id=rule.rule_id,
                 condition=rule.condition
             )
-        
+
         self.optimization_rules.append(rule)
         self.optimization_rules.sort(key=lambda r: r.priority, reverse=True)
         logger.info(
@@ -1268,7 +1265,7 @@ class ModelOptimizer:
             priority=rule.priority,
             condition_type=type(rule.condition).__name__
         )
-    
+
     def add_secure_rule(
         self,
         metric: str,
@@ -1280,9 +1277,9 @@ class ModelOptimizer:
         enabled: bool = True
     ) -> str:
         """Add a new optimization rule using secure structured conditions.
-        
+
         This is the recommended way to add rules programmatically.
-        
+
         Args:
             metric: Metric name to evaluate
             operator: Comparison operator
@@ -1291,10 +1288,10 @@ class ModelOptimizer:
             task_type: Optional task type restriction
             priority: Rule priority
             enabled: Whether rule is enabled
-            
+
         Returns:
             str: Rule ID of the created rule
-            
+
         Raises:
             ValueError: If parameters are invalid
         """
@@ -1307,10 +1304,10 @@ class ModelOptimizer:
             priority=priority,
             enabled=enabled
         )
-        
+
         self.add_optimization_rule(rule)
         return rule.rule_id
-    
+
     def remove_optimization_rule(self, rule_id: str) -> bool:
         """Remove an optimization rule."""
         for i, rule in enumerate(self.optimization_rules):
@@ -1319,7 +1316,7 @@ class ModelOptimizer:
                 logger.info("Removed optimization rule", rule_id=rule_id)
                 return True
         return False
-    
+
     def get_optimization_stats(self) -> Dict[str, Any]:
         """Get optimization statistics."""
         return {
