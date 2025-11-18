@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, validator, root_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class StorageType(str, Enum):
@@ -103,22 +103,25 @@ class UsageRecord(BaseModel):
     # Metadata for vector search
     metadata: Dict[str, Any] = Field(default_factory=dict)
     
-    @validator('cost_usd')
+    @field_validator('cost_usd')
+    @classmethod
     def validate_cost(cls, v):
         """Ensure cost is non-negative."""
         if v < 0:
             raise ValueError("Cost cannot be negative")
         return v
     
-    @root_validator
+    @model_validator(mode='before')
+    @classmethod
     def validate_tokens(cls, values):
         """Validate token counts are consistent."""
-        token_count = values.get('token_count', 0)
-        input_tokens = values.get('input_tokens', 0)
-        output_tokens = values.get('output_tokens', 0)
-        
-        if token_count == 0 and (input_tokens > 0 or output_tokens > 0):
-            values['token_count'] = input_tokens + output_tokens
+        if isinstance(values, dict):
+            token_count = values.get('token_count', 0)
+            input_tokens = values.get('input_tokens', 0)
+            output_tokens = values.get('output_tokens', 0)
+            
+            if token_count == 0 and (input_tokens > 0 or output_tokens > 0):
+                values['token_count'] = input_tokens + output_tokens
         
         return values
 

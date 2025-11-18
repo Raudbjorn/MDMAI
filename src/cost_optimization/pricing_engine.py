@@ -9,6 +9,9 @@ This module provides sophisticated pricing models for different AI providers:
 - Enterprise tier pricing
 - Currency conversion and regional pricing
 - Cost optimization recommendations
+
+This is the single source of truth for all pricing calculations across the system.
+All other modules should use this engine instead of implementing their own pricing logic.
 """
 
 import asyncio
@@ -17,9 +20,11 @@ import time
 from datetime import datetime, timedelta
 from decimal import Decimal, getcontext
 from enum import Enum
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import aiohttp
+import yaml
 from structlog import get_logger
 
 from ..ai_providers.models import ProviderType
@@ -282,16 +287,77 @@ class ProviderPricingConfig:
 class PricingEngine:
     """Main pricing engine coordinating all providers."""
     
-    def __init__(self):
+    def __init__(self, config_path: Optional[Path] = None):
         self.provider_configs = {}  # ProviderType -> ProviderPricingConfig
         self.currency_rates = {'USD': Decimal('1.0')}  # Base currency rates
         self.pricing_cache = {}  # Cache for calculated prices
         self.cache_ttl = 300  # 5 minutes cache TTL
+        self.token_estimation_config = {}  # Token estimation configuration
         
-        # Initialize with default pricing
-        self._initialize_default_pricing()
+        # Initialize pricing from configuration file
+        self._load_pricing_from_config(config_path)
         
         logger.info("Pricing Engine initialized")
+    
+    def _load_pricing_from_config(self, config_path: Optional[Path] = None) -> None:
+        """Load pricing configuration from YAML file."""
+        if config_path is None:
+            config_path = Path(__file__).parent.parent.parent / "config" / "pricing.yaml"
+        
+        try:
+            with open(config_path, 'r') as f:
+                config_data = yaml.safe_load(f)
+            
+            self._initialize_pricing_from_data(config_data)
+            logger.info("Loaded pricing configuration from file", config_path=str(config_path))
+            
+        except FileNotFoundError:
+            logger.warning("Pricing config file not found, falling back to default pricing", 
+                         config_path=str(config_path))
+            self._initialize_default_pricing()
+        except yaml.YAMLError as e:
+            logger.error("Failed to parse pricing config file", error=str(e))
+            self._initialize_default_pricing()
+    
+    def _initialize_pricing_from_data(self, config_data: Dict[str, Any]) -> None:
+        """Initialize pricing from configuration data."""
+        provider_name_mapping = {
+            'openai': ProviderType.OPENAI,
+            'anthropic': ProviderType.ANTHROPIC,
+            'google': ProviderType.GOOGLE
+        }
+        
+        for provider_name, provider_data in config_data.get('providers', {}).items():
+            provider_type = provider_name_mapping.get(provider_name.lower())
+            if not provider_type:
+                logger.warning("Unknown provider in config", provider=provider_name)
+                continue
+            
+            provider_config = ProviderPricingConfig(provider_type)
+            
+            for model_id, model_data in provider_data.get('models', {}).items():
+                model_pricing = ModelPricingInfo(model_id, provider_type)
+                
+                # Set base prices
+                if 'input_tokens' in model_data:
+                    model_pricing.set_base_price(CostComponent.INPUT_TOKENS, Decimal(model_data['input_tokens']))
+                if 'output_tokens' in model_data:
+                    model_pricing.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal(model_data['output_tokens']))
+                if 'image_processing' in model_data:
+                    model_pricing.set_base_price(CostComponent.IMAGE_PROCESSING, Decimal(model_data['image_processing']))
+                
+                # Add volume discounts
+                for discount in model_data.get('volume_discounts', []):
+                    threshold = Decimal(discount['threshold'])
+                    multiplier = discount['multiplier']
+                    model_pricing.add_volume_discount(threshold, multiplier)
+                
+                provider_config.add_model(model_pricing)
+            
+            self.provider_configs[provider_type] = provider_config
+        
+        # Load token estimation configuration
+        self.token_estimation_config = config_data.get('token_estimation', {})
     
     def _initialize_default_pricing(self) -> None:
         """Initialize with default pricing for all providers.
@@ -301,6 +367,7 @@ class PricingEngine:
         changes frequently, hardcoding requires code modifications and redeployments.
         This improves maintainability and allows for easier updates.
         """
+        logger.info("Initializing default pricing configuration")
         
         # OpenAI Pricing
         openai_config = ProviderPricingConfig(ProviderType.OPENAI)
@@ -309,70 +376,28 @@ class PricingEngine:
         gpt4_turbo = ModelPricingInfo("gpt-4-turbo", ProviderType.OPENAI)
         gpt4_turbo.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.01"))
         gpt4_turbo.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.03"))
-        gpt4_turbo.add_volume_discount(Decimal("1000"), 0.95)  # 5% discount after $1000
-        gpt4_turbo.add_volume_discount(Decimal("5000"), 0.9)   # 10% discount after $5000
+        gpt4_turbo.add_volume_discount(Decimal("1000"), 0.95)
         openai_config.add_model(gpt4_turbo)
-        
-        # GPT-4
-        gpt4 = ModelPricingInfo("gpt-4", ProviderType.OPENAI)
-        gpt4.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.03"))
-        gpt4.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.06"))
-        gpt4.add_volume_discount(Decimal("1000"), 0.95)
-        openai_config.add_model(gpt4)
-        
-        # GPT-3.5 Turbo
-        gpt35_turbo = ModelPricingInfo("gpt-3.5-turbo", ProviderType.OPENAI)
-        gpt35_turbo.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.0015"))
-        gpt35_turbo.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.002"))
-        gpt35_turbo.add_volume_discount(Decimal("500"), 0.9)   # 10% discount after $500
-        openai_config.add_model(gpt35_turbo)
         
         self.provider_configs[ProviderType.OPENAI] = openai_config
         
-        # Anthropic Pricing
-        anthropic_config = ProviderPricingConfig(ProviderType.ANTHROPIC)
-        
-        # Claude 3 Opus
-        claude_opus = ModelPricingInfo("claude-3-opus-20240229", ProviderType.ANTHROPIC)
-        claude_opus.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.015"))
-        claude_opus.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.075"))
-        claude_opus.add_volume_discount(Decimal("2000"), 0.92)  # 8% discount after $2000
-        anthropic_config.add_model(claude_opus)
-        
-        # Claude 3 Sonnet
-        claude_sonnet = ModelPricingInfo("claude-3-sonnet-20240229", ProviderType.ANTHROPIC)
-        claude_sonnet.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.003"))
-        claude_sonnet.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.015"))
-        claude_sonnet.add_volume_discount(Decimal("1000"), 0.95)
-        anthropic_config.add_model(claude_sonnet)
-        
-        # Claude 3 Haiku
-        claude_haiku = ModelPricingInfo("claude-3-haiku-20240307", ProviderType.ANTHROPIC)
-        claude_haiku.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.00025"))
-        claude_haiku.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.00125"))
-        claude_haiku.add_volume_discount(Decimal("500"), 0.9)
-        anthropic_config.add_model(claude_haiku)
-        
-        self.provider_configs[ProviderType.ANTHROPIC] = anthropic_config
-        
-        # Google Pricing
-        google_config = ProviderPricingConfig(ProviderType.GOOGLE)
-        
-        # Gemini Pro
-        gemini_pro = ModelPricingInfo("gemini-pro", ProviderType.GOOGLE)
-        gemini_pro.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.0005"))
-        gemini_pro.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.0015"))
-        gemini_pro.add_volume_discount(Decimal("1000"), 0.9)   # 10% discount after $1000
-        google_config.add_model(gemini_pro)
-        
-        # Gemini Pro Vision
-        gemini_pro_vision = ModelPricingInfo("gemini-pro-vision", ProviderType.GOOGLE)
-        gemini_pro_vision.set_base_price(CostComponent.INPUT_TOKENS, Decimal("0.00025"))
-        gemini_pro_vision.set_base_price(CostComponent.OUTPUT_TOKENS, Decimal("0.0005"))
-        gemini_pro_vision.set_base_price(CostComponent.IMAGE_PROCESSING, Decimal("0.0025"))  # per image
-        google_config.add_model(gemini_pro_vision)
-        
-        self.provider_configs[ProviderType.GOOGLE] = google_config
+        # Set default token estimation configuration
+        self.token_estimation_config = {
+            'image': {
+                'openai': {
+                    'low_detail': 85,
+                    'high_detail_base': 170,
+                    'high_detail_per_tile': 85
+                },
+                'anthropic': {'default': 250},
+                'google': {'default': 258},
+                'fallback': 200
+            },
+            'audio': {
+                'tokens_per_second': 50,
+                'default_fallback': 1000
+            }
+        }
     
     def register_provider_config(self, config: ProviderPricingConfig) -> None:
         """Register a provider pricing configuration."""
@@ -714,3 +739,258 @@ class PricingEngine:
             config_export['providers'][provider.value] = provider_data
         
         return config_export
+    
+    def calculate_simple_cost(
+        self,
+        provider: ProviderType,
+        model: str,
+        input_tokens: int,
+        output_tokens: int = 0,
+        cached_tokens: int = 0,
+        tool_call_tokens: int = 0,
+        image_tokens: int = 0,
+        audio_tokens: int = 0,
+        monthly_usage: Decimal = Decimal("0"),
+        request_time: Optional[datetime] = None
+    ) -> Decimal:
+        """
+        Simple cost calculation interface for backward compatibility.
+        Used by other modules that need basic pricing calculations.
+        
+        Returns:
+            Total cost as Decimal
+        """
+        usage_amounts = {}
+        
+        if input_tokens > 0:
+            # Consider cached tokens for input
+            effective_input = input_tokens - cached_tokens
+            if effective_input > 0:
+                usage_amounts[CostComponent.INPUT_TOKENS] = effective_input
+                
+            # Add cached input cost if applicable
+            if cached_tokens > 0:
+                # This would need special handling in the pricing model
+                pass
+        
+        if output_tokens > 0:
+            usage_amounts[CostComponent.OUTPUT_TOKENS] = output_tokens
+            
+        if tool_call_tokens > 0:
+            usage_amounts[CostComponent.TOOL_CALLS] = tool_call_tokens
+            
+        if image_tokens > 0:
+            usage_amounts[CostComponent.IMAGE_PROCESSING] = image_tokens
+            
+        if audio_tokens > 0:
+            usage_amounts[CostComponent.AUDIO_PROCESSING] = audio_tokens
+        
+        result = self.calculate_cost(
+            provider=provider,
+            model_id=model,
+            usage_amounts=usage_amounts,
+            monthly_usage=monthly_usage,
+            request_time=request_time
+        )
+        
+        if result:
+            total_cost = Decimal(str(result['total_cost']))
+            
+            # Handle cached token discount separately if needed
+            if cached_tokens > 0:
+                cached_discount = self._calculate_cached_discount(
+                    provider, model, cached_tokens, input_tokens
+                )
+                total_cost -= cached_discount
+            
+            return total_cost
+        
+        return Decimal("0")
+    
+    def _calculate_cached_discount(
+        self,
+        provider: ProviderType,
+        model: str,
+        cached_tokens: int,
+        total_input_tokens: int
+    ) -> Decimal:
+        """Calculate discount for cached tokens."""
+        if provider not in self.provider_configs:
+            return Decimal("0")
+            
+        provider_config = self.provider_configs[provider]
+        model_pricing = provider_config.get_model_pricing(model)
+        
+        if not model_pricing or CostComponent.INPUT_TOKENS not in model_pricing.base_prices:
+            return Decimal("0")
+        
+        # Assume 50% discount for cached tokens (this could be configurable)
+        input_price = model_pricing.base_prices[CostComponent.INPUT_TOKENS]
+        discount_rate = Decimal("0.5")  # 50% discount
+        
+        return (Decimal(cached_tokens) / 1000) * input_price * discount_rate
+    
+    def get_provider_pricing_data(self, provider: ProviderType) -> Dict[str, Any]:
+        """
+        Get raw pricing data for a provider in the format expected by other modules.
+        Used for backward compatibility with existing code.
+        """
+        if provider not in self.provider_configs:
+            return {}
+        
+        provider_config = self.provider_configs[provider]
+        pricing_data = {}
+        
+        for model_id, model_pricing in provider_config.models.items():
+            model_data = {}
+            
+            for component, price in model_pricing.base_prices.items():
+                if component == CostComponent.INPUT_TOKENS:
+                    model_data['input'] = price
+                elif component == CostComponent.OUTPUT_TOKENS:
+                    model_data['output'] = price
+                elif component == CostComponent.TOOL_CALLS:
+                    model_data['tool'] = price
+                elif component == CostComponent.IMAGE_PROCESSING:
+                    model_data['image'] = price
+                elif component == CostComponent.AUDIO_PROCESSING:
+                    model_data['audio'] = price
+            
+            # Add cached input pricing (typically 50% of regular input)
+            if 'input' in model_data:
+                model_data['cached_input'] = model_data['input'] / 2
+            
+            pricing_data[model_id] = model_data
+        
+        return pricing_data
+    
+    def get_model_base_rates(self, provider: ProviderType, model: str) -> Tuple[float, float]:
+        """
+        Get base input and output rates for a model.
+        Used for backward compatibility with advanced_optimizer.py
+        
+        Returns:
+            Tuple of (input_rate, output_rate) per 1K tokens
+        """
+        if provider not in self.provider_configs:
+            return (0.0, 0.0)
+        
+        provider_config = self.provider_configs[provider]
+        model_pricing = provider_config.get_model_pricing(model)
+        
+        if not model_pricing:
+            return (0.0, 0.0)
+        
+        input_rate = float(model_pricing.base_prices.get(CostComponent.INPUT_TOKENS, Decimal("0")))
+        output_rate = float(model_pricing.base_prices.get(CostComponent.OUTPUT_TOKENS, Decimal("0")))
+        
+        return (input_rate, output_rate)
+    
+    def get_image_token_estimate(
+        self, 
+        provider: ProviderType, 
+        image_data: Optional[Dict[str, Any]] = None
+    ) -> int:
+        """
+        Get estimated tokens for image processing based on provider and image properties.
+        
+        Args:
+            provider: The AI provider type
+            image_data: Optional dictionary containing image metadata (e.g., detail level)
+            
+        Returns:
+            Estimated token count for the image
+        """
+        try:
+            image_config = self.token_estimation_config.get('image', {})
+            
+            if provider == ProviderType.OPENAI:
+                openai_config = image_config.get('openai', {})
+                if image_data and image_data.get('detail') == 'low':
+                    return openai_config.get('low_detail', 85)
+                else:
+                    # High detail: base + estimated tiles (simplified calculation)
+                    base = openai_config.get('high_detail_base', 170)
+                    per_tile = openai_config.get('high_detail_per_tile', 85)
+                    return base + (per_tile * 4)  # Assume 4 tiles for simplification
+                    
+            elif provider == ProviderType.ANTHROPIC:
+                return image_config.get('anthropic', {}).get('default', 250)
+                
+            elif provider == ProviderType.GOOGLE:
+                return image_config.get('google', {}).get('default', 258)
+            
+            # Fallback for unknown providers
+            return image_config.get('fallback', 200)
+            
+        except Exception as e:
+            logger.warning(f"Failed to get image token estimate from config: {e}")
+            # Hard fallback to original values
+            if provider == ProviderType.OPENAI:
+                detail = image_data.get('detail', 'auto') if image_data else 'auto'
+                return 85 if detail == 'low' else 170 + 85 * 4
+            elif provider == ProviderType.ANTHROPIC:
+                return 250
+            elif provider == ProviderType.GOOGLE:
+                return 258
+            return 200
+    
+    def get_audio_token_estimate(
+        self, 
+        provider: ProviderType, 
+        audio_data: Optional[Dict[str, Any]] = None
+    ) -> int:
+        """
+        Get estimated tokens for audio processing based on duration.
+        
+        Args:
+            provider: The AI provider type (not currently used, but for future extensibility)
+            audio_data: Optional dictionary containing audio metadata (e.g., duration_seconds)
+            
+        Returns:
+            Estimated token count for the audio
+        """
+        try:
+            audio_config = self.token_estimation_config.get('audio', {})
+            
+            if audio_data and 'duration_seconds' in audio_data:
+                duration_seconds = audio_data['duration_seconds']
+                tokens_per_second = audio_config.get('tokens_per_second', 50)
+                return int(duration_seconds * tokens_per_second)
+            
+            # Default fallback when duration unavailable
+            return audio_config.get('default_fallback', 1000)
+            
+        except Exception as e:
+            logger.warning(f"Failed to get audio token estimate from config: {e}")
+            # Hard fallback to original values
+            if audio_data and 'duration_seconds' in audio_data:
+                return int(audio_data['duration_seconds'] * 50)
+            return 1000
+    
+    def get_token_estimation_config(self) -> Dict[str, Any]:
+        """
+        Get the raw token estimation configuration for advanced usage.
+        
+        Returns:
+            Dictionary containing the token estimation configuration
+        """
+        return self.token_estimation_config.copy()
+
+
+# Global pricing engine instance - single source of truth
+_global_pricing_engine: Optional[PricingEngine] = None
+
+
+def get_pricing_engine() -> PricingEngine:
+    """Get the global pricing engine instance."""
+    global _global_pricing_engine
+    if _global_pricing_engine is None:
+        _global_pricing_engine = PricingEngine()
+    return _global_pricing_engine
+
+
+def set_pricing_engine(engine: PricingEngine) -> None:
+    """Set the global pricing engine instance."""
+    global _global_pricing_engine
+    _global_pricing_engine = engine

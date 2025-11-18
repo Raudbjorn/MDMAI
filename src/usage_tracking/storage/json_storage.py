@@ -19,7 +19,11 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import fcntl
+try:
+    import fcntl
+    HAS_FCNTL = True
+except ImportError:
+    HAS_FCNTL = False
 import gzip
 from contextlib import contextmanager
 
@@ -70,8 +74,9 @@ class AtomicFileWriter:
                 file_obj = open(self.temp_path, 'w', encoding='utf-8')
             
             try:
-                # Acquire exclusive lock
-                fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+                # Acquire exclusive lock (Unix-like systems only)
+                if HAS_FCNTL:
+                    fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
                 yield file_obj
                 
                 # Force write to disk

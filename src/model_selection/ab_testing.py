@@ -21,7 +21,6 @@ except ImportError:
     SCIPY_AVAILABLE = False
     import warnings
     warnings.warn("scipy not available - statistical tests will use approximations")
-
 from .task_categorizer import TTRPGTaskType
 from .performance_profiler import PerformanceBenchmark, MetricType
 from ..ai_providers.models import ProviderType
@@ -512,26 +511,22 @@ class ABTestingFramework:
             samples_a = valid_samples[variant_ids[0]]
             samples_b = valid_samples[variant_ids[1]]
             
-            # Calculate t-statistic and p-value
-            mean_a = statistics.mean(samples_a)
-            mean_b = statistics.mean(samples_b)
-            std_a = statistics.stdev(samples_a)
-            std_b = statistics.stdev(samples_b)
-            n_a = len(samples_a)
-            n_b = len(samples_b)
-            
-            # Pooled standard error
-            pooled_se = math.sqrt((std_a ** 2 / n_a) + (std_b ** 2 / n_b))
-            
-            if pooled_se > 0:
-                t_stat = abs(mean_a - mean_b) / pooled_se
-                
-                # Use scipy's t-distribution CDF for accurate p-value
-                degrees_of_freedom = n_a + n_b - 2
-                p_value = 2 * (1 - stats.t.cdf(abs(t_stat), df=degrees_of_freedom))
-                
+            # Perform t-test using shared scipy utility
+            try:
+                t_stat, p_value = perform_t_test(samples_a, samples_b, equal_var=False)  # Welch's t-test
                 result.p_value = p_value
-                result.effect_size = abs(mean_a - mean_b) / max(std_a, std_b, 0.001)
+                
+                # Calculate effect size (Cohen's d)
+                mean_a = statistics.mean(samples_a)
+                mean_b = statistics.mean(samples_b)
+                std_a = statistics.stdev(samples_a) if len(samples_a) > 1 else 0
+                std_b = statistics.stdev(samples_b) if len(samples_b) > 1 else 0
+                
+                # Pooled standard deviation for Cohen's d
+                n_a, n_b = len(samples_a), len(samples_b)
+                pooled_std = math.sqrt(((n_a - 1) * std_a**2 + (n_b - 1) * std_b**2) / 
+                                     (n_a + n_b - 2)) if n_a + n_b > 2 else max(std_a, std_b)
+                result.effect_size = abs(mean_a - mean_b) / max(pooled_std, 0.001)
                 
                 # Determine winning variant
                 if primary_metric == "cost":  # Lower is better for cost
@@ -540,14 +535,30 @@ class ABTestingFramework:
                     result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
                 else:  # Higher is better for quality/satisfaction
                     result.winning_variant = variant_ids[0] if mean_a > mean_b else variant_ids[1]
+                    
+            except (ValueError, ImportError) as e:
+                logger.error("Failed to perform t-test", error=str(e), experiment_id=experiment.experiment_id)
+                result.p_value = 1.0  # Fail safe to non-significant
+                result.effect_size = 0.0
+                # Still determine winning variant based on means for practical purposes
+                mean_a = statistics.mean(samples_a)
+                mean_b = statistics.mean(samples_b)
+                if primary_metric in ["cost", "latency"]:  # Lower is better
+                    result.winning_variant = variant_ids[0] if mean_a < mean_b else variant_ids[1]
+                else:  # Higher is better
+                    result.winning_variant = variant_ids[0] if mean_a > mean_b else variant_ids[1]
         
         else:
             # Use ANOVA for multiple variants (more than 2)
             sample_groups = list(valid_samples.values())
             
-            # Perform one-way ANOVA
-            f_stat, p_value = stats.f_oneway(*sample_groups)
-            result.p_value = p_value
+            # Perform one-way ANOVA using shared scipy utility
+            try:
+                f_stat, p_value = perform_one_way_anova(*sample_groups)
+                result.p_value = p_value
+            except (ValueError, ImportError) as e:
+                logger.error("Failed to perform ANOVA", error=str(e), experiment_id=experiment.experiment_id)
+                result.p_value = 1.0  # Fail safe to non-significant
             
             # Calculate effect size using eta-squared
             # First, calculate overall mean and sum of squares
