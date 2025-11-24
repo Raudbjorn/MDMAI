@@ -23,7 +23,7 @@ asyncpg==0.29.0  # PostgreSQL async driver (optional)
 # ============================================
 # PDF Processing (Modernized)
 # ============================================
-pypdf==6.0.0  # Modern fork of PyPDF2, actively maintained
+pypdf==6.4.0  # Modern fork of PyPDF2, actively maintained
 pdfplumber==0.10.3  # Table extraction and advanced parsing
 pikepdf==8.10.0  # Robust PDF handling with QPDF backend
 pymupdf==1.23.0  # Fast PDF processing (optional)
