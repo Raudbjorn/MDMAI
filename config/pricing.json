@@ -3,25 +3,25 @@
     "openai": {
       "models": {
         "gpt-4-turbo": {
-          "input_tokens": "0.01",
-          "output_tokens": "0.03",
+          "input_tokens": 0.01,
+          "output_tokens": 0.03,
           "volume_discounts": [
             {"threshold": 1000, "multiplier": 0.95},
             {"threshold": 5000, "multiplier": 0.9}
           ]
         },
         "gpt-4": {
-          "input_tokens": "0.03",
-          "output_tokens": "0.06",
+          "input_tokens": 0.03,
+          "output_tokens": 0.06,
           "volume_discounts": [
-            {"threshold": "1000", "multiplier": 0.95}
+            {"threshold": 1000, "multiplier": 0.95}
           ]
         },
         "gpt-3.5-turbo": {
-          "input_tokens": "0.0015",
-          "output_tokens": "0.002",
+          "input_tokens": 0.0015,
+          "output_tokens": 0.002,
           "volume_discounts": [
-            {"threshold": "500", "multiplier": 0.9}
+            {"threshold": 500, "multiplier": 0.9}
           ]
         }
       }
@@ -29,24 +29,24 @@
     "anthropic": {
       "models": {
         "claude-3-opus-20240229": {
-          "input_tokens": "0.015",
-          "output_tokens": "0.075",
+          "input_tokens": 0.015,
+          "output_tokens": 0.075,
           "volume_discounts": [
-            {"threshold": "2000", "multiplier": 0.92}
+            {"threshold": 2000, "multiplier": 0.92}
           ]
         },
         "claude-3-sonnet-20240229": {
-          "input_tokens": "0.003",
-          "output_tokens": "0.015",
+          "input_tokens": 0.003,
+          "output_tokens": 0.015,
           "volume_discounts": [
-            {"threshold": "1000", "multiplier": 0.95}
+            {"threshold": 1000, "multiplier": 0.95}
           ]
         },
         "claude-3-haiku-20240307": {
-          "input_tokens": "0.00025",
-          "output_tokens": "0.00125",
+          "input_tokens": 0.00025,
+          "output_tokens": 0.00125,
           "volume_discounts": [
-            {"threshold": "500", "multiplier": 0.9}
+            {"threshold": 500, "multiplier": 0.9}
           ]
         }
       }
@@ -54,16 +54,16 @@
     "google": {
       "models": {
         "gemini-pro": {
-          "input_tokens": "0.0005",
-          "output_tokens": "0.0015",
+          "input_tokens": 0.0005,
+          "output_tokens": 0.0015,
           "volume_discounts": [
-            {"threshold": "1000", "multiplier": 0.9}
+            {"threshold": 1000, "multiplier": 0.9}
           ]
         },
         "gemini-pro-vision": {
-          "input_tokens": "0.00025",
-          "output_tokens": "0.0005",
-          "image_processing": "0.0025",
+          "input_tokens": 0.00025,
+          "output_tokens": 0.0005,
+          "image_processing": 0.0025,
           "volume_discounts": []
         }
       }

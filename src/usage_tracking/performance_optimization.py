@@ -8,7 +8,6 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
 import hashlib
-import pickle
 import json
 from collections import defaultdict, OrderedDict, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +25,29 @@ from .json_persistence import JsonPersistenceManager
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _safe_json_encoder(obj: Any) -> Any:
+    """Custom JSON encoder for cache serialization."""
+    if hasattr(obj, 'isoformat'):  # datetime
+        return {'__datetime__': obj.isoformat()}
+    if hasattr(obj, '__dataclass_fields__'):  # dataclass
+        return {'__dataclass__': obj.__class__.__name__, 'data': asdict(obj)}
+    if isinstance(obj, Enum):
+        return {'__enum__': obj.__class__.__name__, 'value': obj.value}
+    if isinstance(obj, set):
+        return {'__set__': list(obj)}
+    return str(obj)
+
+
+def _safe_serialize(value: Any) -> str:
+    """Safely serialize a value to JSON string (replaces pickle.dumps)."""
+    return json.dumps(value, default=_safe_json_encoder)
+
+
+def _safe_deserialize(data: str) -> Any:
+    """Safely deserialize a JSON string (replaces pickle.loads)."""
+    return json.loads(data)
 
 
 class CacheLevel(Enum):
@@ -199,7 +221,7 @@ class MultiTierCache:
     def _calculate_entry_size(self, value: Any) -> int:
         """Calculate the approximate size of a cache entry."""
         try:
-            return len(pickle.dumps(value))
+            return len(_safe_serialize(value).encode())
         except Exception:
             return len(str(value).encode())
     
@@ -230,7 +252,7 @@ class MultiTierCache:
             try:
                 cached_data = self.redis_client.get(key)
                 if cached_data:
-                    value = pickle.loads(cached_data)
+                    value = _safe_deserialize(cached_data.decode() if isinstance(cached_data, bytes) else cached_data)
                     
                     # Promote to L1 cache
                     await self._set_l1(key, value, tags or set())
@@ -271,7 +293,7 @@ class MultiTierCache:
         # Set in L2 Redis cache
         if self.redis_client:
             try:
-                cached_data = pickle.dumps(value)
+                cached_data = _safe_serialize(value)
                 ttl = ttl_seconds or self.l2_ttl_seconds
                 self.redis_client.setex(key, ttl, cached_data)
                 

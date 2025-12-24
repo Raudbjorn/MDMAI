@@ -270,8 +270,8 @@ class ModelConfigManager:
                 model_id="gpt-3.5-turbo",
                 provider=ProviderType.OPENAI,
                 cost_config=ModelCostConfig(
-                    input_cost_per_1k_tokens=0.0015,
-                    output_cost_per_1k_tokens=0.002,
+                    input_cost_per_1k_tokens=0.0005,
+                    output_cost_per_1k_tokens=0.0015,
                     context_window=16385,
                     max_output_tokens=4096,
                     cost_tier=CostTier.LOW,

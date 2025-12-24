@@ -1,61 +1,247 @@
-# AI Provider Pricing Configuration
-# This is the single source of truth for all pricing data across the system
-# Prices are per 1,000 tokens unless otherwise specified
+# AI Provider Pricing Configuration for MDMAI TTRPG Assistant
+# This file contains current pricing information for all supported AI providers
+# Prices are in USD per 1,000 tokens (standard industry format)
 # Last updated: 2025-01-15
 
+# Configuration metadata
+metadata:
+  version: "2.0"
+  updated_at: "2025-01-15T00:00:00Z"
+  currency: "USD"
+  per_tokens: 1000  # Pricing is per 1K tokens (industry standard)
+
+# Provider-specific pricing
 providers:
-  openai:
-    gpt-4:
-      input: 0.03
-      output: 0.06
-      cached_input: 0.015
-      tool_calls: 0.06
-      image_processing: 0.01
-      audio_processing: 0.006
-    gpt-4-turbo:
-      input: 0.01
-      output: 0.03
-      cached_input: 0.005
-      tool_calls: 0.03
-      image_processing: 0.01
-      audio_processing: 0.006
-    gpt-3.5-turbo:
-      input: 0.0005
-      output: 0.0015
-      cached_input: 0.00025
-      tool_calls: 0.0015
-      
+  # Anthropic Claude Models
   anthropic:
-    claude-3-opus:
-      input: 0.015
-      output: 0.075
-      cached_input: 0.0075
-      tool_calls: 0.075
-      image_processing: 0.015
-    claude-3-sonnet:
-      input: 0.003
-      output: 0.015
-      cached_input: 0.0015
-      tool_calls: 0.015
-      image_processing: 0.003
-    claude-3-haiku:
-      input: 0.00025
-      output: 0.00125
-      cached_input: 0.000125
-      tool_calls: 0.00125
-      
+    description: "Anthropic Claude models - excellent for TTRPG storytelling and roleplay"
+    models:
+      claude-3-haiku:
+        display_name: "Claude 3 Haiku"
+        description: "Fast, efficient model for quick responses and dice rolls"
+        input: 0.00025      # $0.25 per 1M = $0.00025 per 1K
+        output: 0.00125     # $1.25 per 1M = $0.00125 per 1K
+        cached_input: 0.000125
+        tool_calls: 0.00125
+        context_window: 200000
+        recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
+
+      claude-3-5-sonnet:
+        display_name: "Claude 3.5 Sonnet"
+        description: "Balanced model for main TTRPG gameplay"
+        input: 0.003        # $3.00 per 1M = $0.003 per 1K
+        output: 0.015       # $15.00 per 1M = $0.015 per 1K
+        cached_input: 0.0015
+        tool_calls: 0.015
+        image_processing: 0.003
+        context_window: 200000
+        recommended_for: ["main_gameplay", "storytelling", "character_interactions"]
+
+      claude-3-opus:
+        display_name: "Claude 3 Opus"
+        description: "Most capable model for complex narratives and world-building"
+        input: 0.015        # $15.00 per 1M = $0.015 per 1K
+        output: 0.075       # $75.00 per 1M = $0.075 per 1K
+        cached_input: 0.0075
+        tool_calls: 0.075
+        image_processing: 0.015
+        context_window: 200000
+        recommended_for: ["complex_narratives", "world_building", "campaign_planning"]
+
+      # Legacy model aliases for backward compatibility
+      claude-3-haiku-20240307:
+        deprecated: true
+        replacement: "claude-3-haiku"
+        input: 0.00025
+        output: 0.00125
+
+      claude-3-5-sonnet-20241022:
+        deprecated: true
+        replacement: "claude-3-5-sonnet"
+        input: 0.003
+        output: 0.015
+
+      claude-3-opus-20240229:
+        deprecated: true
+        replacement: "claude-3-opus"
+        input: 0.015
+        output: 0.075
+
+  # OpenAI GPT Models
+  openai:
+    description: "OpenAI GPT models - versatile for various TTRPG tasks"
+    models:
+      gpt-4o-mini:
+        display_name: "GPT-4o Mini"
+        description: "Cost-effective model for basic TTRPG tasks"
+        input: 0.00015      # $0.15 per 1M = $0.00015 per 1K
+        output: 0.0006      # $0.60 per 1M = $0.0006 per 1K
+        cached_input: 0.000075
+        tool_calls: 0.0006
+        context_window: 128000
+        recommended_for: ["economy_option", "simple_tasks", "quick_responses"]
+
+      gpt-4o:
+        display_name: "GPT-4o"
+        description: "Advanced multimodal model for rich TTRPG experiences"
+        input: 0.0025       # $2.50 per 1M = $0.0025 per 1K
+        output: 0.01        # $10.00 per 1M = $0.01 per 1K
+        cached_input: 0.00125
+        tool_calls: 0.01
+        image_processing: 0.01
+        audio_processing: 0.006
+        context_window: 128000
+        recommended_for: ["multimodal", "main_gameplay", "image_analysis"]
+
+      gpt-4-turbo:
+        display_name: "GPT-4 Turbo"
+        description: "High-performance model for complex TTRPG scenarios"
+        input: 0.01         # $10.00 per 1M = $0.01 per 1K
+        output: 0.03        # $30.00 per 1M = $0.03 per 1K
+        cached_input: 0.005
+        tool_calls: 0.03
+        image_processing: 0.01
+        audio_processing: 0.006
+        context_window: 128000
+        recommended_for: ["complex_scenarios", "detailed_planning", "premium_features"]
+
+      gpt-4:
+        display_name: "GPT-4"
+        input: 0.03
+        output: 0.06
+        cached_input: 0.015
+        tool_calls: 0.06
+        context_window: 8192
+
+      gpt-3.5-turbo:
+        display_name: "GPT-3.5 Turbo"
+        input: 0.0005
+        output: 0.0015
+        cached_input: 0.00025
+        tool_calls: 0.0015
+        context_window: 16385
+
+      # Legacy model aliases
+      gpt-4-turbo-2024-04-09:
+        deprecated: true
+        replacement: "gpt-4-turbo"
+        input: 0.01
+        output: 0.03
+
+      gpt-4-vision-preview:
+        deprecated: true
+        replacement: "gpt-4o"
+        input: 0.01
+        output: 0.03
+
+  # Google Gemini Models
   google:
-    gemini-1.5-pro:
-      input: 0.00125
-      output: 0.005
-      cached_input: 0.000625
-      tool_calls: 0.005
-      image_processing: 0.0025
-    gemini-1.5-flash:
-      input: 0.000075
-      output: 0.0003
-      cached_input: 0.0000375
-      tool_calls: 0.0003
+    description: "Google Gemini models - large context windows for extensive campaigns"
+    models:
+      # Gemini 3.x models (Latest - Preview)
+      gemini-3-pro-preview:
+        display_name: "Gemini 3 Pro (Preview)"
+        description: "Most powerful multimodal and agentic model"
+        input: 0.002        # $2.00 per 1M = $0.002 per 1K
+        output: 0.012       # $12.00 per 1M = $0.012 per 1K
+        cached_input: 0.0002
+        tool_calls: 0.012
+        image_processing: 0.002
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["complex_reasoning", "agentic_tasks", "world_building"]
+
+      gemini-3-flash-preview:
+        display_name: "Gemini 3 Flash (Preview)"
+        description: "Fast and efficient with excellent reasoning"
+        input: 0.0005       # $0.50 per 1M = $0.0005 per 1K
+        output: 0.003       # $3.00 per 1M = $0.003 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.003
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["main_gameplay", "storytelling", "fast_responses"]
+
+      # Gemini 2.5 models (Stable)
+      gemini-2.5-pro:
+        display_name: "Gemini 2.5 Pro"
+        description: "Advanced model with excellent reasoning"
+        input: 0.00125      # $1.25 per 1M = $0.00125 per 1K
+        output: 0.01        # $10.00 per 1M = $0.01 per 1K
+        cached_input: 0.000625
+        tool_calls: 0.01
+        image_processing: 0.00125
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["campaign_management", "world_building", "complex_scenarios"]
+
+      gemini-2.5-flash:
+        display_name: "Gemini 2.5 Flash"
+        description: "Fast, efficient model with strong reasoning"
+        input: 0.0003       # $0.30 per 1M = $0.0003 per 1K
+        output: 0.0025      # $2.50 per 1M = $0.0025 per 1K
+        cached_input: 0.00015
+        tool_calls: 0.0025
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["main_gameplay", "storytelling", "character_interactions"]
+
+      gemini-2.5-flash-lite:
+        display_name: "Gemini 2.5 Flash-Lite"
+        description: "Most cost-effective option"
+        input: 0.0001       # $0.10 per 1M = $0.0001 per 1K
+        output: 0.0004      # $0.40 per 1M = $0.0004 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.0004
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
+
+      # Gemini 2.0 models
+      gemini-2.0-flash:
+        display_name: "Gemini 2.0 Flash"
+        description: "Fast, efficient with multimodal support"
+        input: 0.0001       # $0.10 per 1M = $0.0001 per 1K
+        output: 0.0004      # $0.40 per 1M = $0.0004 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.0004
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["large_context", "campaign_history", "fast_responses"]
+
+      gemini-2.0-flash-lite:
+        display_name: "Gemini 2.0 Flash-Lite"
+        description: "Ultra cost-effective option"
+        input: 0.000075     # $0.075 per 1M = $0.000075 per 1K
+        output: 0.0003      # $0.30 per 1M = $0.0003 per 1K
+        cached_input: 0.0000375
+        tool_calls: 0.0003
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
+
+      # Legacy Gemini 1.5 models
+      gemini-1.5-flash:
+        deprecated: true
+        replacement: "gemini-2.5-flash"
+        display_name: "Gemini 1.5 Flash"
+        input: 0.000075
+        output: 0.0003
+        context_window: 1048576
+
+      gemini-1.5-pro:
+        deprecated: true
+        replacement: "gemini-2.5-pro"
+        display_name: "Gemini 1.5 Pro"
+        input: 0.00125
+        output: 0.005
+        context_window: 2097152
+
+      # Legacy model aliases
+      gemini-pro:
+        deprecated: true
+        replacement: "gemini-2.5-pro"
+        input: 0.0005
+        output: 0.0015
+
+      gemini-pro-vision:
+        deprecated: true
+        replacement: "gemini-2.5-flash"
+        input: 0.00025
+        output: 0.0005
 
 # Volume discount tiers (threshold in USD monthly spend -> discount factor)
 volume_discounts:
@@ -64,22 +250,109 @@ volume_discounts:
   25000: 0.85   # 15% discount for $25000+ monthly
 
 # Token estimation configuration for multimodal content
-# Values are in estimated tokens per unit
 token_estimation:
   image:
     openai:
-      low_detail: 85      # Fixed tokens for low detail images
-      high_detail_base: 170  # Base tokens for high detail images
-      high_detail_per_tile: 85  # Additional tokens per tile for high detail
+      low_detail: 85
+      high_detail_base: 170
+      high_detail_per_tile: 85
     anthropic:
-      default: 250        # Approximate tokens per image for Claude
+      default: 250
     google:
-      default: 258        # Approximate tokens per image for Gemini
-    fallback: 200         # Default fallback value for unknown providers
-  
+      default: 258
+    fallback: 200
+
   audio:
-    tokens_per_second: 50   # Estimated tokens per second of audio
-    default_fallback: 1000  # Default tokens when duration unavailable
+    tokens_per_second: 50
+    default_fallback: 1000
+
+# Cost optimization recommendations for TTRPG use cases
+optimization:
+  ttrpg_use_cases:
+    quick_responses:
+      recommended_models:
+        - provider: "anthropic"
+          model: "claude-3-haiku"
+          reason: "Fastest and most cost-effective for simple queries"
+        - provider: "google"
+          model: "gemini-2.5-flash-lite"
+          reason: "Ultra low cost with excellent performance"
+        - provider: "openai"
+          model: "gpt-4o-mini"
+          reason: "OpenAI's economy option"
+
+    main_gameplay:
+      recommended_models:
+        - provider: "anthropic"
+          model: "claude-3-5-sonnet"
+          reason: "Best balance of quality and cost for storytelling"
+        - provider: "google"
+          model: "gemini-2.5-flash"
+          reason: "Strong reasoning with massive context window"
+        - provider: "openai"
+          model: "gpt-4o"
+          reason: "Good multimodal capabilities"
+
+    complex_scenarios:
+      recommended_models:
+        - provider: "anthropic"
+          model: "claude-3-opus"
+          reason: "Highest quality reasoning and creativity"
+        - provider: "google"
+          model: "gemini-3-pro-preview"
+          reason: "Most powerful agentic model with large context"
+        - provider: "openai"
+          model: "gpt-4-turbo"
+          reason: "Advanced capabilities for complex planning"
+
+# Spending guidelines for TTRPG usage (single source of truth)
+spending_guidelines:
+  casual_player:
+    daily_budget: 1.00
+    weekly_budget: 5.00
+    monthly_budget: 15.00
+    recommended_provider: "google"
+
+  regular_player:
+    daily_budget: 3.00
+    weekly_budget: 15.00
+    monthly_budget: 50.00
+    recommended_provider: "anthropic"
+
+  power_user:
+    daily_budget: 10.00
+    weekly_budget: 50.00
+    monthly_budget: 150.00
+    recommended_provider: "mixed"
+
+  dm_heavy_usage:
+    daily_budget: 15.00
+    weekly_budget: 75.00
+    monthly_budget: 250.00
+    recommended_provider: "mixed"
+
+# Alert thresholds for cost monitoring
+cost_alerts:
+  warning_threshold: 0.80   # Alert at 80% of budget
+  critical_threshold: 0.95  # Critical alert at 95% of budget
+  # Budget limits reference spending_guidelines above (single source of truth)
+
+# Rate limiting guidelines (requests per minute)
+rate_limits:
+  anthropic:
+    tier_1: 50
+    tier_2: 100
+    tier_3: 200
+
+  openai:
+    tier_1: 500
+    tier_2: 1000
+    tier_3: 2000
+
+  google:
+    tier_1: 60
+    tier_2: 120
+    tier_3: 300
 
 # Exchange rates (base currency: USD)
 exchange_rates:
@@ -88,3 +361,20 @@ exchange_rates:
   GBP: 0.73
   JPY: 110.0
   CNY: 6.5
+
+# Update schedule
+update_schedule:
+  frequency: "monthly"
+  next_update: "2025-02-15T00:00:00Z"
+  source: "Official provider pricing pages"
+
+# Pricing change notifications
+notifications:
+  price_increase_warning_days: 30
+  deprecated_model_warning_days: 60
+
+# Data retention
+data_retention:
+  usage_records_days: 90
+  cost_analysis_days: 365
+  pricing_history_days: 1095

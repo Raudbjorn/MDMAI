@@ -868,7 +868,7 @@ class MetricsCollector:
     ) -> Union[Dict[str, Any], str]:
         """Export metrics data in specified format."""
         exported_data = {
-            "export_timestamp": datetime.now().isoformat(),
+            "export_timestamp": datetime.now(timezone.utc).isoformat(),
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "aggregation_level": aggregation_level.value,
