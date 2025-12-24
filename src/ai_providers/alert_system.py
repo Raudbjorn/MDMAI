@@ -599,8 +599,8 @@ class AlertSystem:
         # Get recent usage data and calculate error rate
         total_requests = 0
         failed_requests = 0
-        
-        current_time = datetime.now()
+
+        current_time = datetime.now(timezone.utc)
         today = current_time.date().isoformat()
         
         for user_daily in self.usage_tracker.daily_usage.values():
@@ -619,8 +619,8 @@ class AlertSystem:
         # Get recent usage data and calculate average latency
         total_latency = 0.0
         request_count = 0
-        
-        current_time = datetime.now()
+
+        current_time = datetime.now(timezone.utc)
         today = current_time.date().isoformat()
         
         for user_daily in self.usage_tracker.daily_usage.values():

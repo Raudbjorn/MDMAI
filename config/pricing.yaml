@@ -138,37 +138,108 @@ providers:
   google:
     description: "Google Gemini models - large context windows for extensive campaigns"
     models:
-      gemini-1.5-flash:
-        display_name: "Gemini 1.5 Flash"
-        description: "Fast, efficient model with large context window"
+      # Gemini 3.x models (Latest - Preview)
+      gemini-3-pro-preview:
+        display_name: "Gemini 3 Pro (Preview)"
+        description: "Most powerful multimodal and agentic model"
+        input: 0.002        # $2.00 per 1M = $0.002 per 1K
+        output: 0.012       # $12.00 per 1M = $0.012 per 1K
+        cached_input: 0.0002
+        tool_calls: 0.012
+        image_processing: 0.002
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["complex_reasoning", "agentic_tasks", "world_building"]
+
+      gemini-3-flash-preview:
+        display_name: "Gemini 3 Flash (Preview)"
+        description: "Fast and efficient with excellent reasoning"
+        input: 0.0005       # $0.50 per 1M = $0.0005 per 1K
+        output: 0.003       # $3.00 per 1M = $0.003 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.003
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["main_gameplay", "storytelling", "fast_responses"]
+
+      # Gemini 2.5 models (Stable)
+      gemini-2.5-pro:
+        display_name: "Gemini 2.5 Pro"
+        description: "Advanced model with excellent reasoning"
+        input: 0.00125      # $1.25 per 1M = $0.00125 per 1K
+        output: 0.01        # $10.00 per 1M = $0.01 per 1K
+        cached_input: 0.000625
+        tool_calls: 0.01
+        image_processing: 0.00125
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["campaign_management", "world_building", "complex_scenarios"]
+
+      gemini-2.5-flash:
+        display_name: "Gemini 2.5 Flash"
+        description: "Fast, efficient model with strong reasoning"
+        input: 0.0003       # $0.30 per 1M = $0.0003 per 1K
+        output: 0.0025      # $2.50 per 1M = $0.0025 per 1K
+        cached_input: 0.00015
+        tool_calls: 0.0025
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["main_gameplay", "storytelling", "character_interactions"]
+
+      gemini-2.5-flash-lite:
+        display_name: "Gemini 2.5 Flash-Lite"
+        description: "Most cost-effective option"
+        input: 0.0001       # $0.10 per 1M = $0.0001 per 1K
+        output: 0.0004      # $0.40 per 1M = $0.0004 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.0004
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
+
+      # Gemini 2.0 models
+      gemini-2.0-flash:
+        display_name: "Gemini 2.0 Flash"
+        description: "Fast, efficient with multimodal support"
+        input: 0.0001       # $0.10 per 1M = $0.0001 per 1K
+        output: 0.0004      # $0.40 per 1M = $0.0004 per 1K
+        cached_input: 0.00005
+        tool_calls: 0.0004
+        context_window: 1048576  # 1M tokens
+        recommended_for: ["large_context", "campaign_history", "fast_responses"]
+
+      gemini-2.0-flash-lite:
+        display_name: "Gemini 2.0 Flash-Lite"
+        description: "Ultra cost-effective option"
         input: 0.000075     # $0.075 per 1M = $0.000075 per 1K
         output: 0.0003      # $0.30 per 1M = $0.0003 per 1K
         cached_input: 0.0000375
         tool_calls: 0.0003
         context_window: 1048576  # 1M tokens
-        recommended_for: ["large_context", "campaign_history", "fast_responses"]
+        recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
+
+      # Legacy Gemini 1.5 models
+      gemini-1.5-flash:
+        deprecated: true
+        replacement: "gemini-2.5-flash"
+        display_name: "Gemini 1.5 Flash"
+        input: 0.000075
+        output: 0.0003
+        context_window: 1048576
 
       gemini-1.5-pro:
+        deprecated: true
+        replacement: "gemini-2.5-pro"
         display_name: "Gemini 1.5 Pro"
-        description: "Advanced model with massive context window"
-        input: 0.00125      # $1.25 per 1M = $0.00125 per 1K
-        output: 0.005       # $5.00 per 1M = $0.005 per 1K
-        cached_input: 0.000625
-        tool_calls: 0.005
-        image_processing: 0.0025
-        context_window: 2097152  # 2M tokens
-        recommended_for: ["massive_context", "campaign_management", "world_building"]
+        input: 0.00125
+        output: 0.005
+        context_window: 2097152
 
       # Legacy model aliases
       gemini-pro:
         deprecated: true
-        replacement: "gemini-1.5-pro"
+        replacement: "gemini-2.5-pro"
         input: 0.0005
         output: 0.0015
 
       gemini-pro-vision:
         deprecated: true
-        replacement: "gemini-1.5-pro"
+        replacement: "gemini-2.5-flash"
         input: 0.00025
         output: 0.0005
 
@@ -204,8 +275,8 @@ optimization:
           model: "claude-3-haiku"
           reason: "Fastest and most cost-effective for simple queries"
         - provider: "google"
-          model: "gemini-1.5-flash"
-          reason: "Very low cost with good performance"
+          model: "gemini-2.5-flash-lite"
+          reason: "Ultra low cost with excellent performance"
         - provider: "openai"
           model: "gpt-4o-mini"
           reason: "OpenAI's economy option"
@@ -215,24 +286,24 @@ optimization:
         - provider: "anthropic"
           model: "claude-3-5-sonnet"
           reason: "Best balance of quality and cost for storytelling"
+        - provider: "google"
+          model: "gemini-2.5-flash"
+          reason: "Strong reasoning with massive context window"
         - provider: "openai"
           model: "gpt-4o"
           reason: "Good multimodal capabilities"
-        - provider: "google"
-          model: "gemini-1.5-pro"
-          reason: "Massive context window for long campaigns"
 
     complex_scenarios:
       recommended_models:
         - provider: "anthropic"
           model: "claude-3-opus"
           reason: "Highest quality reasoning and creativity"
+        - provider: "google"
+          model: "gemini-3-pro-preview"
+          reason: "Most powerful agentic model with large context"
         - provider: "openai"
           model: "gpt-4-turbo"
           reason: "Advanced capabilities for complex planning"
-        - provider: "google"
-          model: "gemini-1.5-pro"
-          reason: "Large context for complex world state"
 
 # Spending guidelines for TTRPG usage (single source of truth)
 spending_guidelines:

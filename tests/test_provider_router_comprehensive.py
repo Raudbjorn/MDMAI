@@ -61,8 +61,21 @@ from src.ai_providers.provider_manager import AIProviderManager
 from src.ai_providers.error_handler import (
     AIProviderError,
     NoProviderAvailableError,
-    CircuitBreakerOpenError
+    CircuitBreakerOpenError,
+    RateLimitError,
+    AuthenticationError,
+    BudgetExceededError,
+    ServiceUnavailableError,
 )
+
+# Define missing exception classes that may not exist yet
+class ProviderUnavailableError(AIProviderError):
+    """Raised when a provider is unavailable."""
+    pass
+
+class InconsistentResponseError(AIProviderError):
+    """Raised when provider responses are inconsistent."""
+    pass
 
 
 # ============================================================================
@@ -147,11 +160,11 @@ def chaos_injector():
             self.active = False
             self.failure_types = []
             
-        def inject_latency(self, min_ms: float = 100, max_ms: float = 1000):
+        async def inject_latency(self, min_ms: float = 100, max_ms: float = 1000):
             """Inject random latency."""
             if self.active:
                 delay = random.uniform(min_ms, max_ms) / 1000
-                asyncio.sleep(delay)
+                await asyncio.sleep(delay)
                 
         def inject_failure(self, probability: float = 0.3):
             """Inject random failure."""

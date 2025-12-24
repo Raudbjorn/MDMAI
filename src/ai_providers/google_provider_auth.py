@@ -69,10 +69,11 @@ class GoogleProvider(BaseAIProvider):
         
         # Model optimization for TTRPG
         self.model_mapping = {
-            'fast': 'gemini-1.5-flash',      # Fast, efficient responses
-            'balanced': 'gemini-1.5-pro',   # Balanced performance
-            'powerful': 'gemini-1.5-pro',   # Same as balanced for now
-            'vision': 'gemini-1.5-pro'    # Multi-modal support (1.5-pro has vision)
+            'fast': 'gemini-2.5-flash-lite',    # Ultra-fast, most cost-effective
+            'balanced': 'gemini-2.5-flash',     # Balanced performance
+            'powerful': 'gemini-2.5-pro',       # Advanced reasoning
+            'vision': 'gemini-2.5-flash',       # Multi-modal support
+            'agentic': 'gemini-3-flash-preview' # Latest agentic capabilities
         }
         
         # Use centralized services
@@ -411,8 +412,21 @@ class GoogleProvider(BaseAIProvider):
                 stream=True
             )
         
-        # Convert to async iterator
-        for chunk in response:
+        # Convert synchronous iterator to async using executor to avoid blocking
+        loop = asyncio.get_running_loop()
+
+        def get_next_chunk(iterator):
+            """Get next chunk from iterator, return None when exhausted."""
+            try:
+                return next(iterator)
+            except StopIteration:
+                return None
+
+        response_iter = iter(response)
+        while True:
+            chunk = await loop.run_in_executor(None, get_next_chunk, response_iter)
+            if chunk is None:
+                break
             yield chunk
     
     
