@@ -19,7 +19,7 @@
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.5",
     "@sveltejs/kit": "^2.6.4",
-    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tauri-apps/cli": "^2.1.0",
     "@types/eslint": "^9.6.1",
     "eslint": "^9.12.0",
@@ -33,7 +33,7 @@
     "svelte-check": "^4.0.4",
     "terser": "^5.43.1",
     "typescript": "^5.6.3",
-    "vite": "^5.4.21"
+    "vite": "^7.3.0"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.0",
