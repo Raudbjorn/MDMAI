@@ -243,9 +243,9 @@ class PerformanceBenchmark:
             if len(latencies) >= 20:
                 sorted_latencies = sorted(latencies)
                 p95_index = int(len(sorted_latencies) * 0.95)
-                profile.p95_latency = sorted_latencies[max(p95_index, len(sorted_latencies) - 1)]
-            else:
-                # For small sample sizes, use max as a conservative estimate
+                profile.p95_latency = sorted_latencies[min(p95_index, len(sorted_latencies) - 1)]
+            elif len(latencies) >= 2:
+                # For small samples, use the maximum as a conservative P95 estimate
                 profile.p95_latency = max(latencies)
         
         if throughputs:
@@ -444,7 +444,12 @@ class PerformanceBenchmark:
         
         if all_latencies:
             insights["summary"]["avg_latency"] = statistics.mean(all_latencies)
-            insights["summary"]["p95_latency"] = statistics.quantiles(all_latencies, n=20)[18] if len(all_latencies) >= 20 else max(all_latencies)
+            if len(all_latencies) >= 20:
+                sorted_latencies = sorted(all_latencies)
+                p95_index = int(len(sorted_latencies) * 0.95)
+                insights["summary"]["p95_latency"] = sorted_latencies[min(p95_index, len(sorted_latencies) - 1)]
+            else:
+                insights["summary"]["p95_latency"] = max(all_latencies)
         
         if all_qualities:
             insights["summary"]["avg_quality"] = statistics.mean(all_qualities)

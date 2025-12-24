@@ -118,29 +118,33 @@ class UserPreferenceProfile:
 class PreferenceLearner:
     """System for learning user preferences from feedback and behavior."""
 
-    def __init__(self, learning_rate: float = 0.1, decay_factor: float = 0.95):
-        self.learning_rate = learning_rate
-        self.decay_factor = decay_factor  # For temporal decay of old preferences
+    def __init__(self, learning_rate: float = None, decay_factor: float = None):
+        # Load configuration from external files
+        from .config import load_model_selection_config
+        self.config = load_model_selection_config().preference_learner
+
+        # Use config values or fallback to parameters
+        self.learning_rate = learning_rate if learning_rate is not None else self.config.learning_rate
+        self.decay_factor = decay_factor if decay_factor is not None else self.config.decay_factor
 
         # Storage
+        max_feedback_history = self.config.user_profile.get('max_feedback_history', 1000)
         self.user_profiles: Dict[str, UserPreferenceProfile] = {}
-        self.feedback_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=1000))
+        self.feedback_history: Dict[str, deque] = defaultdict(lambda: deque(maxlen=max_feedback_history))
         self.session_data: Dict[str, Dict[str, Any]] = {}
 
-        # Learning parameters
-        self.feedback_weights = {
-            FeedbackType.EXPLICIT_RATING: 1.0,
-            FeedbackType.REGENERATION_REQUEST: -0.8,  # Negative feedback
-            FeedbackType.ACCEPTANCE: 0.6,
-            FeedbackType.MODIFICATION: -0.3,
-            FeedbackType.BOOKMARK: 0.9,
-            FeedbackType.SHARE: 0.8,
-            FeedbackType.IMPLICIT_USAGE: 0.3
-        }
+        # Learning parameters (loaded from config)
+        self.feedback_weights = {}
+        for feedback_name, weight in self.config.feedback_weights.items():
+            try:
+                feedback_type = FeedbackType[feedback_name]
+                self.feedback_weights[feedback_type] = weight
+            except KeyError:
+                logger.warning("Unknown feedback type in config", feedback_type=feedback_name)
 
-        # Confidence thresholds
-        self.min_interactions_for_confidence = 10
-        self.high_confidence_threshold = 50
+        # Confidence thresholds (loaded from config)
+        self.min_interactions_for_confidence = self.config.session_analysis.get('min_interactions_for_pattern', 10)
+        self.high_confidence_threshold = self.config.confidence_thresholds.get('high_confidence', 0.7) * 100  # Convert to interaction count
 
         # Pattern detection
         self.pattern_cache: Dict[str, Tuple[datetime, Dict[str, Any]]] = {}

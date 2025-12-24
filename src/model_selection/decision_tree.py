@@ -115,39 +115,36 @@ class ModelSelectionDecisionTree:
     """Comprehensive decision tree for AI model selection with scoring algorithm."""
     
     def __init__(self):
+        # Load configuration from external files
+        from .config import load_model_selection_config
+        self.config = load_model_selection_config().decision_tree
+        
         self.root_node = self._build_default_decision_tree()
         self.model_registry: Dict[str, ModelSpec] = {}
         self.performance_profiles: Dict[str, ModelPerformanceProfile] = {}
         
-        # Scoring weights (configurable)
-        self.scoring_weights = {
-            "task_suitability": 0.25,
-            "performance": 0.20,
-            "cost": 0.15,
-            "reliability": 0.15,
-            "user_preference": 0.15,
-            "context_fit": 0.10
-        }
+        # Scoring weights (loaded from config)
+        self.scoring_weights = self.config.scoring_weights
         
         # Model capability matrix
         self.model_capabilities = self._initialize_model_capabilities()
         
-        # Performance thresholds
+        # Performance thresholds (loaded from config)
+        config_thresholds = self.config.performance_thresholds
         self.performance_thresholds = {
-            "latency_excellent": 500,    # ms
-            "latency_good": 2000,
-            "latency_acceptable": 5000,
-            "quality_excellent": 0.9,
-            "quality_good": 0.8,
-            "quality_acceptable": 0.7
+            "latency_excellent": config_thresholds.get("latency", {}).get("fast", 1000),
+            "latency_good": config_thresholds.get("latency", {}).get("medium", 3000),
+            "latency_acceptable": config_thresholds.get("latency", {}).get("slow", 5000),
+            "quality_excellent": config_thresholds.get("quality", {}).get("high", 0.9),
+            "quality_good": config_thresholds.get("quality", {}).get("medium", 0.7),
+            "quality_acceptable": config_thresholds.get("quality", {}).get("low", 0.5),
         }
         
-        # Cost efficiency targets
+        # Cost efficiency targets (loaded from config)
         self.cost_targets = {
-            "free_tier": 0.0,
-            "budget": 0.01,      # $0.01 per request
-            "standard": 0.05,    # $0.05 per request
-            "premium": 0.20      # $0.20 per request
+            "budget": config_thresholds.get("cost", {}).get("budget", 0.01),
+            "moderate": config_thresholds.get("cost", {}).get("moderate", 0.05),
+            "premium": config_thresholds.get("cost", {}).get("premium", 0.10)
         }
     
     def _initialize_model_capabilities(self) -> Dict[str, Dict[str, float]]:
