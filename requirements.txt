@@ -60,7 +60,7 @@ aiohttp==3.12.16  # Alternative async HTTP (updated for security)
 tenacity==8.2.0  # Retry logic with exponential backoff
 aiofiles==23.2.0  # Async file operations
 websockets==12.0  # WebSocket support
-python-socketio==5.10.0  # Socket.IO support
+python-socketio==5.14.0  # Socket.IO support
 
 # ============================================
 # Error Handling & Patterns
