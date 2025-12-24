@@ -20,7 +20,12 @@ import psutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-import resource
+import platform
+try:
+    import resource
+    HAS_RESOURCE = True
+except ImportError:
+    HAS_RESOURCE = False
 
 logger = logging.getLogger(__name__)
 
@@ -704,8 +709,12 @@ class MemoryOptimizer:
     
     def set_memory_limits(self, max_memory_mb: int) -> None:
         """Set memory limits for the process."""
+        if not HAS_RESOURCE:
+            logger.warning("Memory limits not supported on this platform (resource module not available)")
+            return
+            
         try:
-            # Set soft and hard memory limits
+            # Set soft and hard memory limits (Unix-like systems only)
             max_memory_bytes = max_memory_mb * 1024 * 1024
             resource.setrlimit(resource.RLIMIT_AS, (max_memory_bytes, max_memory_bytes))
             

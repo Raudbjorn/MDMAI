@@ -15,14 +15,25 @@ import asyncio
 import hashlib
 import json
 import re
+import threading
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+# Optional ML dependencies with graceful fallbacks
+try:
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    ML_AVAILABLE = True
+except ImportError:
+    # Fallback implementations for basic functionality
+    np = None
+    TfidfVectorizer = None
+    cosine_similarity = None
+    ML_AVAILABLE = False
+
 from structlog import get_logger
 
 logger = get_logger(__name__)
@@ -148,16 +159,27 @@ class MessageImportanceScorer:
     """Score message importance for compression decisions."""
     
     def __init__(self):
-        self.tfidf_vectorizer = TfidfVectorizer(
-            max_features=1000,
-            stop_words='english',
-            ngram_range=(1, 2)
-        )
+        if ML_AVAILABLE:
+            self.tfidf_vectorizer = TfidfVectorizer(
+                max_features=1000,
+                stop_words='english',
+                ngram_range=(1, 2)
+            )
+        else:
+            self.tfidf_vectorizer = None
+            logger.warning(
+                "ML dependencies not available. Using fallback importance scoring. "
+                "Install numpy and scikit-learn for advanced features: pip install numpy scikit-learn"
+            )
         self.importance_cache = {}
         self.cache_ttl = 3600  # 1 hour
     
     def score_messages(self, messages: List[Dict[str, Any]]) -> List[float]:
         """Score importance of each message in the conversation."""
+        
+        # If ML dependencies aren't available, use fallback scoring immediately
+        if not ML_AVAILABLE or self.tfidf_vectorizer is None:
+            return self._fallback_position_scoring(messages)
         
         # Extract text content from messages
         texts = []
@@ -227,7 +249,11 @@ class MessageImportanceScorer:
         
         # Content-based scoring (TF-IDF density)
         if hasattr(tfidf_vector, 'data') and len(tfidf_vector.data) > 0:
-            content_score = np.mean(tfidf_vector.data)
+            if ML_AVAILABLE and np is not None:
+                content_score = np.mean(tfidf_vector.data)
+            else:
+                # Fallback: calculate mean manually
+                content_score = sum(tfidf_vector.data) / len(tfidf_vector.data)
             base_score += content_score * 0.5
         
         # Position-based scoring (recent messages more important)
@@ -292,9 +318,24 @@ class SemanticCache:
         self.embeddings = {}  # hash -> embedding
         self.max_cache_size = max_cache_size
         self.similarity_threshold = similarity_threshold
-        self.tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+        
+        if ML_AVAILABLE:
+            self.tfidf_vectorizer = TfidfVectorizer(max_features=500, stop_words='english')
+            self.semantic_enabled = True
+        else:
+            self.tfidf_vectorizer = None
+            self.semantic_enabled = False
+            logger.warning(
+                "ML dependencies not available. Semantic caching disabled - using simple hash-based caching only. "
+                "Install numpy and scikit-learn for semantic similarity: pip install numpy scikit-learn"
+            )
+        
         self.cache_hits = 0
         self.cache_misses = 0
+        
+        # Thread safety
+        self._cache_lock = threading.RLock()
+        self._vectorizer_lock = threading.Lock()
         
         logger.info(f"Semantic cache initialized with max size {max_cache_size}")
     
@@ -319,8 +360,11 @@ class SemanticCache:
         signature_text = '|'.join(content_parts) + f"|model:{model}"
         return hashlib.sha256(signature_text.encode()).hexdigest()[:16]
     
-    def _get_content_embedding(self, messages: List[Dict[str, Any]]) -> Optional[np.ndarray]:
+    def _get_content_embedding(self, messages: List[Dict[str, Any]]):
         """Get content embedding for similarity matching."""
+        if not self.semantic_enabled or self.tfidf_vectorizer is None:
+            return None
+            
         # Extract text content
         all_text = []
         for message in messages:
@@ -338,15 +382,23 @@ class SemanticCache:
             return None
         
         try:
-            # Use TF-IDF for embedding (simple but effective)
-            if hasattr(self.tfidf_vectorizer, 'vocabulary_'):
-                # Vectorizer is already fitted
-                embedding = self.tfidf_vectorizer.transform([combined_text])
-            else:
-                # Fit vectorizer with current text (not ideal but fallback)
-                embedding = self.tfidf_vectorizer.fit_transform([combined_text])
-            
-            return embedding.toarray()[0]
+            # Use TF-IDF for embedding (simple but effective) with thread safety
+            with self._vectorizer_lock:
+                if hasattr(self.tfidf_vectorizer, 'vocabulary_'):
+                    # Vectorizer is already fitted
+                    embedding = self.tfidf_vectorizer.transform([combined_text])
+                else:
+                    # Use a minimal corpus for initial fitting to avoid single-document issues
+                    sample_corpus = [
+                        combined_text,
+                        "sample text for better vectorization",
+                        "another example to improve vocabulary",
+                        "additional content for TF-IDF training"
+                    ]
+                    self.tfidf_vectorizer.fit(sample_corpus)
+                    embedding = self.tfidf_vectorizer.transform([combined_text])
+                
+                return embedding.toarray()[0]
             
         except Exception as e:
             logger.warning(f"Error creating embedding: {e}")
@@ -364,15 +416,16 @@ class SemanticCache:
         current_time = time.time()
         cutoff_time = current_time - (max_age_hours * 3600)
         
-        # Check exact match first
-        if request_signature in self.cache:
-            response, timestamp, usage_count = self.cache[request_signature]
-            if timestamp >= cutoff_time:
-                # Update usage count
-                self.cache[request_signature] = (response, timestamp, usage_count + 1)
-                self.cache_hits += 1
-                logger.debug(f"Cache hit (exact): {request_signature}")
-                return response
+        # Check exact match first with thread safety
+        with self._cache_lock:
+            if request_signature in self.cache:
+                response, timestamp, usage_count = self.cache[request_signature]
+                if timestamp >= cutoff_time:
+                    # Update usage count
+                    self.cache[request_signature] = (response, timestamp, usage_count + 1)
+                    self.cache_hits += 1
+                    logger.debug(f"Cache hit (exact): {request_signature}")
+                    return response
         
         # Check semantic similarity
         current_embedding = self._get_content_embedding(messages)
@@ -383,38 +436,48 @@ class SemanticCache:
         best_similarity = 0.0
         best_match = None
         
-        # Compare with cached embeddings
-        for cached_signature, cached_embedding in self.embeddings.items():
-            if cached_signature not in self.cache:
-                continue
-            
-            response, timestamp, usage_count = self.cache[cached_signature]
-            if timestamp < cutoff_time:
-                continue
-            
-            # Calculate similarity
-            try:
-                similarity = cosine_similarity(
-                    current_embedding.reshape(1, -1),
-                    cached_embedding.reshape(1, -1)
-                )[0][0]
+        # Compare with cached embeddings with thread safety
+        with self._cache_lock:
+            for cached_signature, cached_embedding in self.embeddings.items():
+                if cached_signature not in self.cache:
+                    continue
                 
-                if similarity > best_similarity and similarity >= self.similarity_threshold:
-                    best_similarity = similarity
-                    best_match = (cached_signature, response)
+                response, timestamp, usage_count = self.cache[cached_signature]
+                if timestamp < cutoff_time:
+                    continue
+                
+                # Calculate similarity
+                try:
+                    if ML_AVAILABLE and cosine_similarity is not None:
+                        similarity = cosine_similarity(
+                            current_embedding.reshape(1, -1),
+                            cached_embedding.reshape(1, -1)
+                        )[0][0]
+                    else:
+                        # Fallback: basic dot product similarity (not as accurate)
+                        flat_current = current_embedding.flatten()
+                        flat_cached = cached_embedding.flatten()
+                        dot_product = sum(a * b for a, b in zip(flat_current, flat_cached))
+                        norm_current = (sum(x * x for x in flat_current) ** 0.5)
+                        norm_cached = (sum(x * x for x in flat_cached) ** 0.5)
+                        similarity = dot_product / (norm_current * norm_cached) if norm_current and norm_cached else 0
                     
-            except Exception as e:
-                logger.debug(f"Error calculating similarity: {e}")
-                continue
-        
-        if best_match:
-            cached_signature, response = best_match
-            # Update usage count
-            _, timestamp, usage_count = self.cache[cached_signature]
-            self.cache[cached_signature] = (response, timestamp, usage_count + 1)
-            self.cache_hits += 1
-            logger.debug(f"Cache hit (semantic): {cached_signature}, similarity: {best_similarity:.3f}")
-            return response
+                    if similarity > best_similarity and similarity >= self.similarity_threshold:
+                        best_similarity = similarity
+                        best_match = (cached_signature, response)
+                        
+                except Exception as e:
+                    logger.debug(f"Error calculating similarity: {e}")
+                    continue
+            
+            if best_match:
+                cached_signature, response = best_match
+                # Update usage count
+                _, timestamp, usage_count = self.cache[cached_signature]
+                self.cache[cached_signature] = (response, timestamp, usage_count + 1)
+                self.cache_hits += 1
+                logger.debug(f"Cache hit (semantic): {cached_signature}, similarity: {best_similarity:.3f}")
+                return response
         
         self.cache_misses += 1
         return None
@@ -433,20 +496,21 @@ class SemanticCache:
         # Get embedding for semantic matching
         embedding = self._get_content_embedding(messages)
         
-        # Store in cache
-        self.cache[request_signature] = (response, current_time, 0)
-        
-        if embedding is not None:
-            self.embeddings[request_signature] = embedding
-        
-        # Cleanup if cache is too large
-        if len(self.cache) > self.max_cache_size:
-            self._cleanup_cache()
+        # Store in cache with thread safety
+        with self._cache_lock:
+            self.cache[request_signature] = (response, current_time, 0)
+            
+            if embedding is not None:
+                self.embeddings[request_signature] = embedding
+            
+            # Cleanup if cache is too large
+            if len(self.cache) > self.max_cache_size:
+                self._cleanup_cache()
         
         logger.debug(f"Cached response: {request_signature}")
     
     def _cleanup_cache(self) -> None:
-        """Remove old and unused cache entries."""
+        """Remove old and unused cache entries. Must be called within _cache_lock."""
         current_time = time.time()
         cutoff_time = current_time - (48 * 3600)  # 48 hours
         
@@ -477,16 +541,17 @@ class SemanticCache:
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
-        total_requests = self.cache_hits + self.cache_misses
-        hit_rate = (self.cache_hits / total_requests) if total_requests > 0 else 0.0
-        
-        return {
-            'cache_size': len(self.cache),
-            'cache_hits': self.cache_hits,
-            'cache_misses': self.cache_misses,
-            'hit_rate': hit_rate,
-            'embeddings_stored': len(self.embeddings)
-        }
+        with self._cache_lock:
+            total_requests = self.cache_hits + self.cache_misses
+            hit_rate = (self.cache_hits / total_requests) if total_requests > 0 else 0.0
+            
+            return {
+                'cache_size': len(self.cache),
+                'cache_hits': self.cache_hits,
+                'cache_misses': self.cache_misses,
+                'hit_rate': hit_rate,
+                'embeddings_stored': len(self.embeddings)
+            }
 
 
 class TokenOptimizer:

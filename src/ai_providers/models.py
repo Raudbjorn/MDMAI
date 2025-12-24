@@ -15,6 +15,7 @@ class ProviderType(Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai" 
     GOOGLE = "google"
+    OLLAMA = "ollama"
 
 
 class ProviderCapability(Enum):

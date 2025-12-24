@@ -471,7 +471,24 @@ class TaskCategorizer:
         return self.task_characteristics.get(task_type, self.task_characteristics[TTRPGTaskType.RULE_LOOKUP])
     
     def analyze_request_complexity(self, user_input: str) -> TaskComplexity:
-        """Analyze the complexity of a request based on content."""
+        """
+        Analyze the complexity of a user request based on its content.
+
+        This method evaluates the input string to determine whether the request is
+        simple, moderate, or complex. It uses keyword indicators and word count
+        heuristics to classify the complexity, which can be used for model selection
+        or task routing in TTRPG operations.
+
+        Args:
+            user_input (str): The user's request or query to analyze.
+
+        Returns:
+            TaskComplexity: An enum value indicating the estimated complexity of the request.
+
+        Example:
+            >>> categorizer.analyze_request_complexity("Can you quickly tell me the rule for initiative?")
+            TaskComplexity.SIMPLE
+        """
         word_count = len(user_input.split())
         
         # Complex indicators
