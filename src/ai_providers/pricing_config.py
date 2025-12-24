@@ -22,6 +22,24 @@ from .base_provider import ProviderType
 
 logger = logging.getLogger(__name__)
 
+# Minimum segment overlap ratio for fuzzy model matching (e.g., "gpt-4-turbo" to "gpt-4-turbo-preview")
+MODEL_MATCH_OVERLAP_THRESHOLD = 0.75
+
+
+def _extract_pricing(model_info: Dict[str, Any]) -> Dict[str, float]:
+    """Extract pricing information from model config.
+
+    Args:
+        model_info: Model configuration dictionary
+
+    Returns:
+        Dictionary with input_price and output_price
+    """
+    return {
+        'input_price': model_info.get('input_price', 0.0),
+        'output_price': model_info.get('output_price', 0.0)
+    }
+
 
 class PricingConfigError(Exception):
     """Exception raised for pricing configuration errors."""
@@ -130,28 +148,21 @@ class PricingConfigManager:
         
         # Try exact match first
         if model in models_config:
-            model_info = models_config[model]
-            return {
-                'input_price': model_info.get('input_price', 0.0),
-                'output_price': model_info.get('output_price', 0.0)
-            }
-        
+            return _extract_pricing(models_config[model])
+
         # Try partial matches with improved logic to avoid false positives
         # 1. Try normalized exact match (handle case and hyphens)
         normalized_model = model.lower().replace('_', '-')
         for config_model, model_info in models_config.items():
             normalized_config = config_model.lower().replace('_', '-')
             if normalized_model == normalized_config:
-                return {
-                    'input_price': model_info.get('input_price', 0.0),
-                    'output_price': model_info.get('output_price', 0.0)
-                }
-        
+                return _extract_pricing(model_info)
+
         # 2. Try prefix match for versioned models with strict boundaries
         # Only match if one is a true prefix of the other with version/date suffix
         for config_model, model_info in models_config.items():
             normalized_config = config_model.lower().replace('_', '-')
-            
+
             # Check for versioned model patterns (e.g., model-20240307 or model-v2)
             # The prefix should be followed by a version separator like -, _, or digit
             if normalized_model.startswith(normalized_config):
@@ -159,39 +170,30 @@ class PricingConfigManager:
                 if len(normalized_model) > len(normalized_config):
                     next_char = normalized_model[len(normalized_config)]
                     if next_char in ['-', '_'] or next_char.isdigit():
-                        return {
-                            'input_price': model_info.get('input_price', 0.0),
-                            'output_price': model_info.get('output_price', 0.0)
-                        }
+                        return _extract_pricing(model_info)
             elif normalized_config.startswith(normalized_model):
                 # Check the reverse case
                 if len(normalized_config) > len(normalized_model):
                     next_char = normalized_config[len(normalized_model)]
                     if next_char in ['-', '_'] or next_char.isdigit():
-                        return {
-                            'input_price': model_info.get('input_price', 0.0),
-                            'output_price': model_info.get('output_price', 0.0)
-                        }
-        
+                        return _extract_pricing(model_info)
+
         # 3. Try word-boundary based substring match (safer than general substring)
         # Only match complete words/segments separated by common delimiters
         for config_model, model_info in models_config.items():
             normalized_config = config_model.lower().replace('_', '-')
-            
+
             # Split both strings into segments
             model_segments = set(normalized_model.split('-'))
             config_segments = set(normalized_config.split('-'))
-            
+
             # Check if all config segments are present in model segments (subset match)
             # This helps match "gpt-4-turbo" to "gpt-4-turbo-preview" but not "gpt-4" to "gpt-4o"
             if len(config_segments) >= 2 and config_segments.issubset(model_segments):
-                # Additional check: ensure significant overlap (at least 75% of segments match)
+                # Additional check: ensure significant overlap
                 overlap_ratio = len(config_segments) / len(model_segments)
-                if overlap_ratio >= 0.75:
-                    return {
-                        'input_price': model_info.get('input_price', 0.0),
-                        'output_price': model_info.get('output_price', 0.0)
-                    }
+                if overlap_ratio >= MODEL_MATCH_OVERLAP_THRESHOLD:
+                    return _extract_pricing(model_info)
         
         logger.warning(f"No pricing found for {provider.value} model {model}")
         return None

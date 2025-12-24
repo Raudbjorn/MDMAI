@@ -8,6 +8,7 @@ automated checks, alerting, and recovery mechanisms.
 import asyncio
 import time
 import logging
+from string import Template
 from typing import Dict, Optional, List, Callable, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -529,17 +530,13 @@ class HealthChecker:
             # Evaluate condition
             try:
                 if rule.condition(metrics):
-                    # Trigger alert
-                    # Properly escape all format string special characters to prevent injection
-                    safe_provider_key = (
-                        provider_key
-                        .replace("{", "{{")  # Escape opening braces
-                        .replace("}", "}}")  # Escape closing braces
-                        .replace("%", "%%")  # Escape percent signs
-                    )
-                    message = rule.message_template.format(
-                        provider_key=safe_provider_key,
-                        metrics=metrics
+                    # Trigger alert using safe string substitution to prevent injection
+                    # Template.safe_substitute() won't raise on missing keys and ignores
+                    # format string syntax like {} or %s in the substituted values
+                    template = Template(rule.message_template)
+                    message = template.safe_substitute(
+                        provider_key=provider_key,
+                        metrics=str(metrics)  # Convert to string to prevent object injection
                     )
                     
                     await self._send_alert(provider_key, rule.severity, message)

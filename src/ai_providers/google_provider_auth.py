@@ -321,96 +321,33 @@ class GoogleProvider(BaseAIProvider):
         """Generate content using the Gemini model with native async methods."""
         if model is None:
             model = self.model
-        
+
         # Use native async methods from google-generativeai library
         # For now, we'll use asyncio.to_thread as a bridge until native async is available
         # TODO: Replace with native async methods when google-generativeai adds them
-        
-        # Convert messages to chat format
-        if len(messages) == 1:
-            # Single message
-            return await asyncio.to_thread(
-                model.generate_content,
-                messages[0]["parts"][0]["text"],
-                generation_config=generation_config
-            )
-        else:
-            # Multi-message chat - batch process all messages at once
-            chat = model.start_chat()
-            
-            # Build full conversation history efficiently
-            history = []
-            for msg in messages[:-1]:
-                history.append(msg)
-            
-            # Set history all at once if supported, otherwise send messages in batch
-            if hasattr(chat, 'history'):
-                # Try to set history directly for better performance
-                chat.history = history
-            else:
-                # Fall back to sending messages, but batch the operation
-                for msg in messages[:-1]:
-                    await asyncio.to_thread(
-                        chat.send_message,
-                        msg["parts"][0]["text"]
-                    )
-            
-            # Send the final message
-            return await asyncio.to_thread(
-                chat.send_message,
-                messages[-1]["parts"][0]["text"],
-                generation_config=generation_config
-            )
+
+        # The generate_content method can handle the full conversation history directly.
+        # This is more efficient than sending messages one by one.
+        return await asyncio.to_thread(
+            model.generate_content,
+            messages,
+            generation_config=generation_config
+        )
     
     async def _generate_stream_async(self, messages: List[Dict], generation_config):
         """Generate streaming content using the Gemini model with native async methods."""
         # Use native async methods from google-generativeai library
         # For now, we'll use asyncio.to_thread as a bridge until native async is available
         # TODO: Replace with native async methods when google-generativeai adds them
-        
-        # Convert messages to chat format
-        if len(messages) == 1:
-            # Single message streaming
-            response = await asyncio.to_thread(
-                self.model.generate_content,
-                messages[0]["parts"][0]["text"],
-                generation_config=generation_config,
-                stream=True
-            )
-        else:
-            # Multi-message chat streaming - batch process history
-            chat = self.model.start_chat()
-            
-            # Build full conversation history efficiently
-            history = []
-            for msg in messages[:-1]:
-                history.append(msg)
-            
-            # Set history all at once if supported, otherwise batch send
-            if hasattr(chat, 'history'):
-                # Try to set history directly for better performance
-                chat.history = history
-            else:
-                # Fall back to sending messages, but batch the operation
-                # Process all history messages in parallel if possible
-                history_tasks = [
-                    asyncio.to_thread(
-                        chat.send_message,
-                        msg["parts"][0]["text"]
-                    )
-                    for msg in messages[:-1]
-                ]
-                # Execute sequentially to maintain order
-                for task in history_tasks:
-                    await task
-            
-            # Send the final message with streaming
-            response = await asyncio.to_thread(
-                chat.send_message,
-                messages[-1]["parts"][0]["text"],
-                generation_config=generation_config,
-                stream=True
-            )
+
+        # The generate_content method can handle the full conversation history directly for streaming.
+        # This is more efficient than sending messages one by one.
+        response = await asyncio.to_thread(
+            self.model.generate_content,
+            messages,
+            generation_config=generation_config,
+            stream=True
+        )
         
         # Convert synchronous iterator to async using executor to avoid blocking
         loop = asyncio.get_running_loop()

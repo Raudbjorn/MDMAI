@@ -108,16 +108,33 @@ class CredentialManager:
             logger.error(f"Failed to encrypt API key for user {user_id}: {e}")
             raise
     
+    def get_stored_api_key(self, user_id: str) -> Optional[str]:
+        """
+        Retrieve and decrypt a stored API key for a user.
+
+        This is the preferred method when retrieving previously stored credentials.
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Optional[str]: The decrypted API key, or None if not found or decryption fails
+        """
+        return self.decrypt_api_key("", user_id)
+
     def decrypt_api_key(self, encrypted_key: str, user_id: str) -> Optional[str]:
         """
         Decrypt API key for use.
-        
+
         Args:
-            encrypted_key: The encrypted API key (optional if stored)
+            encrypted_key: The encrypted API key. If empty, falls back to stored credential.
             user_id: User identifier for validation
-            
+
         Returns:
             Optional[str]: The decrypted API key, or None if decryption fails
+
+        Note:
+            For retrieving stored credentials, prefer using get_stored_api_key() instead.
         """
         if not user_id:
             logger.warning("User ID is required for API key decryption")

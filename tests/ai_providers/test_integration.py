@@ -95,8 +95,8 @@ class TestIntegration:
             monthly_limit=100.0
         )
         
-        # 3. Create provider configuration
-        decrypted_key = credential_manager.decrypt_api_key("", user_id)
+        # 3. Create provider configuration using the cleaner API
+        decrypted_key = credential_manager.get_stored_api_key(user_id)
         assert decrypted_key == api_key
         
         config = ProviderConfig(

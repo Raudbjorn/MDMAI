@@ -12,6 +12,7 @@ import tempfile
 import json
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, Any, AsyncIterator, List, Optional, Tuple
 
 try:
@@ -329,6 +330,9 @@ class OpenAIProvider(BaseAIProvider):
                 })
             
             # Create JSONL file for batch with proper cleanup
+            # NOTE: We use delete=False because we need to reopen the file for reading
+            # after the NamedTemporaryFile context exits (line 341). The file is closed
+            # when we exit the 'with' block, so we can't use delete=True.
             jsonl_file = None
             try:
                 with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
@@ -336,7 +340,7 @@ class OpenAIProvider(BaseAIProvider):
                         json.dump(req, f)
                         f.write('\n')
                     jsonl_file = f.name
-                
+
                 # Upload file and create batch
                 with open(jsonl_file, 'rb') as f:
                     file_response = await self.client.files.create(
@@ -344,12 +348,9 @@ class OpenAIProvider(BaseAIProvider):
                         purpose='batch'
                     )
             finally:
-                # Clean up temporary file
-                if jsonl_file and os.path.exists(jsonl_file):
-                    try:
-                        os.unlink(jsonl_file)
-                    except OSError as e:
-                        logger.warning(f"Failed to clean up temporary file {jsonl_file}: {e}")
+                # Clean up temporary file using pathlib for cleaner handling
+                if jsonl_file:
+                    Path(jsonl_file).unlink(missing_ok=True)
             
             batch_response = await self.client.batches.create(
                 input_file_id=file_response.id,
