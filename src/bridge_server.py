@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,10 @@ import uvicorn
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Constants for subprocess - static paths to prevent command injection
+_SCRIPT_DIR = Path(__file__).parent.resolve()
+_MCP_SERVER_SCRIPT = _SCRIPT_DIR / "mcp_server.py"
 
 app = FastAPI(title="TTRPG MCP Bridge")
 
@@ -42,10 +47,14 @@ class MCPBridge:
     async def start(self):
         """Start the MCP server process"""
         logger.info("Starting MCP server process...")
-        
-        # Start MCP server as subprocess
+
+        # Validate MCP server script exists (security: prevent path traversal)
+        if not _MCP_SERVER_SCRIPT.is_file():
+            raise FileNotFoundError(f"MCP server script not found: {_MCP_SERVER_SCRIPT}")
+
+        # Start MCP server as subprocess using validated static path
         self.process = subprocess.Popen(
-            [sys.executable, "src/mcp_server.py"],
+            [sys.executable, str(_MCP_SERVER_SCRIPT)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
