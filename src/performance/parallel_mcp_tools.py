@@ -1,6 +1,5 @@
 """MCP tools for parallel processing operations."""
 
-import asyncio
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -632,7 +631,7 @@ def register_parallel_tools(mcp_server):
 
             return {
                 "success": True,
-                "message": f"Cleanup complete",
+                "message": "Cleanup complete",
                 "processors_cleaned": cleaned,
                 "processors_active": active,
                 "total_before": cleaned + active,

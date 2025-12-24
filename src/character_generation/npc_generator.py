@@ -1,21 +1,29 @@
-"""NPC generation system for TTRPG Assistant."""
+"""NPC generation system for TTRPG Assistant with genre support."""
 
 import logging
 import random
-from dataclasses import field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Union
 
 from .backstory_generator import BackstoryGenerator
 from .character_generator import CharacterGenerator
+from .equipment_generator import EquipmentGenerator, EquipmentQuality, TechLevel
+from .name_generator import NameGenerator, NameStyle
 from .models import (
     NPC,
-    Backstory,
+    CharacterBackground,
     CharacterClass,
+    CharacterMotivation,
     CharacterRace,
     CharacterStats,
+    CharacterTrait,
     Equipment,
+    ItemType,
     NPCRole,
     PersonalityTrait,
+    StoryHook,
+    TTRPGGenre,
+    WeaponType,
+    WorldElement,
 )
 from .validators import CharacterValidator, ValidationError
 
@@ -23,7 +31,104 @@ logger = logging.getLogger(__name__)
 
 
 class NPCGenerator:
-    """Generate NPCs with appropriate stats and personalities."""
+    """Generate NPCs with enriched traits, motivations, and diverse characteristics."""
+    
+    # NPC-specific trait categories
+    _NPC_TRAIT_CATEGORIES = {
+        'physical': ['SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER', 'STOCKY'],
+        'mental': ['CUNNING', 'SHREWD', 'OBSERVANT', 'KNOWLEDGEABLE'],
+        'emotional': ['GRIM', 'CHEERFUL', 'SUSPICIOUS', 'FRIENDLY', 'GRUFF'],
+        'social': ['MYSTERIOUS', 'INTIMIDATING', 'CHARMING', 'RESERVED']
+    }
+    
+    @classmethod
+    def get_random_npc_traits(cls, count: int = 3) -> List[CharacterTrait]:
+        """Get random NPC traits from enriched content."""
+        # NPCs often have more pronounced traits
+        trait_categories = {
+            category: [t for t in CharacterTrait if t.name in trait_names]
+            for category, trait_names in cls._NPC_TRAIT_CATEGORIES.items()
+        }
+        
+        selected = []
+        for category, traits in trait_categories.items():
+            if traits and len(selected) < count:
+                selected.append(random.choice(traits))
+        
+        # Fill remaining with random traits
+        while len(selected) < count:
+            trait = random.choice(list(CharacterTrait))
+            if trait not in selected:
+                selected.append(trait)
+        
+        return selected[:count]
+    
+    def _determine_genre(self, system: str, genre_override: Optional[str] = None) -> TTRPGGenre:
+        """Determine the TTRPG genre from system name or override."""
+        if genre_override:
+            try:
+                return TTRPGGenre(genre_override.lower())
+            except ValueError:
+                logger.warning(f"Unknown genre '{genre_override}', falling back to system detection")
+        
+        # System to genre mapping
+        system_lower = system.lower()
+        
+        # Fantasy systems
+        if any(keyword in system_lower for keyword in ['d&d', 'pathfinder', 'fantasy', 'dungeon', 'dragon']):
+            return TTRPGGenre.FANTASY
+        
+        # Sci-Fi systems
+        elif any(keyword in system_lower for keyword in ['traveller', 'star wars', 'starfinder', 'sci-fi', 'science fiction', 'space']):
+            return TTRPGGenre.SCI_FI
+        
+        # Cyberpunk systems
+        elif any(keyword in system_lower for keyword in ['cyberpunk', 'shadowrun', 'cyber']):
+            return TTRPGGenre.CYBERPUNK
+        
+        # Cosmic Horror systems
+        elif any(keyword in system_lower for keyword in ['call of cthulhu', 'cthulhu', 'cosmic horror', 'lovecraft']):
+            return TTRPGGenre.COSMIC_HORROR
+        
+        # Post-Apocalyptic systems
+        elif any(keyword in system_lower for keyword in ['fallout', 'gamma world', 'apocalypse', 'wasteland']):
+            return TTRPGGenre.POST_APOCALYPTIC
+        
+        # Western systems
+        elif any(keyword in system_lower for keyword in ['deadlands', 'western', 'wild west', 'cowboy']):
+            return TTRPGGenre.WESTERN
+        
+        # Superhero systems
+        elif any(keyword in system_lower for keyword in ['mutants & masterminds', 'champions', 'superhero', 'hero']):
+            return TTRPGGenre.SUPERHERO
+        
+        # Modern systems
+        elif any(keyword in system_lower for keyword in ['modern', 'contemporary', 'urban']):
+            return TTRPGGenre.MODERN
+        
+        # Horror systems
+        elif any(keyword in system_lower for keyword in ['horror', 'world of darkness', 'vampire']):
+            return TTRPGGenre.HORROR
+        
+        # Default to generic if no match
+        else:
+            return TTRPGGenre.GENERIC
+    
+    @classmethod
+    def get_npc_motivation(cls, role: NPCRole) -> CharacterMotivation:
+        """Get appropriate motivation for NPC role."""
+        role_motivations = {
+            NPCRole.MERCHANT: [CharacterMotivation.WEALTH, CharacterMotivation.PROSPERITY, CharacterMotivation.STATUS],
+            NPCRole.GUARD: [CharacterMotivation.DUTY, CharacterMotivation.HONOR, CharacterMotivation.PROTECTION],
+            NPCRole.NOBLE: [CharacterMotivation.POWER, CharacterMotivation.LEGACY, CharacterMotivation.INFLUENCE],
+            NPCRole.SCHOLAR: [CharacterMotivation.KNOWLEDGE, CharacterMotivation.DISCOVERY, CharacterMotivation.TRUTH],
+            NPCRole.CRIMINAL: [CharacterMotivation.SURVIVAL, CharacterMotivation.WEALTH, CharacterMotivation.FREEDOM],
+            NPCRole.PRIEST: [CharacterMotivation.SERVICE, CharacterMotivation.SALVATION, CharacterMotivation.DUTY],
+            NPCRole.ADVENTURER: [CharacterMotivation.ADVENTURE, CharacterMotivation.GLORY, CharacterMotivation.WEALTH],
+        }
+        
+        motivations = role_motivations.get(role, list(CharacterMotivation))
+        return random.choice(motivations) if motivations else CharacterMotivation.SURVIVAL
 
     # NPC stat modifiers by role
     ROLE_STAT_MODIFIERS = {
@@ -228,9 +333,10 @@ class NPCGenerator:
         importance: str = "minor",  # "minor", "supporting", "major"
         party_level: Optional[int] = None,
         backstory_depth: str = "simple",  # "simple", "standard", "detailed"
+        genre: Optional[Union[str, TTRPGGenre]] = None,  # Genre override
     ) -> NPC:
         """
-        Generate a complete NPC.
+        Generate a complete NPC with genre support.
 
         Args:
             system: Game system
@@ -241,6 +347,7 @@ class NPCGenerator:
             importance: NPC importance level
             party_level: Party level for scaling
             backstory_depth: Level of backstory detail
+            genre: Optional genre override (inferred from system if not provided)
 
         Returns:
             Complete NPC object
@@ -251,13 +358,49 @@ class NPCGenerator:
             if param_errors:
                 raise ValidationError(f"Invalid parameters: {'; '.join(param_errors)}")
 
-        logger.info(f"Generating {importance} NPC with role {role} for {system}")
+        # Determine genre
+        if genre:
+            if isinstance(genre, str):
+                try:
+                    genre_enum = TTRPGGenre(genre.upper())
+                except ValueError:
+                    logger.warning(f"Invalid genre string '{genre}'. Defaulting to FANTASY.")
+                    genre_enum = TTRPGGenre.FANTASY
+            else:
+                genre_enum = genre
+        else:
+            genre_enum = self._determine_genre_from_system(system)
+
+        logger.info(f"Generating {importance} NPC with role {role} for {system} (Genre: {genre_enum.value})")
+
+        # Generate genre-appropriate name if not provided
+        if not name:
+            gender = random.choice(["male", "female", "neutral"])
+            # Try to convert role to NPCRole enum, fall back to None if invalid
+            role_enum = None
+            if role:
+                try:
+                    role_enum = NPCRole(role.lower())
+                except ValueError:
+                    # Invalid role, use None as fallback
+                    role_enum = None
+            
+            generated_name, name_components = NameGenerator.generate_name(
+                genre=genre_enum,
+                gender=gender,
+                role=role_enum,
+                style=NameStyle.FORMAL if importance == "major" else NameStyle.CASUAL,
+                include_title=importance in ["supporting", "major"],
+                include_nickname=role_enum in [NPCRole.CRIMINAL, NPCRole.ADVENTURER, NPCRole.ASSASSIN],
+            )
+            name = generated_name
 
         # Create base NPC
         npc = NPC(
             system=system,
-            name=name or self._generate_npc_name(role),
+            name=name,
             importance=importance.capitalize(),
+            genre=genre_enum,
         )
 
         # Set role
@@ -275,8 +418,14 @@ class NPCGenerator:
         # Apply role-specific modifications
         self._apply_role_modifiers(npc)
 
-        # Generate personality
-        npc.personality_traits = self._generate_personality_traits(npc.role, personality_traits)
+        # Generate personality with enriched traits
+        npc.personality_traits = self._generate_enriched_personality_traits(npc.role, personality_traits)
+        
+        # Apply enriched character traits
+        self._apply_enriched_traits_to_npc(npc)
+        
+        # Set enriched motivations
+        self._set_enriched_motivations(npc)
 
         # Set behavioral attributes
         self._set_behavioral_attributes(npc)
@@ -288,8 +437,15 @@ class NPCGenerator:
         if importance in ["supporting", "major"]:
             npc.secrets = self._generate_secrets(npc.role, importance)
 
-        # Generate equipment
-        npc.equipment = self._generate_npc_equipment(npc.role, level)
+        # Generate genre-appropriate equipment using the new generator
+        wealth_level = self._determine_wealth_level(npc.role, importance)
+        npc.equipment = EquipmentGenerator.generate_equipment(
+            genre=genre_enum,
+            npc_role=npc.role,
+            level=level,
+            wealth_level=wealth_level,
+            include_magical=importance == "major" and level >= 5
+        )
 
         # Generate skills and proficiencies
         self._generate_npc_skills(npc)
@@ -623,85 +779,28 @@ class NPCGenerator:
 
         return secrets
 
-    def _generate_npc_equipment(self, role: NPCRole, level: int) -> Equipment:
-        """Generate equipment appropriate for the NPC."""
+    def _generate_npc_equipment(self, role: NPCRole, level: int, genre: TTRPGGenre = TTRPGGenre.FANTASY) -> Equipment:
+        """Generate equipment appropriate for the NPC and genre."""
         equipment = Equipment()
 
-        # Role-specific equipment
-        role_equipment = {
-            NPCRole.GUARD: {
-                "weapons": ["Spear", "Shortsword"],
-                "armor": ["Chain Shirt", "Shield"],
-                "items": ["Guard whistle", "Manacles"],
-            },
-            NPCRole.MERCHANT: {
-                "weapons": ["Dagger"],
-                "armor": [],
-                "items": ["Ledger", "Merchant scales", "Sample goods"],
-            },
-            NPCRole.CRIMINAL: {
-                "weapons": ["Dagger", "Shortsword"],
-                "armor": ["Leather Armor"],
-                "items": ["Thieves' tools", "Dark cloak"],
-            },
-            NPCRole.NOBLE: {
-                "weapons": ["Ornate dagger"],
-                "armor": ["Fine clothes"],
-                "items": ["Signet ring", "Perfume", "Letter of introduction"],
-            },
-            NPCRole.PRIEST: {
-                "weapons": ["Mace"],
-                "armor": ["Robes"],
-                "items": ["Holy symbol", "Prayer book", "Healing herbs"],
-            },
-            NPCRole.SCHOLAR: {
-                "weapons": [],
-                "armor": ["Robes"],
-                "items": ["Books", "Ink and quill", "Magnifying glass"],
-            },
-            NPCRole.INNKEEPER: {
-                "weapons": ["Club"],
-                "armor": ["Apron"],
-                "items": ["Keys", "Coin purse", "Guest ledger"],
-            },
-            NPCRole.SOLDIER: {
-                "weapons": ["Longsword", "Crossbow"],
-                "armor": ["Chain Mail", "Shield"],
-                "items": ["Military insignia", "Rations"],
-            },
-            NPCRole.ADVENTURER: {
-                "weapons": ["Longsword", "Shortbow"],
-                "armor": ["Studded Leather"],
-                "items": ["Rope", "Torch", "Adventuring gear"],
-            },
-            NPCRole.MAGE: {
-                "weapons": ["Staff"],
-                "armor": ["Robes"],
-                "items": ["Spellbook", "Component pouch", "Arcane focus"],
-            },
-            NPCRole.ASSASSIN: {
-                "weapons": ["Poisoned dagger", "Hand crossbow"],
-                "armor": ["Dark leather"],
-                "items": ["Poison vials", "Disguise kit", "Smoke bombs"],
-            },
-            NPCRole.HEALER: {
-                "weapons": ["Staff"],
-                "armor": ["Robes"],
-                "items": ["Healer's kit", "Herbs", "Bandages"],
-            },
-            NPCRole.ARTISAN: {
-                "weapons": ["Hammer"],
-                "armor": ["Leather apron"],
-                "items": ["Artisan's tools", "Raw materials", "Finished goods"],
-            },
-            NPCRole.COMMONER: {
-                "weapons": ["Club", "Knife"],
-                "armor": ["Common clothes"],
-                "items": ["Random trinket", "Family heirloom"],
-            },
+        # Genre-specific base equipment templates
+        genre_equipment_base = {
+            TTRPGGenre.FANTASY: self._get_fantasy_equipment(),
+            TTRPGGenre.SCI_FI: self._get_scifi_equipment(),
+            TTRPGGenre.CYBERPUNK: self._get_cyberpunk_equipment(),
+            TTRPGGenre.WESTERN: self._get_western_equipment(),
+            TTRPGGenre.COSMIC_HORROR: self._get_cosmic_horror_equipment(),
+            TTRPGGenre.POST_APOCALYPTIC: self._get_postapoc_equipment(),
         }
 
-        gear = role_equipment.get(role, role_equipment[NPCRole.COMMONER])
+        # Get genre-appropriate equipment or fall back to fantasy
+        role_equipment = genre_equipment_base.get(genre, self._get_fantasy_equipment())
+
+        gear = role_equipment.get(role, role_equipment.get(NPCRole.COMMONER, {
+            "weapons": ["Knife"],
+            "armor": ["Common clothes"],
+            "items": ["Personal effects"]
+        }))
         equipment.weapons = gear["weapons"].copy()
         equipment.armor = gear["armor"].copy()
         equipment.items = gear["items"].copy()
@@ -817,37 +916,98 @@ class NPCGenerator:
 
         return languages
 
+    # Data-driven mapping for system name to genre determination
+    SYSTEM_GENRE_MAP = {
+        TTRPGGenre.FANTASY: ["d&d", "pathfinder", "dungeon", "dragon"],
+        TTRPGGenre.CYBERPUNK: ["cyberpunk", "shadowrun", "chrome"],
+        TTRPGGenre.SCI_FI: ["traveller", "stars", "space", "galaxy"],
+        TTRPGGenre.COSMIC_HORROR: ["cthulhu", "delta green", "horror"],
+        TTRPGGenre.POST_APOCALYPTIC: ["apocalypse", "fallout", "wasteland"],
+        TTRPGGenre.SUPERHERO: ["masks", "hero", "super", "marvel", "dc"],
+        TTRPGGenre.WESTERN: ["deadlands", "western", "frontier"]
+    }
+    
+    def _determine_genre_from_system(self, system: str) -> TTRPGGenre:
+        """Determine genre based on system name using data-driven approach."""
+        system_lower = system.lower()
+        
+        # Check each genre's keywords
+        for genre, keywords in self.SYSTEM_GENRE_MAP.items():
+            if any(term in system_lower for term in keywords):
+                return genre
+        
+        # Default to fantasy if no match found
+        return TTRPGGenre.FANTASY
+    
+    # Data-driven mapping for wealth determination
+    WEALTH_LEVEL_MAP = {
+        "wealthy_roles": {
+            NPCRole.NOBLE: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
+            },
+            NPCRole.MERCHANT: {
+                "major": "noble",
+                "supporting": "wealthy",
+                "minor": "standard"
+            }
+        },
+        "poor_roles": {
+            NPCRole.COMMONER: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            },
+            NPCRole.CRIMINAL: {
+                "major": "standard",
+                "supporting": "poor",
+                "minor": "poor"
+            }
+        },
+        "default": {
+            "major": "wealthy",
+            "supporting": "standard",
+            "minor": "standard"
+        }
+    }
+    
+    def _determine_wealth_level(self, role: NPCRole, importance: str) -> str:
+        """Determine wealth level based on role and importance using data-driven approach."""
+        # Check if role is in wealthy roles
+        if role in self.WEALTH_LEVEL_MAP["wealthy_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["wealthy_roles"][role]
+            return wealth_map.get(importance, "standard")
+        
+        # Check if role is in poor roles
+        if role in self.WEALTH_LEVEL_MAP["poor_roles"]:
+            wealth_map = self.WEALTH_LEVEL_MAP["poor_roles"][role]
+            return wealth_map.get(importance, "poor")
+        
+        # Use default mapping for other roles
+        return self.WEALTH_LEVEL_MAP["default"].get(importance, "standard")
+
     def _generate_npc_name(self, role: Optional[str]) -> str:
-        """Generate a name appropriate for the NPC role."""
-        # Role-based name styles
-        first_names = {
-            "common": ["Tom", "Mary", "Jack", "Sarah", "Will", "Anne"],
-            "noble": ["Lord Marcus", "Lady Elena", "Sir Reginald", "Dame Victoria"],
-            "criminal": ["Snake", "Whisper", "Red", "Shadow", "Blade"],
-            "scholarly": ["Aldric", "Minerva", "Thaddeus", "Cordelia"],
-        }
-
-        last_names = {
-            "common": ["Miller", "Smith", "Cooper", "Fletcher", "Baker"],
-            "noble": ["Blackstone", "Goldshire", "Ravencrest", "Winterhold"],
-            "criminal": ["the Quick", "One-Eye", "the Silent", "Fingers"],
-            "scholarly": ["the Wise", "of the Tower", "Scrollkeeper", "the Learned"],
-        }
-
-        # Determine name style based on role
-        if role and "noble" in role.lower():
-            style = "noble"
-        elif role and any(x in role.lower() for x in ["criminal", "thief", "assassin"]):
-            style = "criminal"
-        elif role and any(x in role.lower() for x in ["scholar", "mage", "wizard"]):
-            style = "scholarly"
-        else:
-            style = "common"
-
-        first = random.choice(first_names[style])
-        last = random.choice(last_names[style])
-
-        return f"{first} {last}"
+        """Legacy method for backward compatibility - use NameGenerator instead."""
+        # This method is kept for backward compatibility but delegates to NameGenerator
+        gender = random.choice(["male", "female", "neutral"])
+        
+        # Try to convert role to NPCRole enum, fall back to None if invalid
+        role_enum = None
+        if role:
+            try:
+                role_enum = NPCRole(role.lower())
+            except ValueError:
+                # Invalid role, use None as fallback
+                role_enum = None
+        
+        name, _ = NameGenerator.generate_name(
+            genre=TTRPGGenre.FANTASY,
+            gender=gender,
+            role=role_enum,
+            style=NameStyle.FORMAL
+        )
+        return name
 
     def _generate_location(self, role: NPCRole) -> str:
         """Generate an appropriate location for the NPC."""
@@ -886,3 +1046,374 @@ class NPCGenerator:
 
         faction_options = factions.get(role, ["Independent", "Local Guild", "Free Agent"])
         return random.choice(faction_options)
+    
+    def _generate_enriched_personality_traits(self, role: NPCRole, custom_traits: Optional[List[str]] = None) -> List[PersonalityTrait]:
+        """Generate personality traits using enriched content."""
+        traits = []
+        
+        if custom_traits:
+            # Use provided custom traits
+            for trait_str in custom_traits:
+                traits.append(PersonalityTrait(
+                    category="custom",
+                    trait=trait_str,
+                    description="User-defined trait"
+                ))
+        
+        # Get enriched traits
+        npc_traits = self.get_random_npc_traits(count=3)
+        
+        for char_trait in npc_traits:
+            # Categorize the trait
+            if char_trait.name in ['STRONG', 'AGILE', 'SCARRED', 'WEATHERED', 'MUSCULAR', 'SLENDER']:
+                category = "appearance"
+            elif char_trait.name in ['INTELLIGENT', 'CUNNING', 'OBSERVANT', 'CLEVER', 'WISE']:
+                category = "intellect"
+            elif char_trait.name in ['GRIM', 'CHEERFUL', 'CALM', 'ANXIOUS', 'FIERCE']:
+                category = "demeanor"
+            else:
+                category = "personality"
+            
+            traits.append(PersonalityTrait(
+                category=category,
+                trait=char_trait.value.replace('_', ' ').title(),
+                description=f"Displays {char_trait.value.replace('_', ' ')} characteristics"
+            ))
+        
+        # Add role-specific trait
+        role_traits = self.ROLE_PERSONALITY_TRAITS.get(role, {})
+        if role_traits:
+            for category, trait_list in role_traits.items():
+                if trait_list:
+                    selected = random.choice(trait_list)
+                    traits.append(PersonalityTrait(
+                        category=category,
+                        trait=selected,
+                        description=f"Role-specific trait for {role.value}"
+                    ))
+                    break
+        
+        return traits
+    
+    def _apply_enriched_traits_to_npc(self, npc: NPC) -> None:
+        """Apply enriched character traits to NPC stats and features."""
+        # Get appropriate traits for the NPC's role
+        trait_count = 2 if npc.importance == "Minor" else 3 if npc.importance == "Supporting" else 4
+        selected_traits = self.get_random_npc_traits(count=trait_count)
+        
+        for trait in selected_traits:
+            # Apply stat modifiers based on traits
+            if trait == CharacterTrait.STRONG or trait == CharacterTrait.MUSCULAR:
+                npc.stats.strength += 2
+            elif trait == CharacterTrait.AGILE or trait == CharacterTrait.QUICK:
+                npc.stats.dexterity += 2
+            elif trait == CharacterTrait.TOUGH or trait == CharacterTrait.RESILIENT:
+                npc.stats.constitution += 2
+                npc.stats.hit_points += 5
+            elif trait == CharacterTrait.INTELLIGENT or trait == CharacterTrait.CLEVER:
+                npc.stats.intelligence += 2
+            elif trait == CharacterTrait.WISE or trait == CharacterTrait.OBSERVANT:
+                npc.stats.wisdom += 2
+            elif trait == CharacterTrait.CHARISMATIC or trait == CharacterTrait.CHARMING:
+                npc.stats.charisma += 2
+            elif trait == CharacterTrait.INTIMIDATING:
+                npc.stats.strength += 1
+                npc.stats.charisma += 1
+            
+            # Add trait to features
+            npc.features.append(f"Trait: {trait.value.replace('_', ' ').title()}")
+    
+    def _set_enriched_motivations(self, npc: NPC) -> None:
+        """Set NPC motivations using enriched content."""
+        # Get primary motivation based on role
+        primary_motivation = self.get_npc_motivation(npc.role if npc.role else NPCRole.COMMONER)
+        
+        # Initialize backstory if needed
+        if not npc.backstory:
+            from .models import Backstory
+            npc.backstory = Backstory()
+        
+        # Set motivation in backstory
+        npc.backstory.motivation = f"Driven by {primary_motivation.value.replace('_', ' ')}"
+        
+        # Add related goals
+        if primary_motivation == CharacterMotivation.WEALTH:
+            npc.backstory.goals.append("Accumulate riches")
+        elif primary_motivation == CharacterMotivation.KNOWLEDGE:
+            npc.backstory.goals.append("Uncover hidden truths")
+        elif primary_motivation == CharacterMotivation.POWER:
+            npc.backstory.goals.append("Gain influence and control")
+        elif primary_motivation == CharacterMotivation.PROTECTION:
+            npc.backstory.goals.append("Keep loved ones safe")
+        
+        # Add related fears
+        fear_map = {
+            CharacterMotivation.WEALTH: CharacterMotivation.POVERTY,
+            CharacterMotivation.POWER: CharacterMotivation.POWERLESSNESS,
+            CharacterMotivation.KNOWLEDGE: CharacterMotivation.IGNORANCE,
+            CharacterMotivation.PROTECTION: CharacterMotivation.LOSS,
+        }
+        
+        if primary_motivation in fear_map:
+            fear = fear_map[primary_motivation]
+            npc.backstory.fears.append(f"Fear of {fear.value.replace('_', ' ')}")
+    
+    def _get_fantasy_equipment(self) -> Dict:
+        """Get fantasy-themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Spear", "Shortsword"],
+                "armor": ["Chain Shirt", "Shield"],
+                "items": ["Guard whistle", "Manacles"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Dagger"],
+                "armor": [],
+                "items": ["Ledger", "Merchant scales", "Sample goods"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Dagger", "Shortsword"],
+                "armor": ["Leather Armor"],
+                "items": ["Thieves' tools", "Dark cloak"],
+            },
+            NPCRole.NOBLE: {
+                "weapons": ["Ornate dagger"],
+                "armor": ["Fine clothes"],
+                "items": ["Signet ring", "Perfume", "Letter of introduction"],
+            },
+            NPCRole.PRIEST: {
+                "weapons": ["Mace"],
+                "armor": ["Robes"],
+                "items": ["Holy symbol", "Prayer book", "Healing herbs"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": [],
+                "armor": ["Robes"],
+                "items": ["Books", "Ink and quill", "Magnifying glass"],
+            },
+            NPCRole.INNKEEPER: {
+                "weapons": ["Club"],
+                "armor": ["Apron"],
+                "items": ["Keys", "Coin purse", "Guest ledger"],
+            },
+            NPCRole.SOLDIER: {
+                "weapons": ["Longsword", "Crossbow"],
+                "armor": ["Chain Mail", "Shield"],
+                "items": ["Military insignia", "Rations"],
+            },
+            NPCRole.ADVENTURER: {
+                "weapons": ["Longsword", "Shortbow"],
+                "armor": ["Studded Leather"],
+                "items": ["Rope", "Torch", "Adventuring gear"],
+            },
+            NPCRole.MAGE: {
+                "weapons": ["Staff"],
+                "armor": ["Robes"],
+                "items": ["Spellbook", "Component pouch", "Arcane focus"],
+            },
+            NPCRole.ASSASSIN: {
+                "weapons": ["Poisoned dagger", "Hand crossbow"],
+                "armor": ["Dark leather"],
+                "items": ["Poison vials", "Disguise kit", "Smoke bombs"],
+            },
+            NPCRole.HEALER: {
+                "weapons": ["Staff"],
+                "armor": ["Robes"],
+                "items": ["Healer's kit", "Herbs", "Bandages"],
+            },
+            NPCRole.ARTISAN: {
+                "weapons": ["Hammer"],
+                "armor": ["Leather apron"],
+                "items": ["Artisan's tools", "Raw materials", "Finished goods"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Club", "Knife"],
+                "armor": ["Common clothes"],
+                "items": ["Random trinket", "Family heirloom"],
+            },
+        }
+    
+    def _get_scifi_equipment(self) -> Dict:
+        """Get sci-fi themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Plasma rifle", "Stun baton"],
+                "armor": ["Combat suit", "Energy shield"],
+                "items": ["Comlink", "Restraint cuffs", "Scanner"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Laser pistol"],
+                "armor": ["Civilian clothes"],
+                "items": ["Datapad", "Credit scanner", "Product samples"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Pulse pistol", "Vibroblade"],
+                "armor": ["Stealth suit"],
+                "items": ["Hacking tools", "Fake IDs", "Encrypted comms"],
+            },
+            NPCRole.NOBLE: {
+                "weapons": ["Ceremonial plasma sword"],
+                "armor": ["Noble attire", "Personal shield"],
+                "items": ["House sigil", "Holo-jewelry", "Diplomatic credentials"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": [],
+                "armor": ["Lab coat", "Protective suit"],
+                "items": ["Research datapad", "Scanner", "Sample containers"],
+            },
+            NPCRole.SOLDIER: {
+                "weapons": ["Assault rifle", "Grenades"],
+                "armor": ["Power armor", "Tactical helmet"],
+                "items": ["Military comm", "Field rations", "Med kit"],
+            },
+            NPCRole.ADVENTURER: {  # Using existing role for pilot
+                "weapons": ["Sidearm"],
+                "armor": ["Flight suit", "Helmet"],
+                "items": ["Navigation tools", "Ship keys", "Emergency beacon"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Tool", "Kitchen knife"],
+                "armor": ["Work clothes"],
+                "items": ["Personal comm", "ID card", "Credits"],
+            },
+        }
+    
+    def _get_cyberpunk_equipment(self) -> Dict:
+        """Get cyberpunk themed equipment by role."""
+        return {
+            NPCRole.GUARD: {
+                "weapons": ["Smart gun", "Shock baton"],
+                "armor": ["Kevlar vest", "Tactical gear"],
+                "items": ["AR display", "Zip ties", "Neural scanner"],
+            },
+            NPCRole.CRIMINAL: {
+                "weapons": ["Street pistol", "Mono-knife"],
+                "armor": ["Armored jacket"],
+                "items": ["Hacking deck", "Fake SIN", "Encrypted phone"],
+            },
+            NPCRole.CORPORATE_EXEC: {
+                "weapons": ["Executive pistol"],
+                "armor": ["Business suit", "Subdermal armor"],
+                "items": ["Corporate ID", "Encrypted tablet", "Expense account"],
+            },
+            NPCRole.CRIMINAL: {  # Generic for netrunner
+                "weapons": ["Light pistol"],
+                "armor": ["Street clothes"],
+                "items": ["Cyberdeck", "Data chips", "Ice breakers"],
+            },
+            NPCRole.STREET_SAMURAI: {  # Using existing role for solo
+                "weapons": ["Assault rifle", "Combat knife"],
+                "armor": ["Combat armor"],
+                "items": ["Tactical gear", "Medkit", "Comm unit"],
+            },
+            NPCRole.INFO_BROKER: {  # Using existing role for fixer
+                "weapons": ["Hidden pistol"],
+                "armor": ["Stylish clothes"],
+                "items": ["Contact list", "Burner phones", "Information"],
+            },
+        }
+    
+    def _get_western_equipment(self) -> Dict:
+        """Get western themed equipment by role."""
+        return {
+            NPCRole.GUARD: {  # Using guard for lawman
+                "weapons": ["Six-shooter", "Rifle"],
+                "armor": ["Duster coat", "Badge"],
+                "items": ["Handcuffs", "Wanted posters", "Horse"],
+            },
+            NPCRole.CRIMINAL: {  # Using criminal for outlaw
+                "weapons": ["Pistols", "Shotgun"],
+                "armor": ["Bandana", "Hat"],
+                "items": ["Rope", "Lockpicks", "Horse", "Stolen goods"],
+            },
+            NPCRole.ADVENTURER: {  # Using adventurer for gunslinger
+                "weapons": ["Custom revolvers"],
+                "armor": ["Long coat", "Hat"],
+                "items": ["Gun maintenance kit", "Bullets", "Horse"],
+            },
+            NPCRole.MERCHANT: {
+                "weapons": ["Derringer"],
+                "armor": ["Suit"],
+                "items": ["Ledger", "Scale", "Goods", "Wagon"],
+            },
+            NPCRole.PRIEST: {  # Using priest for preacher
+                "weapons": ["Bible"],
+                "armor": ["Black clothes"],
+                "items": ["Bible", "Cross", "Traveling bag"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Shotgun", "Knife"],
+                "armor": ["Work clothes"],
+                "items": ["Tools", "Personal effects", "Horse"],
+            },
+        }
+    
+    def _get_cosmic_horror_equipment(self) -> Dict:
+        """Get cosmic horror themed equipment by role."""
+        return {
+            NPCRole.PRIVATE_INVESTIGATOR: {  # Using existing role
+                "weapons": ["Revolver", "Knife"],
+                "armor": ["Coat", "Hat"],
+                "items": ["Notebook", "Camera", "Magnifying glass", "Flashlight"],
+            },
+            NPCRole.SCHOLAR: {
+                "weapons": ["Letter opener"],
+                "armor": ["Tweed jacket"],
+                "items": ["Ancient texts", "Translation notes", "Lantern"],
+            },
+            NPCRole.GUARD: {  # Using guard for detective
+                "weapons": ["Police revolver"],
+                "armor": ["Trench coat"],
+                "items": ["Badge", "Handcuffs", "Evidence bag"],
+            },
+            NPCRole.SCHOLAR: {  # Duplicate scholar, but that's OK
+                "weapons": [],
+                "armor": ["Academic robes"],
+                "items": ["Research papers", "Occult books", "Artifacts"],
+            },
+            NPCRole.MERCHANT: {  # Using merchant for journalist
+                "weapons": ["Pistol"],
+                "armor": ["Press badge"],
+                "items": ["Camera", "Notebook", "Press credentials"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Kitchen knife", "Poker"],
+                "armor": ["Common clothes"],
+                "items": ["Personal belongings", "Family photos"],
+            },
+        }
+    
+    def _get_postapoc_equipment(self) -> Dict:
+        """Get post-apocalyptic themed equipment by role."""
+        return {
+            NPCRole.ADVENTURER: {  # Using adventurer for survivor
+                "weapons": ["Makeshift rifle", "Machete"],
+                "armor": ["Scavenged armor", "Gas mask"],
+                "items": ["Radiation detector", "Water purifier", "Scrap"],
+            },
+            NPCRole.CRIMINAL: {  # Using criminal for raider
+                "weapons": ["Sawed-off shotgun", "Spiked bat"],
+                "armor": ["Leather jacket", "Helmet"],
+                "items": ["Loot bag", "Drugs", "Vehicle keys"],
+            },
+            NPCRole.MERCHANT: {  # Using merchant for trader
+                "weapons": ["Pistol"],
+                "armor": ["Caravan gear"],
+                "items": ["Trade goods", "Scales", "Bottlecaps", "Pack brahmin"],
+            },
+            NPCRole.HEALER: {  # Using healer for medic
+                "weapons": ["Scalpel"],
+                "armor": ["Coat", "Gloves"],
+                "items": ["Medical supplies", "Stimpaks", "Surgery tools"],
+            },
+            NPCRole.ARTISAN: {  # Using artisan for mechanic
+                "weapons": ["Wrench", "Rivet gun"],
+                "armor": ["Coveralls"],
+                "items": ["Tools", "Spare parts", "Oil", "Welding gear"],
+            },
+            NPCRole.COMMONER: {
+                "weapons": ["Pipe rifle", "Knife"],
+                "armor": ["Patched clothes"],
+                "items": ["Food", "Water", "Personal trinkets"],
+            },
+        }

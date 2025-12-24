@@ -32,15 +32,37 @@
 	}
 	
 	let activities = $state<ActivityItem[]>([]);
+	let filters = $state<Set<ActivityItem['type']>>(new Set());
 	let filteredActivities = $derived(
 		filters.size === 0 
 			? activities 
 			: activities.filter(a => filters.has(a.type))
 	);
-	
-	let filters = $state<Set<ActivityItem['type']>>(new Set());
-	let sseClient: EnhancedSSEClient | null = null;
-	let feedContainer: HTMLElement;
+
+	// Cache formatted times to avoid recalculation on every render
+	let formattedTimes = $derived(
+		new Map(filteredActivities.map(activity => [
+			activity.id, 
+			formatTime(activity.timestamp)
+		]))
+	);
+
+	// Cache activity styles to avoid string creation on every render
+	let activityStyles = $derived(
+		new Map(filteredActivities.map(activity => [
+			activity.id,
+			`background-color: ${activityConfig[activity.type].color}`
+		]))
+	);
+
+	// Performance monitoring: Log when processing large activity sets
+	$effect(() => {
+		if (activities.length > 50) {
+			console.debug(`ActivityFeed: Processing ${activities.length} activities, ${filteredActivities.length} after filtering`);
+		}
+	});
+
+	let feedContainer: HTMLElement | undefined;
 	
 	// Activity type configurations
 	const activityConfig: Record<ActivityItem['type'], { icon: string; color: string; label: string }> = {
@@ -171,7 +193,9 @@
 		// Auto-scroll to latest
 		if (autoScroll && feedContainer) {
 			setTimeout(() => {
-				feedContainer.scrollTop = 0;
+				if (feedContainer) {
+					feedContainer.scrollTop = 0;
+				}
 			}, 0);
 		}
 	}
@@ -245,8 +269,8 @@
 				{#each Object.entries(activityConfig) as [type, config]}
 					<button 
 						class="filter-btn"
-						class:active={filters.has(type)}
-						onclick={() => toggleFilter(type)}
+						class:active={filters.has(type as ActivityItem['type'])}
+						onclick={() => toggleFilter(type as ActivityItem['type'])}
 						title={config.label}
 					>
 						<span class="filter-icon">{config.icon}</span>
@@ -267,7 +291,7 @@
 					<div class="activity-item">
 						<div 
 							class="activity-icon"
-							style="background-color: {activityConfig[activity.type].color}"
+							style={activityStyles.get(activity.id)}
 						>
 							{activityConfig[activity.type].icon}
 						</div>
@@ -275,7 +299,7 @@
 						<div class="activity-content">
 							<div class="activity-header">
 								<span class="activity-user">{activity.userName}</span>
-								<span class="activity-time">{formatTime(activity.timestamp)}</span>
+								<span class="activity-time">{formattedTimes.get(activity.id) || 'Unknown'}</span>
 							</div>
 							
 							<div class="activity-message">
@@ -316,7 +340,7 @@
 								{activity.content}
 							{/if}
 						</span>
-						<span class="compact-time">{formatTime(activity.timestamp)}</span>
+						<span class="compact-time">{formattedTimes.get(activity.id) || 'Unknown'}</span>
 					</div>
 				{/each}
 			</div>

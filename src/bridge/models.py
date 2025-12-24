@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
-from uuid import UUID, uuid4
+from typing import Any, Dict, List, Optional, Union, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -87,7 +87,7 @@ class PendingRequest:
 class MCPRequest(BaseModel):
     """MCP JSON-RPC 2.0 request."""
     
-    jsonrpc: str = Field(default="2.0", const=True)
+    jsonrpc: Literal["2.0"] = Field(default="2.0")
     id: Union[str, int, None] = Field(default_factory=lambda: str(uuid4()))
     method: str
     params: Optional[Dict[str, Any]] = None
@@ -96,7 +96,7 @@ class MCPRequest(BaseModel):
 class MCPResponse(BaseModel):
     """MCP JSON-RPC 2.0 response."""
     
-    jsonrpc: str = Field(default="2.0", const=True)
+    jsonrpc: Literal["2.0"] = Field(default="2.0")
     id: Union[str, int, None]
     result: Optional[Any] = None
     error: Optional[Dict[str, Any]] = None
@@ -105,7 +105,7 @@ class MCPResponse(BaseModel):
 class MCPNotification(BaseModel):
     """MCP JSON-RPC 2.0 notification."""
     
-    jsonrpc: str = Field(default="2.0", const=True)
+    jsonrpc: Literal["2.0"] = Field(default="2.0")
     method: str
     params: Optional[Dict[str, Any]] = None
 

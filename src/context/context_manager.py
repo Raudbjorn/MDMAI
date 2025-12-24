@@ -2,11 +2,10 @@
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Union
 
 from ..ai_providers.models import ProviderType
 from ..security.enhanced_security_manager import EnhancedSecurityManager
-from ..bridge.models import BridgeMessage
 from .models import (
     Context,
     ConversationContext,
@@ -14,7 +13,6 @@ from .models import (
     CollaborativeContext,
     ContextQuery,
     ContextEvent,
-    ContextType,
 )
 from .persistence import ContextPersistenceLayer
 from .serialization import ContextSerializer, ContextCompressor

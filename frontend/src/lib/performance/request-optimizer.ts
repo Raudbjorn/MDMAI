@@ -17,7 +17,7 @@ export interface DebounceConfig {
 
 export class RequestOptimizer {
   private batchQueues = new Map<string, any[]>();
-  private batchTimers = new Map<string, NodeJS.Timeout>();
+  private batchTimers = new Map<string, number>();
   private batchConfigs = new Map<string, BatchConfig>();
   private debouncedFunctions = new Map<string, any>();
   private pendingRequests = new Map<string, Promise<any>>();
@@ -66,8 +66,8 @@ export class RequestOptimizer {
     fn: T,
     config: DebounceConfig
   ): (...args: Parameters<T>) => Promise<ReturnType<T>> {
-    let timeoutId: NodeJS.Timeout | null = null;
-    let maxTimeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: number | null = null;
+    let maxTimeoutId: number | null = null;
     let lastCallTime = 0;
     let lastArgs: Parameters<T> | null = null;
     let result: ReturnType<T> | null = null;
@@ -97,13 +97,13 @@ export class RequestOptimizer {
         const shouldCallNow = config.leading && !timeoutId;
 
         if (timeoutId) {
-          clearTimeout(timeoutId);
+          window.clearTimeout(timeoutId);
         }
 
         if (shouldCallNow) {
           resolve(invokeFunc(args));
         } else {
-          timeoutId = setTimeout(() => {
+          timeoutId = window.setTimeout(() => {
             if (config.trailing !== false && lastArgs) {
               invokeFunc(lastArgs);
             }
@@ -113,12 +113,12 @@ export class RequestOptimizer {
 
           // Set max wait timer if configured
           if (config.maxWait && !maxTimeoutId) {
-            maxTimeoutId = setTimeout(() => {
+            maxTimeoutId = window.setTimeout(() => {
               if (lastArgs) {
                 invokeFunc(lastArgs);
               }
               if (timeoutId) {
-                clearTimeout(timeoutId);
+                window.clearTimeout(timeoutId);
                 timeoutId = null;
               }
               maxTimeoutId = null;
@@ -132,11 +132,11 @@ export class RequestOptimizer {
 
     debounced.cancel = () => {
       if (timeoutId) {
-        clearTimeout(timeoutId);
+        window.clearTimeout(timeoutId);
         timeoutId = null;
       }
       if (maxTimeoutId) {
-        clearTimeout(maxTimeoutId);
+        window.clearTimeout(maxTimeoutId);
         maxTimeoutId = null;
       }
       lastArgs = null;
@@ -148,11 +148,11 @@ export class RequestOptimizer {
       if (timeoutId && lastArgs) {
         invokeFunc(lastArgs);
         if (timeoutId) {
-          clearTimeout(timeoutId);
+          window.clearTimeout(timeoutId);
           timeoutId = null;
         }
         if (maxTimeoutId) {
-          clearTimeout(maxTimeoutId);
+          window.clearTimeout(maxTimeoutId);
           maxTimeoutId = null;
         }
       }
@@ -259,11 +259,11 @@ export class RequestOptimizer {
     // Clear existing timer
     const existingTimer = this.batchTimers.get(endpoint);
     if (existingTimer) {
-      clearTimeout(existingTimer);
+      window.clearTimeout(existingTimer);
     }
 
     // Schedule new batch processing
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       this.processBatch(endpoint);
     }, maxWaitTime);
 
@@ -281,7 +281,7 @@ export class RequestOptimizer {
     // Clear timer
     const timer = this.batchTimers.get(endpoint);
     if (timer) {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       this.batchTimers.delete(endpoint);
     }
 

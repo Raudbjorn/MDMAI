@@ -8,10 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import jwt
 import redis.asyncio as redis
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from pydantic import BaseModel, Field, validator
 
 from config.logging_config import get_logger
 from src.security.models import TokenType, JWTClaims, TokenPair
@@ -634,7 +630,7 @@ class DistributedJWTManager:
 
 
 # For backwards compatibility, inherit from original JWTManager
-from src.security.jwt_manager import JWTManager, JWTConfig, JWTAlgorithm
+from src.security.jwt_manager import JWTManager, JWTConfig
 
 class EnhancedJWTManager(JWTManager):
     """

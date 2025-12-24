@@ -2,6 +2,8 @@ import type { Tool, ToolResult } from './types';
 import { CacheManager } from '$lib/cache/cache-manager';
 import { MetricsCollector } from '$lib/performance/metrics-collector';
 import { WebSocketPool } from '$lib/performance/request-optimizer';
+// Use secure crypto API instead of XOR encryption
+import { validateApiKeyFormat } from '$lib/security/api-key-crypto';
 
 export interface MCPSession {
 	id: string;
@@ -39,6 +41,11 @@ export class MCPClient {
 		const start = performance.now();
 		
 		try {
+			// Validate API key format before sending
+			if (!validateApiKeyFormat(apiKey, provider)) {
+				throw new Error(`Invalid API key format for provider: ${provider}`);
+			}
+			
 			// Check cache for existing session
 			const cacheKey = `session:${userId}:${provider}`;
 			const cachedSession = await this.cacheManager.get<MCPSession>(cacheKey);
@@ -58,16 +65,31 @@ export class MCPClient {
 				return cachedSession;
 			}
 
-			// Initialize session via HTTP
+			// Initialize session via HTTPS (ensure HTTPS in production)
+			if (
+				typeof window !== 'undefined' &&
+				window.location.protocol !== 'https:' &&
+				window.location.hostname !== 'localhost' &&
+				window.location.hostname !== '127.0.0.1'
+			) {
+				console.warn('API keys should only be transmitted over HTTPS in production!');
+			}
+			
+			// Generate nonce for request
+			const nonce = crypto.getRandomValues(new Uint8Array(16));
+			const nonceStr = Array.from(nonce, b => b.toString(16).padStart(2, '0')).join('');
+			
 			const response = await fetch(`${this.baseUrl}/api/bridge/session`, {
 				method: 'POST',
 				headers: {
-					'Content-Type': 'application/json'
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${apiKey}`,
+					'X-Request-Timestamp': Date.now().toString(),
+					'X-Request-Nonce': nonceStr
 				},
 				body: JSON.stringify({
 					user_id: userId,
-					provider,
-					api_key: apiKey
+					provider: provider
 				})
 			});
 

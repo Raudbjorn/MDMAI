@@ -598,6 +598,7 @@
 				class:active={canvasState.currentTool === 'select'}
 				onclick={() => setTool('select')}
 				title="Select (S)"
+				aria-label="Select tool"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M3 3l7 14v-6h6L3 3z"/>
@@ -608,6 +609,7 @@
 				class:active={canvasState.currentTool === 'pen'}
 				onclick={() => setTool('pen')}
 				title="Pen (P)"
+				aria-label="Pen drawing tool"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"/>
@@ -619,6 +621,7 @@
 				class:active={canvasState.currentTool === 'eraser'}
 				onclick={() => setTool('eraser')}
 				title="Eraser (E)"
+				aria-label="Eraser tool"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M8.5 8.5l-3 3L3 14h4l2-2 3-3-3.5-3.5z"/>
@@ -630,6 +633,7 @@
 				class:active={canvasState.currentTool === 'rectangle'}
 				onclick={() => setTool('rectangle')}
 				title="Rectangle (R)"
+				aria-label="Rectangle drawing tool"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<rect x="3" y="5" width="14" height="10" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -640,6 +644,7 @@
 				class:active={canvasState.currentTool === 'circle'}
 				onclick={() => setTool('circle')}
 				title="Circle (C)"
+				aria-label="Circle drawing tool"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
@@ -695,6 +700,7 @@
 				onclick={undo}
 				disabled={canvasState.historyIndex <= 0}
 				title="Undo (Ctrl+Z)"
+				aria-label="Undo last action"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M3 10h10a5 5 0 010 10h-3v-2h3a3 3 0 000-6H3v3L0 10l3-5v3z"/>
@@ -705,6 +711,7 @@
 				onclick={redo}
 				disabled={canvasState.historyIndex >= canvasState.history.length - 1}
 				title="Redo (Ctrl+Y)"
+				aria-label="Redo last undone action"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M17 10H7a5 5 0 000 10h3v-2H7a3 3 0 010-6h10v3l3-5-3-5v3z"/>
@@ -714,6 +721,7 @@
 				class="tool-btn"
 				onclick={clearCanvas}
 				title="Clear Canvas"
+				aria-label="Clear entire canvas"
 			>
 				<svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
 					<path d="M6 2l2-2h4l2 2h4v2H2V2h4zM3 6h14l-1 14H4L3 6zm3 2v10h2V8H6zm6 0v10h2V8h-2z"/>
@@ -737,7 +745,15 @@
 		</div>
 	</div>
 	
-	<div class="canvas-container" onkeydown={handleKeyDown}>
+	<div 
+		class="canvas-container" 
+		onkeydown={handleKeyDown}
+		onkeyup={(e) => e.preventDefault()}
+		role="application"
+		aria-label="Collaborative drawing canvas"
+		aria-describedby="canvas-instructions"
+		tabindex={0}
+	>
 		<canvas
 			bind:this={canvas}
 			class="main-canvas"
@@ -745,7 +761,8 @@
 			onmousemove={handleMouseMove}
 			onmouseup={handleMouseUp}
 			onmouseleave={handleMouseUp}
-		/>
+			aria-label="Main drawing canvas"
+		></canvas>
 		<canvas
 			bind:this={overlayCanvas}
 			class="overlay-canvas"
@@ -753,7 +770,8 @@
 			onmousemove={handleMouseMove}
 			onmouseup={handleMouseUp}
 			onmouseleave={handleMouseUp}
-		/>
+			aria-label="Canvas overlay for selections and cursors"
+		></canvas>
 	</div>
 </div>
 

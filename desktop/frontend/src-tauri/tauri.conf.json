@@ -1,0 +1,313 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "TTRPG Assistant",
+  "version": "1.0.0",
+  "identifier": "com.ttrpg.assistant",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
+    },
+    "security": {
+      "csp": "default-src 'self' tauri: asset:; script-src 'self' tauri: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' tauri: asset:; connect-src 'self' ipc: tauri: asset: http://127.0.0.1:* https://api.openai.com https://api.anthropic.com; img-src 'self' data: blob: tauri: asset: https:; font-src 'self' data: tauri: asset:; media-src 'self' tauri: asset:; worker-src 'self' tauri: asset:; child-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests; block-all-mixed-content; require-trusted-types-for 'script'; trusted-types default dompurify;",
+      "dangerousDisableAssetCspModification": false,
+      "freezePrototype": true,
+      "pattern": {
+        "use": "brownfield",
+        "options": {
+          "dangerous_remote_domain_ipc_access": false,
+          "dangerous_disable_asset_csp_modification": {
+            "./**/*": false
+          }
+        }
+      }
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "TTRPG Assistant",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true,
+        "skipTaskbar": false,
+        "dragDropEnabled": true,
+        "theme": null,
+        "titleBarStyle": "Overlay",
+        "userAgent": "TTRPG Assistant Desktop",
+        "incognito": false,
+        "alwaysOnTop": false,
+        "contentProtected": false,
+        "visibleOnAllWorkspaces": false,
+        "hiddenTitle": false,
+        "acceptFirstMouse": true,
+        "tabbingIdentifier": "ttrpg-assistant",
+        "additionalBrowserArgs": "--enable-features=OverlayScrollbar"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "externalBin": [
+      "binaries/mcp-server"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": [
+      {
+        "name": "msi",
+        "config": {
+          "wix": {
+            "language": "en-US",
+            "template": "main.wxs",
+            "componentRefs": ["MainApplicationComponent"],
+            "featureRefs": ["MainApplicationFeature"],
+            "upgradeCode": "{B0E0E8F0-8F0E-4F0E-8F0E-8F0E8F0E8F0E}",
+            "enableElevatedInstall": false,
+            "allowDowngrade": false,
+            "bannerPath": "installer-assets/banner.bmp",
+            "dialogImagePath": "installer-assets/dialog.bmp",
+            "foldersToInstall": ["/ProgramFiles/TTRPG Assistant"]
+          }
+        }
+      },
+      {
+        "name": "nsis",
+        "config": {
+          "headerImage": "installer-assets/header.bmp",
+          "sidebarImage": "installer-assets/sidebar.bmp",
+          "installerIcon": "icons/icon.ico",
+          "allowElevation": false,
+          "installMode": "perUser",
+          "languages": ["English"],
+          "customLanguageFiles": {},
+          "template": "installer.nsi",
+          "compression": "lzma",
+          "displayLanguageSelector": false
+        }
+      },
+      {
+        "name": "deb",
+        "config": {
+          "depends": [
+            "libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0",
+            "libgtk-3-0",
+            "libayatana-appindicator3-1 | libappindicator3-1"
+          ],
+          "conflicts": [],
+          "replaces": [],
+          "provides": [],
+          "section": "games",
+          "priority": "optional",
+          "changelog": "Release notes available at https://github.com/Raudbjorn/MDMAI/releases",
+          "maintainerScripts": {
+            "preinst": "#!/bin/bash\n# Pre-installation script\necho 'Installing TTRPG Assistant...'",
+            "postinst": "#!/bin/bash\n# Post-installation script\n# Register MIME types\nif command -v update-desktop-database > /dev/null; then\n  update-desktop-database\nfi\nif command -v update-mime-database > /dev/null; then\n  update-mime-database /usr/share/mime\nfi",
+            "prerm": "#!/bin/bash\n# Pre-removal script\necho 'Removing TTRPG Assistant...'",
+            "postrm": "#!/bin/bash\n# Post-removal script\n# Update desktop database\nif command -v update-desktop-database > /dev/null; then\n  update-desktop-database\nfi"
+          }
+        }
+      },
+      {
+        "name": "rpm",
+        "config": {
+          "depends": [
+            "webkit2gtk4.0",
+            "gtk3",
+            "libappindicator-gtk3"
+          ],
+          "obsoletes": [],
+          "conflicts": [],
+          "provides": [],
+          "release": "1",
+          "epoch": 0,
+          "summary": "A comprehensive assistant for Tabletop RPG game masters",
+          "group": "Amusements/Games",
+          "license": "MIT",
+          "url": "https://github.com/Raudbjorn/MDMAI",
+          "preinst": "#!/bin/bash\necho 'Installing TTRPG Assistant...'",
+          "postinst": "#!/bin/bash\n# Update desktop database\nif command -v update-desktop-database > /dev/null; then\n  update-desktop-database\nfi",
+          "preun": "#!/bin/bash\necho 'Removing TTRPG Assistant...'",
+          "postun": "#!/bin/bash\n# Update desktop database\nif command -v update-desktop-database > /dev/null; then\n  update-desktop-database\nfi"
+        }
+      },
+      {
+        "name": "appimage",
+        "config": {
+          "bundleMediaFramework": true,
+          "customTools": []
+        }
+      },
+      {
+        "name": "dmg",
+        "config": {
+          "background": "installer-assets/dmg-background.png",
+          "windowSize": {
+            "width": 540,
+            "height": 380
+          },
+          "appPosition": {
+            "x": 180,
+            "y": 170
+          },
+          "applicationFolderPosition": {
+            "x": 360,
+            "y": 170
+          },
+          "window": {
+            "position": {
+              "x": 200,
+              "y": 200
+            },
+            "size": {
+              "width": 540,
+              "height": 380
+            }
+          }
+        }
+      }
+    ],
+    "category": "Game",
+    "copyright": "© 2024 TTRPG Assistant",
+    "shortDescription": "A comprehensive assistant for Tabletop RPG game masters",
+    "longDescription": "TTRPG Assistant provides quick access to rules, campaign management, and AI-powered content generation for tabletop role-playing games. Features include character management, encounter tracking, dice rolling, and integration with popular RPG systems.",
+    "homepage": "https://github.com/Raudbjorn/MDMAI",
+    "authors": ["TTRPG Assistant Team"],
+    "publisher": "TTRPG Assistant",
+    "license": "MIT",
+    "licenseFile": "../../../LICENSE",
+    "fileAssociations": [
+      {
+        "ext": ["ttrpg"],
+        "name": "TTRPG Campaign",
+        "description": "TTRPG Campaign Data File",
+        "role": "Editor",
+        "mimeType": "application/x-ttrpg-campaign"
+      },
+      {
+        "ext": ["campaign"],
+        "name": "TTRPG Campaign",
+        "description": "TTRPG Campaign File",
+        "role": "Editor",
+        "mimeType": "application/x-ttrpg-campaign"
+      },
+      {
+        "ext": ["character"],
+        "name": "TTRPG Character",
+        "description": "TTRPG Character Sheet",
+        "role": "Editor",
+        "mimeType": "application/x-ttrpg-character"
+      },
+      {
+        "ext": ["encounter"],
+        "name": "TTRPG Encounter",
+        "description": "TTRPG Encounter Data",
+        "role": "Editor",
+        "mimeType": "application/x-ttrpg-encounter"
+      }
+    ],
+    "resources": [
+      "../../../docs/*",
+      "../../../assets/*",
+      "../../../templates/*"
+    ],
+    "createUpdaterArtifacts": true,
+    "manifestVersion": 1
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "${UPDATE_URL:-https://github.com/Raudbjorn/MDMAI/releases/latest/download/latest.json}"
+      ],
+      "dialog": true,
+      "pubkey": "${TAURI_SIGNING_PRIVATE_KEY_PATH:-dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUldUTE1hZ1BoRDhkZFJxaHAyVFNqU3pxUCtCbkxVdXVEaXBSU0VjTFgxRWRRcXl4OXdCZmdvTCtYa09XZjc4RThKWWFSMEtUU09wSXFNdDZGdGVZRWg2UmRqRllqUnRmbGFOV1U9Cg==}",
+      "windows": {
+        "installMode": "passive",
+        "silent": false
+      }
+    },
+    "stronghold": {
+      "password": "${TAURI_STRONGHOLD_PASSWORD:-dev-password}"
+    },
+    "os": {
+      "all": true
+    },
+    "shell": {
+      "all": false,
+      "open": true
+    },
+    "http": {
+      "all": true,
+      "request": true
+    },
+    "fs": {
+      "all": true,
+      "readFile": true,
+      "writeFile": true,
+      "readDir": true,
+      "copyFile": true,
+      "createDir": true,
+      "removeDir": true,
+      "removeFile": true,
+      "renameFile": true,
+      "exists": true,
+      "scope": [
+        "$APPDATA",
+        "$APPDATA/ttrpg-assistant",
+        "$APPDATA/ttrpg-assistant/**",
+        "$APPLOCAL",
+        "$APPLOCAL/ttrpg-assistant",
+        "$APPLOCAL/ttrpg-assistant/**",
+        "$APPCACHE",
+        "$APPCACHE/ttrpg-assistant",
+        "$APPCACHE/ttrpg-assistant/**",
+        "$APPCONFIG",
+        "$APPCONFIG/ttrpg-assistant",
+        "$APPCONFIG/ttrpg-assistant/**",
+        "$APPLOG",
+        "$APPLOG/ttrpg-assistant",
+        "$APPLOG/ttrpg-assistant/**",
+        "$DOCUMENT/TTRPG-Assistant",
+        "$DOCUMENT/TTRPG-Assistant/**",
+        "$DOWNLOAD/ttrpg-assistant-exports",
+        "$DOWNLOAD/ttrpg-assistant-exports/**"
+      ]
+    },
+    "dialog": {
+      "all": true,
+      "ask": true,
+      "confirm": true,
+      "message": true,
+      "open": true,
+      "save": true
+    },
+    "notification": {
+      "all": true
+    },
+    "globalShortcut": {
+      "all": true
+    },
+    "clipboard": {
+      "all": true,
+      "readText": true,
+      "writeText": true
+    }
+  }
+}

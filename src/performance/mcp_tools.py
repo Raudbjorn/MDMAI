@@ -1,6 +1,6 @@
 """MCP tools for cache management and performance monitoring."""
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
 

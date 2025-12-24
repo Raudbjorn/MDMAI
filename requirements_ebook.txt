@@ -1,0 +1,5 @@
+# Ebook processing dependencies
+ebooklib>=0.18
+mobi>=0.3.3
+beautifulsoup4>=4.12.0
+lxml>=4.9.0

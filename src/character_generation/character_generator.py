@@ -2,10 +2,29 @@
 
 import logging
 import random
-from dataclasses import field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Union
 
-from .models import Backstory, Character, CharacterClass, CharacterRace, CharacterStats, Equipment
+from .models import (
+    Backstory,
+    Character,
+    CharacterBackground,
+    CharacterClass,
+    CharacterMotivation,
+    CharacterRace,
+    CharacterStats,
+    CharacterTrait,
+    Equipment,
+    ExtendedCharacter,
+    GenreSpecificData,
+    ItemType,
+    TTRPGGenre,
+    WeaponType,
+    CyberpunkAugmentation,
+    SciFiTechnology,
+    CosmicHorrorSanity,
+    PostApocalypticMutation,
+    SuperheroPower,
+)
 from .validators import CharacterValidator, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -30,6 +49,23 @@ class CharacterGenerator:
         CharacterRace.HALF_ELF: {"charisma": 2, "any_two": 1},
         CharacterRace.HALF_ORC: {"strength": 2, "constitution": 1},
     }
+    
+    # Class-specific goals
+    _CLASS_GOALS = {
+        CharacterClass.FIGHTER: "Master legendary combat techniques",
+        CharacterClass.WIZARD: "Uncover lost magical secrets",
+        CharacterClass.CLERIC: "Spread the faith and heal the world",
+        CharacterClass.ROGUE: "Pull off the heist of the century",
+        CharacterClass.RANGER: "Protect the natural world",
+        CharacterClass.PALADIN: "Uphold justice and righteousness",
+        CharacterClass.BARBARIAN: "Prove strength to ancestors",
+        CharacterClass.SORCERER: "Control wild magical power",
+        CharacterClass.WARLOCK: "Fulfill pact obligations",
+        CharacterClass.DRUID: "Maintain natural balance",
+        CharacterClass.MONK: "Achieve inner peace",
+        CharacterClass.BARD: "Become legendary performer",
+        CharacterClass.ARTIFICER: "Create revolutionary inventions",
+    }
 
     # Class primary stats (for stat array assignment)
     CLASS_PRIMARY_STATS = {
@@ -48,22 +84,22 @@ class CharacterGenerator:
         CharacterClass.ARTIFICER: ["intelligence", "constitution"],
     }
 
-    # Starting equipment by class
+    # Starting equipment by class with enriched content
     CLASS_EQUIPMENT = {
         CharacterClass.FIGHTER: {
-            "weapons": ["Longsword", "Shield"],
-            "armor": ["Chain Mail"],
-            "items": ["Backpack", "Bedroll", "Rations (10 days)"],
+            "weapons": [WeaponType.LONGSWORD.value, WeaponType.HANDAXE.value],
+            "armor": ["Chain Mail", "Shield"],
+            "items": [ItemType.BACKPACK.value, ItemType.BEDROLL.value, ItemType.RATIONS.value, ItemType.ROPE.value],
         },
         CharacterClass.WIZARD: {
-            "weapons": ["Quarterstaff"],
+            "weapons": [WeaponType.QUARTERSTAFF.value],
             "armor": [],
-            "items": ["Spellbook", "Component Pouch", "Scholar's Pack"],
+            "items": [ItemType.SPELLBOOK.value, ItemType.COMPONENT_POUCH.value, ItemType.BACKPACK.value, ItemType.ARCANE_FOCUS.value],
         },
         CharacterClass.ROGUE: {
-            "weapons": ["Shortsword", "Dagger (2)"],
+            "weapons": [WeaponType.SHORTSWORD.value, WeaponType.DAGGER.value],
             "armor": ["Leather Armor"],
-            "items": ["Thieves' Tools", "Burglar's Pack"],
+            "items": [ItemType.THIEVES_TOOLS.value, ItemType.BACKPACK.value, ItemType.ROPE.value, ItemType.LOCKPICKS.value],
         },
         CharacterClass.CLERIC: {
             "weapons": ["Mace"],
@@ -151,6 +187,8 @@ class CharacterGenerator:
         name: Optional[str] = None,
         backstory_hints: Optional[str] = None,
         stat_generation: str = "standard",  # "standard", "random", "point_buy"
+        genre: Optional[Union[str, TTRPGGenre]] = None,  # Genre override
+        use_extended: bool = False,  # Use ExtendedCharacter with genre data
     ) -> Character:
         """
         Generate a complete player character.
@@ -176,12 +214,32 @@ class CharacterGenerator:
 
         logger.info(f"Generating character for {system} at level {level}")
 
-        # Create base character
-        character = Character(system=system, name=name or self._generate_name(race))
+        # Determine genre
+        if genre:
+            try:
+                genre_enum = TTRPGGenre(genre.lower())
+            except ValueError:
+                genre_enum = TTRPGGenre.FANTASY
+        else:
+            genre_enum = self._determine_genre_from_system(system)
 
-        # Set class and race
-        character.character_class = self._select_class(character_class)
-        character.race = self._select_race(race)
+        # Create base character or extended character
+        if use_extended or genre_enum != TTRPGGenre.FANTASY:
+            character = ExtendedCharacter(
+                system=system,
+                name=name or self._generate_name(race, genre_enum),
+                genre=genre_enum
+            )
+        else:
+            character = Character(
+                system=system,
+                name=name or self._generate_name(race, genre_enum),
+                genre=genre_enum
+            )
+
+        # Set class and race based on genre
+        character.character_class = self._select_class(character_class, genre_enum)
+        character.race = self._select_race(race, genre_enum)
 
         # Generate stats
         character.stats = self._generate_stats(
@@ -210,6 +268,10 @@ class CharacterGenerator:
         # Generate backstory (basic, will be enhanced by BackstoryGenerator)
         character.backstory = self._generate_basic_backstory(character, backstory_hints)
 
+        # Generate genre-specific data if using ExtendedCharacter
+        if isinstance(character, ExtendedCharacter):
+            self._generate_genre_specific_data(character)
+
         # Validate the generated character
         validation_errors = CharacterValidator.validate_character(character)
         if validation_errors:
@@ -222,33 +284,141 @@ class CharacterGenerator:
         logger.info(f"Character generation complete: {character.name}")
         return character
 
-    def _select_class(self, class_name: Optional[str]) -> CharacterClass:
-        """Select a character class."""
+    def _determine_genre_from_system(self, system: str) -> TTRPGGenre:
+        """Determine genre based on system name."""
+        system_lower = system.lower()
+        
+        if any(term in system_lower for term in ["d&d", "pathfinder", "dungeon", "dragon"]):
+            return TTRPGGenre.FANTASY
+        elif any(term in system_lower for term in ["cyberpunk", "shadowrun", "chrome"]):
+            return TTRPGGenre.CYBERPUNK
+        elif any(term in system_lower for term in ["traveller", "stars", "space", "galaxy"]):
+            return TTRPGGenre.SCI_FI
+        elif any(term in system_lower for term in ["cthulhu", "delta green", "horror"]):
+            return TTRPGGenre.COSMIC_HORROR
+        elif any(term in system_lower for term in ["apocalypse", "fallout", "wasteland"]):
+            return TTRPGGenre.POST_APOCALYPTIC
+        elif any(term in system_lower for term in ["masks", "hero", "super", "marvel", "dc"]):
+            return TTRPGGenre.SUPERHERO
+        elif any(term in system_lower for term in ["deadlands", "western", "frontier"]):
+            return TTRPGGenre.WESTERN
+        else:
+            return TTRPGGenre.FANTASY
+
+    def _select_class(self, class_name: Optional[Union[str, CharacterClass]], genre: TTRPGGenre) -> CharacterClass:
+        """Select a character class based on genre."""
         if class_name:
-            try:
-                return CharacterClass(class_name.lower())
-            except ValueError:
-                # Custom class
-                return CharacterClass.CUSTOM
+            # If it's already a CharacterClass enum, return it
+            if isinstance(class_name, CharacterClass):
+                return class_name
+            # Try to find matching enum value from string
+            normalized = class_name.lower().replace(" ", "_").replace("-", "_")
+            for cls in CharacterClass:
+                if cls.value == normalized:
+                    return cls
+            # If no match found, it's a custom class
+            return CharacterClass.CUSTOM
 
-        # Random selection
-        classes = [c for c in CharacterClass if c != CharacterClass.CUSTOM]
-        return random.choice(classes)
+        # Genre-specific class pools
+        genre_classes = {
+            TTRPGGenre.FANTASY: [
+                CharacterClass.FIGHTER, CharacterClass.WIZARD, CharacterClass.CLERIC,
+                CharacterClass.ROGUE, CharacterClass.RANGER, CharacterClass.PALADIN,
+                CharacterClass.BARBARIAN, CharacterClass.SORCERER, CharacterClass.WARLOCK,
+                CharacterClass.DRUID, CharacterClass.MONK, CharacterClass.BARD,
+                CharacterClass.ARTIFICER
+            ],
+            TTRPGGenre.SCI_FI: [
+                CharacterClass.ENGINEER, CharacterClass.SCIENTIST, CharacterClass.PILOT,
+                CharacterClass.MARINE, CharacterClass.DIPLOMAT, CharacterClass.XENOBIOLOGIST,
+                CharacterClass.TECH_SPECIALIST, CharacterClass.PSION, CharacterClass.BOUNTY_HUNTER
+            ],
+            TTRPGGenre.CYBERPUNK: [
+                CharacterClass.NETRUNNER, CharacterClass.SOLO, CharacterClass.FIXER,
+                CharacterClass.CORPORATE, CharacterClass.ROCKERBOY, CharacterClass.TECHIE,
+                CharacterClass.MEDIA, CharacterClass.COP, CharacterClass.NOMAD
+            ],
+            TTRPGGenre.COSMIC_HORROR: [
+                CharacterClass.INVESTIGATOR, CharacterClass.SCHOLAR, CharacterClass.ANTIQUARIAN,
+                CharacterClass.OCCULTIST, CharacterClass.ALIENIST, CharacterClass.ARCHAEOLOGIST,
+                CharacterClass.JOURNALIST, CharacterClass.DETECTIVE, CharacterClass.PROFESSOR
+            ],
+            TTRPGGenre.POST_APOCALYPTIC: [
+                CharacterClass.SURVIVOR, CharacterClass.SCAVENGER, CharacterClass.RAIDER,
+                CharacterClass.MEDIC, CharacterClass.MECHANIC, CharacterClass.TRADER,
+                CharacterClass.WARLORD, CharacterClass.MUTANT_HUNTER, CharacterClass.VAULT_DWELLER
+            ],
+            TTRPGGenre.SUPERHERO: [
+                CharacterClass.VIGILANTE, CharacterClass.POWERED, CharacterClass.GENIUS,
+                CharacterClass.MARTIAL_ARTIST, CharacterClass.MYSTIC, CharacterClass.ALIEN_HERO,
+                CharacterClass.TECH_HERO, CharacterClass.SIDEKICK
+            ],
+            TTRPGGenre.WESTERN: [
+                CharacterClass.GUNSLINGER, CharacterClass.LAWMAN, CharacterClass.OUTLAW,
+                CharacterClass.GAMBLER, CharacterClass.PREACHER, CharacterClass.PROSPECTOR,
+                CharacterClass.NATIVE_SCOUT
+            ],
+        }
 
-    def _select_race(self, race_name: Optional[str]) -> CharacterRace:
-        """Select a character race."""
+        # Get appropriate class pool for genre
+        class_pool = genre_classes.get(genre, genre_classes[TTRPGGenre.FANTASY])
+        return random.choice(class_pool)
+
+    def _select_race(self, race_name: Optional[Union[str, CharacterRace]], genre: TTRPGGenre) -> CharacterRace:
+        """Select a character race based on genre."""
         if race_name:
-            try:
-                # Replace spaces and hyphens with underscores to match enum values
-                normalized_race = race_name.lower().replace(" ", "_").replace("-", "_")
-                return CharacterRace(normalized_race)
-            except ValueError:
-                # Custom race
-                return CharacterRace.CUSTOM
+            # If it's already a CharacterRace enum, return it
+            if isinstance(race_name, CharacterRace):
+                return race_name
+            # Try to find matching enum value from string
+            normalized = race_name.lower().replace(" ", "_").replace("-", "_")
+            for race in CharacterRace:
+                if race.value == normalized:
+                    return race
+            # If no match found, it's a custom race
+            return CharacterRace.CUSTOM
 
-        # Random selection
-        races = [r for r in CharacterRace if r != CharacterRace.CUSTOM]
-        return random.choice(races)
+        # Genre-specific race pools
+        genre_races = {
+            TTRPGGenre.FANTASY: [
+                CharacterRace.HUMAN, CharacterRace.ELF, CharacterRace.DWARF,
+                CharacterRace.HALFLING, CharacterRace.ORC, CharacterRace.TIEFLING,
+                CharacterRace.DRAGONBORN, CharacterRace.GNOME, CharacterRace.HALF_ELF,
+                CharacterRace.HALF_ORC
+            ],
+            TTRPGGenre.SCI_FI: [
+                CharacterRace.TERRAN, CharacterRace.MARTIAN, CharacterRace.BELTER,
+                CharacterRace.CYBORG, CharacterRace.ANDROID, CharacterRace.AI_CONSTRUCT,
+                CharacterRace.GREY_ALIEN, CharacterRace.REPTILIAN, CharacterRace.INSECTOID,
+                CharacterRace.ENERGY_BEING, CharacterRace.SILICON_BASED, CharacterRace.UPLIFTED_ANIMAL
+            ],
+            TTRPGGenre.CYBERPUNK: [
+                CharacterRace.AUGMENTED_HUMAN, CharacterRace.FULL_CONVERSION_CYBORG,
+                CharacterRace.BIOENGINEERED, CharacterRace.CLONE, CharacterRace.DIGITAL_CONSCIOUSNESS,
+                CharacterRace.HUMAN
+            ],
+            TTRPGGenre.COSMIC_HORROR: [
+                CharacterRace.HUMAN, CharacterRace.DEEP_ONE_HYBRID, CharacterRace.GHOUL,
+                CharacterRace.DREAMLANDS_NATIVE, CharacterRace.TOUCHED
+            ],
+            TTRPGGenre.POST_APOCALYPTIC: [
+                CharacterRace.PURE_STRAIN_HUMAN, CharacterRace.MUTANT,
+                CharacterRace.GHOUL_WASTELANDER, CharacterRace.SYNTHETIC,
+                CharacterRace.HYBRID, CharacterRace.RADIANT
+            ],
+            TTRPGGenre.SUPERHERO: [
+                CharacterRace.HUMAN, CharacterRace.METAHUMAN, CharacterRace.INHUMAN,
+                CharacterRace.ATLANTEAN, CharacterRace.AMAZONIAN, CharacterRace.KRYPTONIAN,
+                CharacterRace.ASGARDIAN
+            ],
+            TTRPGGenre.WESTERN: [
+                CharacterRace.HUMAN  # Western is typically human-only
+            ],
+        }
+
+        # Get appropriate race pool for genre
+        race_pool = genre_races.get(genre, genre_races[TTRPGGenre.FANTASY])
+        return random.choice(race_pool)
 
     def _generate_stats(
         self, character_class: CharacterClass, race: CharacterRace, level: int, method: str
@@ -488,7 +658,7 @@ class CharacterGenerator:
                     CharacterClass.PALADIN,
                     CharacterClass.BARBARIAN,
                 ]
-                else f"Level 5 Feature"
+                else "Level 5 Feature"
             )
 
         return features
@@ -556,29 +726,131 @@ class CharacterGenerator:
 
         return f"{ethic} {moral}"
 
-    def _generate_name(self, race: Optional[CharacterRace]) -> str:
-        """Generate a character name based on race."""
-        # Simple name generation - could be enhanced
-        first_names = {
-            CharacterRace.HUMAN: ["John", "Sarah", "Marcus", "Elena"],
-            CharacterRace.ELF: ["Legolas", "Arwen", "Elrond", "Galadriel"],
-            CharacterRace.DWARF: ["Thorin", "Gimli", "Dwalin", "Balin"],
-            CharacterRace.HALFLING: ["Frodo", "Sam", "Pippin", "Merry"],
-            None: ["Alex", "Morgan", "Jordan", "Casey"],
-        }
+    def _generate_name(self, race: Optional[CharacterRace], genre: TTRPGGenre = TTRPGGenre.FANTASY) -> str:
+        """Generate a character name based on race and genre."""
+        # Genre-specific name pools
+        if genre == TTRPGGenre.CYBERPUNK:
+            first_names = ["Neon", "Chrome", "Shadow", "Razor", "Ghost", "Binary"]
+            last_names = ["Runner", "Jack", "Burn", "Wire", "Crash", "Hex"]
+        elif genre == TTRPGGenre.SCI_FI:
+            first_names = ["Nova", "Orion", "Luna", "Atlas", "Stellar", "Vega"]
+            last_names = ["Stardust", "Cosmos", "Nebula", "Void", "Quasar", "Pulsar"]
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            first_names = ["Randolph", "Herbert", "Wilbur", "Lavinia", "Silas", "Ephraim"]
+            last_names = ["Whateley", "Armitage", "Marsh", "Gilman", "Ward", "Carter"]
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            first_names = ["Ash", "Rust", "Storm", "Dust", "Raven", "Scar"]
+            last_names = ["Walker", "Survivor", "Scav", "Hunter", "Wanderer", "Keeper"]
+        elif genre == TTRPGGenre.WESTERN:
+            first_names = ["Jesse", "Wyatt", "Doc", "Belle", "Calamity", "Bill"]
+            last_names = ["Morgan", "Earp", "Holliday", "Starr", "James", "Cassidy"]
+        elif genre == TTRPGGenre.SUPERHERO:
+            first_names = ["Max", "Diana", "Victor", "Jean", "Bruce", "Clark"]
+            last_names = ["Power", "Steel", "Storm", "Phoenix", "Knight", "Swift"]
+        else:  # Fantasy default
+            first_names = {
+                CharacterRace.HUMAN: ["John", "Sarah", "Marcus", "Elena"],
+                CharacterRace.ELF: ["Legolas", "Arwen", "Elrond", "Galadriel"],
+                CharacterRace.DWARF: ["Thorin", "Gimli", "Dwalin", "Balin"],
+                CharacterRace.HALFLING: ["Frodo", "Sam", "Pippin", "Merry"],
+                None: ["Alex", "Morgan", "Jordan", "Casey"],
+            }
+            last_names = {
+                CharacterRace.HUMAN: ["Smith", "Walker", "Hunter", "Miller"],
+                CharacterRace.ELF: ["Greenleaf", "Starweaver", "Moonshadow"],
+                CharacterRace.DWARF: ["Ironforge", "Stonebeard", "Battlehammer"],
+                CharacterRace.HALFLING: ["Baggins", "Took", "Brandybuck"],
+                None: ["Stone", "River", "Hill", "Wood"],
+            }
+            first = random.choice(first_names.get(race, first_names[None]))
+            last = random.choice(last_names.get(race, last_names[None]))
+            return f"{first} {last}"
 
-        last_names = {
-            CharacterRace.HUMAN: ["Smith", "Walker", "Hunter", "Miller"],
-            CharacterRace.ELF: ["Greenleaf", "Starweaver", "Moonshadow"],
-            CharacterRace.DWARF: ["Ironforge", "Stonebeard", "Battlehammer"],
-            CharacterRace.HALFLING: ["Baggins", "Took", "Brandybuck"],
-            None: ["Stone", "River", "Hill", "Wood"],
-        }
-
-        first = random.choice(first_names.get(race, first_names[None]))
-        last = random.choice(last_names.get(race, last_names[None]))
-
+        # For non-fantasy genres
+        first = random.choice(first_names)
+        last = random.choice(last_names)
         return f"{first} {last}"
+
+    def _generate_genre_specific_data(self, character: ExtendedCharacter):
+        """Generate genre-specific data for ExtendedCharacter."""
+        genre = character.genre
+        
+        if genre == TTRPGGenre.CYBERPUNK:
+            # Generate augmentations
+            num_augs = random.randint(1, 3)
+            for _ in range(num_augs):
+                aug = CyberpunkAugmentation(
+                    name=random.choice(["Neural Interface", "Cybereye", "Reflex Booster", "Subdermal Armor"]),
+                    type=random.choice(["neural", "cyberlimb", "bioware", "nanotech"]),
+                    quality=random.choice(["street", "military", "corporate"]),
+                    humanity_cost=random.randint(1, 10),
+                    description="Enhanced capability",
+                    abilities=["Enhanced perception", "Increased reflexes"]
+                )
+                character.genre_data.augmentations.append(aug)
+            character.genre_data.street_cred = random.randint(0, 10)
+            
+        elif genre == TTRPGGenre.SCI_FI:
+            # Generate tech
+            tech = SciFiTechnology(
+                name=random.choice(["Plasma Rifle", "Force Shield", "Quantum Scanner"]),
+                tech_level=random.randint(5, 9),
+                category=random.choice(["weapon", "armor", "tool"]),
+                power_source=random.choice(["fusion", "antimatter", "zero-point"]),
+                description="Advanced technology",
+                capabilities=["Long range", "High precision"]
+            )
+            character.genre_data.technologies.append(tech)
+            character.genre_data.ship_assignment = random.choice(["USS Enterprise", "Nostromo", "Serenity"])
+            character.genre_data.clearance_level = random.choice(["Alpha", "Beta", "Gamma", "Delta"])
+            
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            # Generate sanity
+            character.genre_data.sanity = CosmicHorrorSanity(
+                current_sanity=random.randint(40, 90),
+                max_sanity=100,
+                indefinite_insanity=False,
+                phobias=[random.choice(["Darkness", "Water", "Heights", "Crowds"])],
+                manias=[],
+                encounters=[],
+                forbidden_knowledge=[]
+            )
+            
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            # Generate mutations
+            if character.race == CharacterRace.MUTANT:
+                mutation = PostApocalypticMutation(
+                    name=random.choice(["Radiation Resistance", "Night Vision", "Extra Limb", "Acid Spit"]),
+                    type=random.choice(["physical", "mental", "metabolic", "sensory"]),
+                    severity=random.choice(["minor", "major"]),
+                    description="Mutation from radiation exposure",
+                    benefits=["Enhanced ability"],
+                    drawbacks=["Social stigma"]
+                )
+                character.genre_data.mutations.append(mutation)
+            character.genre_data.radiation_resistance = random.randint(0, 100)
+            character.genre_data.survival_skills = ["Scavenging", "Water Finding", "Shelter Building"]
+            
+        elif genre == TTRPGGenre.SUPERHERO:
+            # Generate powers
+            if character.character_class == CharacterClass.POWERED:
+                power = SuperheroPower(
+                    name=random.choice(["Super Strength", "Flight", "Telepathy", "Energy Blast"]),
+                    category=random.choice(["physical", "energy", "mental"]),
+                    power_level=random.randint(5, 10),
+                    origin=random.choice(["mutation", "accident", "alien"]),
+                    description="Superhuman ability",
+                    abilities=["Enhanced capability"],
+                    limitations=["Requires concentration", "Limited uses per day"]
+                )
+                character.genre_data.powers.append(power)
+            character.genre_data.secret_identity = f"{character.name} (civilian)"
+            
+        elif genre == TTRPGGenre.WESTERN:
+            # Generate western data
+            character.genre_data.reputation = random.choice(["Unknown", "Greenhorn", "Known", "Famous"])
+            character.genre_data.bounty = random.randint(0, 5000)
+            character.genre_data.quick_draw = random.randint(1, 10)
 
     def _generate_basic_backstory(self, character: Character, hints: Optional[str]) -> Backstory:
         """Generate a basic backstory (will be enhanced by BackstoryGenerator)."""
@@ -654,7 +926,91 @@ class CharacterGenerator:
         # Basic motivation
         backstory.motivation = f"Seeking adventure as a {character.get_class_name()}"
 
-        # Basic goals
-        backstory.goals = ["Find fortune and glory", "Master my abilities"]
+        # Basic goals with option for enriched content
+        backstory.goals = self._get_character_goals(character) if hasattr(self, '_get_character_goals') else ["Find fortune and glory", "Master my abilities"]
 
         return backstory
+    
+    def _get_character_goals(self, character: Character) -> List[str]:
+        """Generate character goals using enriched content."""
+        goals = []
+        
+        # Add class-specific goals
+        if character.character_class:
+            goals.append(self._CLASS_GOALS.get(character.character_class, "Achieve greatness"))
+        
+        # Add motivation-based goal
+        motivations = [CharacterMotivation.ADVENTURE, CharacterMotivation.KNOWLEDGE, CharacterMotivation.POWER]
+        selected = random.choice(motivations)
+        goals.append(f"Pursue {selected.value.replace('_', ' ')}")
+        
+        return goals
+    
+    def apply_enriched_content(self, character: Character) -> None:
+        """Apply enriched traits and equipment to a character."""
+        # Apply enriched traits
+        self._apply_enriched_traits(character)
+        
+        # Upgrade equipment with enriched items
+        if character.equipment:
+            self._enhance_equipment_with_enriched_items(character.equipment, character.stats.level)
+    
+    def _apply_enriched_traits(self, character: Character) -> None:
+        """Apply enriched character traits."""
+        # Select diverse traits
+        trait_types = {
+            'physical': [CharacterTrait.STRONG, CharacterTrait.AGILE, CharacterTrait.TOUGH],
+            'mental': [CharacterTrait.INTELLIGENT, CharacterTrait.WISE, CharacterTrait.CLEVER],
+            'social': [CharacterTrait.CHARISMATIC, CharacterTrait.DIPLOMATIC, CharacterTrait.PERSUASIVE]
+        }
+        
+        # Apply one trait from each category
+        for category, traits in trait_types.items():
+            if traits and random.random() > 0.3:  # 70% chance for each category
+                trait = random.choice(traits)
+                
+                # Add as feature
+                character.features.append(f"Trait: {trait.value.replace('_', ' ').title()}")
+                
+                # Apply stat bonus
+                if trait == CharacterTrait.STRONG:
+                    character.stats.strength += 1
+                elif trait == CharacterTrait.AGILE:
+                    character.stats.dexterity += 1
+                elif trait == CharacterTrait.TOUGH:
+                    character.stats.constitution += 1
+                elif trait == CharacterTrait.INTELLIGENT:
+                    character.stats.intelligence += 1
+                elif trait == CharacterTrait.WISE:
+                    character.stats.wisdom += 1
+                elif trait in [CharacterTrait.CHARISMATIC, CharacterTrait.DIPLOMATIC, CharacterTrait.PERSUASIVE]:
+                    character.stats.charisma += 1
+    
+    def _enhance_equipment_with_enriched_items(self, equipment: Equipment, level: int) -> None:
+        """Enhance equipment with enriched item types."""
+        # Add utility items based on level
+        if level >= 2:
+            utility_items = [
+                ItemType.ROPE.value,
+                ItemType.TORCH.value,
+                ItemType.HEALERS_KIT.value,
+                ItemType.GRAPPLING_HOOK.value,
+            ]
+            items_to_add = random.sample(utility_items, min(2, level // 2))
+            for item in items_to_add:
+                if item not in equipment.items:
+                    equipment.items.append(item)
+        
+        # Add specialized tools for higher levels
+        if level >= 5:
+            specialized = [
+                ItemType.THIEVES_TOOLS.value,
+                ItemType.CLIMBING_KIT.value,
+                ItemType.DISGUISE_KIT.value,
+            ]
+            equipment.items.append(random.choice(specialized))
+        
+        # Upgrade weapons for higher levels
+        if level >= 7 and equipment.weapons:
+            # Add masterwork quality
+            equipment.weapons[0] = f"Masterwork {equipment.weapons[0]}"

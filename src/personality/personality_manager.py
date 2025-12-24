@@ -3,7 +3,6 @@
 import json
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.logging_config import get_logger
@@ -592,7 +591,7 @@ class PersonalityManager:
             logger.debug(f"Profile saved: {profile.profile_id}")
 
         except Exception as e:
-            logger.error(f"Failed to save profile", error=str(e))
+            logger.error("Failed to save profile", error=str(e))
 
     def _load_profiles(self):
         """Load profiles from disk."""
@@ -606,4 +605,4 @@ class PersonalityManager:
             logger.info(f"Loaded {len(self.profiles)} personality profiles")
 
         except Exception as e:
-            logger.error(f"Failed to load profiles", error=str(e))
+            logger.error("Failed to load profiles", error=str(e))

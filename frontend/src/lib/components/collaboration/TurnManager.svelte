@@ -196,7 +196,7 @@
 			</div>
 		{/if}
 		
-		<div class="space-y-2">
+		<div class="space-y-2" role="list" aria-label="Initiative order">
 			{#each initiative as entry, index}
 				<div 
 					class="border rounded-lg p-3 transition-all"
@@ -205,6 +205,8 @@
 					class:opacity-50={dragging === index}
 					class:border-dashed={dragOver === index}
 					draggable={hasPermission && editable}
+					role="listitem"
+					aria-label={`Initiative entry for ${entry.name}, initiative ${entry.initiative}`}
 					ondragstart={() => handleDragStart(index)}
 					ondragend={handleDragEnd}
 					ondragover={(e) => {
@@ -280,6 +282,7 @@
 									class="text-red-600 hover:bg-red-50 p-1 rounded"
 									onclick={() => removeEntry(index)}
 									title="Remove"
+									aria-label={`Remove ${entry.name} from initiative`}
 								>
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>

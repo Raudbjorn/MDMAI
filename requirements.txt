@@ -1,5 +1,5 @@
 # TTRPG Assistant MCP Server - Python Requirements
-# Python 3.11+ required
+# Python 3.10+ required
 # Last updated: 2024
 
 # ============================================
@@ -10,7 +10,7 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
 mcp==1.0.0  # Or latest stable version
-fastmcp==0.1.5  # FastMCP framework
+fastmcp==2.11.3  # FastMCP framework - latest stable version
 
 # ============================================
 # Database & Storage
@@ -38,13 +38,14 @@ torch==2.8.0
 spacy==3.7.0
 tiktoken==0.5.0  # Token counting for OpenAI models
 instructor==0.5.0  # Structured LLM outputs
+ollama==0.4.4  # Ollama Python client for local embeddings
 
 # ============================================
 # AI Provider SDKs
 # ============================================
-anthropic==0.15.0
-openai==1.10.0
-google-generativeai==0.3.0
+anthropic==0.25.0  # Updated to latest stable
+openai==1.35.0  # Updated to latest stable
+google-generativeai==0.5.0  # Updated to latest stable
 
 # ============================================
 # Search & Information Retrieval
@@ -55,7 +56,7 @@ rank-bm25==0.2.2  # BM25 ranking for keyword search
 # HTTP & Async (Modernized)
 # ============================================
 httpx==0.26.0  # Modern async HTTP client (replaces requests)
-aiohttp==3.12.14  # Alternative async HTTP
+aiohttp==3.12.16  # Alternative async HTTP (updated for security)
 tenacity==8.2.0  # Retry logic with exponential backoff
 aiofiles==23.2.0  # Async file operations
 websockets==12.0  # WebSocket support
@@ -71,9 +72,9 @@ returns==0.22.0  # Result/Either pattern for errors as values
 # ============================================
 python-jose[cryptography]==3.3.0  # JWT tokens
 passlib[bcrypt]==1.7.4  # Password hashing
-python-multipart==0.0.6  # Form data parsing
-authlib==1.3.0  # OAuth2 support
-cryptography==41.0.0  # Encryption utilities
+python-multipart==0.0.18  # Form data parsing
+authlib==1.3.1  # OAuth2 support
+cryptography==44.0.1  # Encryption utilities (updated for security)
 
 # ============================================
 # Utilities
@@ -83,13 +84,15 @@ python-dotenv==1.0.0  # Environment variables
 click==8.1.0  # CLI interface
 rich==13.0.0  # Beautiful terminal output
 humanize==4.0.0  # Human-readable values
-orjson==3.9.0  # Fast JSON serialization
+orjson==3.9.15  # Fast JSON serialization
 
 # ============================================
 # Data Processing
 # ============================================
 pandas==2.1.0  # Data manipulation (optional)
 numpy==1.26.0  # Numerical operations
+scipy==1.11.4  # Scientific computing (required for statistical tests)
+scikit-learn==1.3.2  # Machine learning (optional for optimization features)
 textblob==0.17.1  # Text processing utilities
 
 # ============================================

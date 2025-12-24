@@ -1,10 +1,8 @@
 """Security utilities for input validation and sanitization."""
 
-import os
 import re
 from pathlib import Path
 from typing import Optional, Set
-from urllib.parse import urlparse
 
 from config.logging_config import get_logger
 

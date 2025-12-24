@@ -1,11 +1,8 @@
 """Hybrid search engine combining semantic and keyword search."""
 
-import math
 import re
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 from rank_bm25 import BM25Okapi
 
 from config.logging_config import get_logger
@@ -319,7 +316,7 @@ class HybridSearchEngine:
         keyword_weight = keyword_weight or settings.keyword_weight
 
         logger.info(
-            f"Performing search",
+            "Performing search",
             query=query[:100],
             collection=collection_name,
             use_hybrid=use_hybrid,
@@ -398,7 +395,7 @@ class HybridSearchEngine:
             return results
 
         except Exception as e:
-            logger.error(f"Semantic search failed", error=str(e))
+            logger.error("Semantic search failed", error=str(e))
             return []
 
     def _keyword_search(
@@ -466,7 +463,7 @@ class HybridSearchEngine:
             return results
 
         except Exception as e:
-            logger.error(f"Keyword search failed", error=str(e))
+            logger.error("Keyword search failed", error=str(e))
             return []
 
     def _matches_filter(self, metadata: Dict[str, Any], filter_dict: Dict[str, Any]) -> bool:
@@ -567,7 +564,7 @@ class HybridSearchEngine:
                 logger.warning(f"No documents to index in {collection_name}")
 
         except Exception as e:
-            logger.error(f"Failed to update index", error=str(e))
+            logger.error("Failed to update index", error=str(e))
 
     def get_index_stats(self) -> Dict[str, Any]:
         """Get statistics about search indices."""

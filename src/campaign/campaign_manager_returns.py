@@ -17,8 +17,6 @@ from returns.result import Failure, Result, Success
 
 from src.core.result_pattern import (
     AppError,
-    AsyncResult,
-    collect_results,
     database_error,
     flat_map_async,
     not_found_error,

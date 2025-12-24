@@ -11,8 +11,6 @@ from config.settings import settings
 from src.core.database import ChromaDBManager
 from src.search.cache_manager import SearchCacheManager
 from src.search.error_handler import (
-    DatabaseError,
-    ErrorRecovery,
     QueryProcessingError,
     SearchValidator,
     handle_search_errors,
@@ -39,8 +37,11 @@ class SearchService:
 
         # Initialize new services
         self.clarification_service = QueryClarificationService()
-        self.analytics_service = SearchAnalytics(persist_dir=settings.ANALYTICS_DIR)
-        self.completion_service = QueryCompletionService(model_dir=settings.COMPLETION_MODELS_DIR)
+        # Use default directories if not in settings
+        analytics_dir = getattr(settings, 'ANALYTICS_DIR', './data/analytics')
+        completion_models_dir = getattr(settings, 'COMPLETION_MODELS_DIR', './data/models')
+        self.analytics_service = SearchAnalytics(persist_dir=analytics_dir)
+        self.completion_service = QueryCompletionService(model_dir=completion_models_dir)
 
     @handle_search_errors()
     async def search(

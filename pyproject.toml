@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "MCP server for TTRPG assistance with rule lookup, campaign management, and AI-powered content generation"
 authors = [{name = "MDMAI Project"}]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {file = "LICENSE"}
 keywords = ["ttrpg", "mcp", "ai", "assistant", "rpg"]
 classifiers = [
@@ -16,7 +16,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -27,15 +26,12 @@ dependencies = [
     # Core MCP dependencies
     "mcp>=1.0.0",
     "fastmcp>=0.1.0",
-    
     # Database
     "chromadb>=0.4.0",
-    
     # PDF Processing
     "pypdf2>=3.0.0",
     "pdfplumber>=0.10.0",
     "python-magic>=0.4.27",
-    
     # NLP and Embeddings
     # Note: We don't include torch here - install via extras
     # "torch" is installed separately via [cpu] or [cuda] extras
@@ -43,25 +39,24 @@ dependencies = [
     "transformers>=4.30.0",
     "spacy>=3.5.0",
     "textblob>=0.17.1",
-    
     # Search
     "rank-bm25>=0.2.2",
-    
     # Web Server (for development/testing)
     "uvicorn>=0.23.0",
     "fastapi>=0.100.0",
-    
     # Utilities
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "aiofiles>=23.0.0",
     "tqdm>=4.65.0",
     "pyyaml>=6.0.0",
-    
     # Logging and Monitoring
     "structlog>=23.0.0",
     "rich>=13.0.0",
     "psutil>=5.9.0",
+    "returns>=0.26.0",
+    "cryptography>=45.0.7",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -102,6 +97,7 @@ dev = [
     "ipdb>=0.13.13",
     
     # Documentation
+    "docutils>=0.20,<0.22",  # Pin to compatible version for sphinx
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=1.3.0",
 ]
@@ -116,6 +112,7 @@ test = [
 ]
 
 docs = [
+    "docutils>=0.20,<0.22",  # Pin to compatible version for sphinx
     "sphinx>=7.0.0",
     "sphinx-rtd-theme>=1.3.0",
     "myst-parser>=2.0.0",
@@ -138,7 +135,7 @@ include = ["src*"]
 
 [tool.black]
 line-length = 100
-target-version = ['py39']
+target-version = ['py310']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -165,7 +162,7 @@ extend-ignore = ["E203", "W503", "E501"]
 exclude = [".git", "__pycache__", "build", "dist", ".venv", "venv"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false  # Changed to false for gradual typing

@@ -60,7 +60,6 @@ class ProviderStore {
 
 	overallHealth = $derived<ProviderStatus>(() => {
 		if (this.state.health.length === 0) return ProviderStatus.UNAVAILABLE;
-		
 		const statuses = this.state.health.map(h => h.status);
 		if (statuses.some(s => s === ProviderStatus.ERROR)) return ProviderStatus.ERROR;
 		if (statuses.some(s => s === ProviderStatus.RATE_LIMITED)) return ProviderStatus.RATE_LIMITED;

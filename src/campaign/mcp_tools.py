@@ -1,6 +1,6 @@
 """MCP tool implementations for campaign management."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from config.logging_config import get_logger
 from src.campaign.campaign_manager import CampaignManager

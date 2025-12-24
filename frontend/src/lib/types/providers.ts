@@ -3,37 +3,47 @@
  * Type definitions for AI provider configuration, credentials, and analytics
  */
 
-export enum ProviderType {
-	ANTHROPIC = 'anthropic',
-	OPENAI = 'openai',
-	GOOGLE = 'google'
-}
+// Use const assertions for better type inference and immutability
+export const ProviderType = {
+	ANTHROPIC: 'anthropic',
+	OPENAI: 'openai',
+	GOOGLE: 'google',
+	OLLAMA: 'ollama'
+} as const;
 
-export enum ProviderStatus {
-	AVAILABLE = 'available',
-	UNAVAILABLE = 'unavailable',
-	RATE_LIMITED = 'rate_limited',
-	QUOTA_EXCEEDED = 'quota_exceeded',
-	ERROR = 'error',
-	MAINTENANCE = 'maintenance'
-}
+export type ProviderType = typeof ProviderType[keyof typeof ProviderType];
 
-export enum ProviderCapability {
-	TEXT_GENERATION = 'text_generation',
-	TOOL_CALLING = 'tool_calling',
-	VISION = 'vision',
-	STREAMING = 'streaming',
-	BATCH_PROCESSING = 'batch_processing',
-	FINE_TUNING = 'fine_tuning'
-}
+export const ProviderStatus = {
+	AVAILABLE: 'available',
+	UNAVAILABLE: 'unavailable',
+	RATE_LIMITED: 'rate_limited',
+	QUOTA_EXCEEDED: 'quota_exceeded',
+	ERROR: 'error',
+	MAINTENANCE: 'maintenance'
+} as const;
 
-export enum CostTier {
-	FREE = 'free',
-	LOW = 'low',
-	MEDIUM = 'medium',
-	HIGH = 'high',
-	PREMIUM = 'premium'
-}
+export type ProviderStatus = typeof ProviderStatus[keyof typeof ProviderStatus];
+
+export const ProviderCapability = {
+	TEXT_GENERATION: 'text_generation',
+	TOOL_CALLING: 'tool_calling',
+	VISION: 'vision',
+	STREAMING: 'streaming',
+	BATCH_PROCESSING: 'batch_processing',
+	FINE_TUNING: 'fine_tuning'
+} as const;
+
+export type ProviderCapability = typeof ProviderCapability[keyof typeof ProviderCapability];
+
+export const CostTier = {
+	FREE: 'free',
+	LOW: 'low',
+	MEDIUM: 'medium',
+	HIGH: 'high',
+	PREMIUM: 'premium'
+} as const;
+
+export type CostTier = typeof CostTier[keyof typeof CostTier];
 
 export interface ProviderConfig {
 	provider_type: ProviderType;
@@ -42,11 +52,11 @@ export interface ProviderConfig {
 	timeout: number;
 	max_retries: number;
 	retry_delay: number;
-	rate_limit_rpm: number; // Requests per minute
-	rate_limit_tpm: number; // Tokens per minute
-	budget_limit?: number; // USD per day
+	rate_limit_rpm: number;
+	rate_limit_tpm: number;
+	budget_limit?: number;
 	enabled: boolean;
-	priority: number; // Higher = preferred
+	priority: number;
 	metadata?: Record<string, any>;
 }
 
@@ -57,8 +67,8 @@ export interface ModelSpec {
 	capabilities: ProviderCapability[];
 	context_length: number;
 	max_output_tokens: number;
-	cost_per_input_token: number; // USD per 1K tokens
-	cost_per_output_token: number; // USD per 1K tokens
+	cost_per_input_token: number;
+	cost_per_output_token: number;
 	cost_tier: CostTier;
 	supports_streaming: boolean;
 	supports_tools: boolean;
@@ -100,10 +110,10 @@ export interface UsageRecord {
 export interface CostBudget {
 	budget_id: string;
 	name: string;
-	daily_limit?: number; // USD
-	monthly_limit?: number; // USD
+	daily_limit?: number;
+	monthly_limit?: number;
 	provider_limits: Partial<Record<ProviderType, number>>;
-	alert_thresholds: number[]; // Percentages (e.g., [0.5, 0.8, 0.95])
+	alert_thresholds: number[];
 	enabled: boolean;
 	created_at: Date;
 }
@@ -119,8 +129,8 @@ export interface AIProviderStats {
 	avg_latency_ms: number;
 	uptime_percentage: number;
 	last_request?: Date;
-	daily_usage: Record<string, number>; // Date -> cost
-	monthly_usage: Record<string, number>; // Month -> cost
+	daily_usage: Record<string, number>;
+	monthly_usage: Record<string, number>;
 }
 
 export interface ProviderSelection {
@@ -134,18 +144,22 @@ export interface ProviderSelection {
 	cost_optimization: boolean;
 }
 
-// API Request/Response types
-export interface ProviderConfigRequest {
-	configs: ProviderConfig[];
-	budgets?: CostBudget[];
+// API Request/Response types with better error-as-values pattern
+export interface APIRequest<T = unknown> {
+	data: T;
+	timestamp?: Date;
 }
 
-export interface ProviderConfigResponse {
-	success: boolean;
-	message?: string;
-	providers?: ProviderConfig[];
-	budgets?: CostBudget[];
-}
+// Use discriminated unions for better type safety
+export type APIResponse<T = unknown> = 
+	| { ok: true; data: T; timestamp?: Date }
+	| { ok: false; error: string; message?: string; timestamp?: Date };
+
+// More type-safe request interfaces
+export interface ProviderConfigRequest extends APIRequest<{
+	configs: readonly ProviderConfig[];
+	budgets?: readonly CostBudget[];
+}> {}
 
 export interface ProviderStatsRequest {
 	provider_type?: ProviderType;
@@ -153,20 +167,24 @@ export interface ProviderStatsRequest {
 	end_date?: string;
 }
 
-export interface ProviderStatsResponse {
-	stats: AIProviderStats[];
+// Response types using the Result pattern
+export type ProviderStatsResponse = APIResponse<{
+	stats: readonly AIProviderStats[];
 	total_cost: number;
-	period: {
-		start: string;
-		end: string;
-	};
-}
+	period: { readonly start: string; readonly end: string };
+}>;
 
-export interface ProviderHealthResponse {
-	health: ProviderHealth[];
+export type ProviderHealthResponse = APIResponse<{
+	health: readonly ProviderHealth[];
 	overall_status: ProviderStatus;
-	timestamp: Date;
-}
+}>;
+
+export type ProviderConfigResponse = APIResponse<{
+	configs: readonly ProviderConfig[];
+	success_count: number;
+	failed_count: number;
+}>;
+
 
 // Credential management types
 export interface ProviderCredentials {
@@ -184,7 +202,49 @@ export interface CredentialValidation {
 	tested_at: Date;
 }
 
-// Result type for error handling
-export type Result<T, E = Error> = 
+// Simplified base types for common patterns
+export interface BaseEntity {
+	id: string;
+	created_at: Date;
+	updated_at: Date;
+}
+
+export interface TimestampedEntity {
+	timestamp: Date;
+}
+
+export interface StatusEntity {
+	status: ProviderStatus;
+	last_updated: Date;
+}
+
+// Enhanced Result type for comprehensive error handling
+export type Result<T, E = string> = 
 	| { ok: true; value: T }
-	| { ok: false; error: E };
+	| { ok: false; error: E; context?: Record<string, unknown> };
+
+// Provider-specific utility types with better type constraints
+export type ProviderConfigUpdate = Partial<Omit<ProviderConfig, 'provider_type'>>;
+export type ModelSpecSummary = Pick<ModelSpec, 'model_id' | 'display_name' | 'is_available'>;
+export type UsageSummary = Pick<UsageRecord, 'provider_type' | 'cost' | 'timestamp' | 'success'>;
+
+// Utility types for type-safe operations
+export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
+export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
+
+// Type guards for runtime type checking
+export const isProviderType = (value: string): value is ProviderType => 
+	Object.values(ProviderType).includes(value as ProviderType);
+
+export const isProviderStatus = (value: string): value is ProviderStatus => 
+	Object.values(ProviderStatus).includes(value as ProviderStatus);
+
+export const isSuccessResponse = <T>(response: APIResponse<T>): response is { ok: true; data: T; timestamp?: Date } => 
+	response.ok === true;
+
+// Helper type for debounced functions (addresses Issue 6)
+export type DebouncedFunction<T extends (...args: any[]) => any> = {
+	(...args: Parameters<T>): void;
+	cancel: () => void;
+	flush: () => void;
+};

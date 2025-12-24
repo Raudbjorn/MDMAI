@@ -9,11 +9,12 @@ import asyncio
 import hashlib
 import json
 import logging
+import logging.handlers
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional
 
 from cryptography.fernet import Fernet
 

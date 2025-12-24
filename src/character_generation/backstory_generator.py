@@ -2,17 +2,174 @@
 
 import logging
 import random
-from dataclasses import field
 from typing import Any, Dict, List, Optional
 
-from .models import Backstory, Character, CharacterClass, CharacterRace
-from .validators import ValidationError
+from .models import (
+    Backstory,
+    Character,
+    CharacterBackground,
+    CharacterClass,
+    CharacterMotivation,
+    CharacterRace,
+    CharacterTrait,
+    ExtendedCharacter,
+    StoryHook,
+    TTRPGGenre,
+    WorldElement,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class BackstoryGenerator:
-    """Generate rich, personality-aware backstories for characters."""
+    """Generate rich, personality-aware backstories for characters using enriched content."""
+    
+    # Class-level constants for trait categories
+    _PHYSICAL_TRAIT_NAMES = [
+        'AGILE', 'ATHLETIC', 'BRAWNY', 'BURLY', 'DELICATE', 'DEXTEROUS', 
+        'ENDURING', 'ENERGETIC', 'GRACEFUL', 'HARDY', 'LITHE', 'MUSCULAR',
+        'NIMBLE', 'POWERFUL', 'QUICK', 'RESILIENT', 'ROBUST', 'RUGGED',
+        'SCARRED', 'SLENDER', 'STOCKY', 'STRONG', 'STURDY', 'SWIFT',
+        'TALL', 'TOUGH', 'TOWERING', 'WEATHERED', 'WIRY'
+    ]
+    
+    _MENTAL_TRAIT_NAMES = [
+        'ANALYTICAL', 'ASTUTE', 'BRILLIANT', 'CALCULATING', 'CLEVER',
+        'CREATIVE', 'CUNNING', 'CURIOUS', 'FOCUSED', 'GENIUS', 'IMAGINATIVE',
+        'INSIGHTFUL', 'INTELLECTUAL', 'INTELLIGENT', 'INTUITIVE', 'KNOWLEDGEABLE',
+        'LEARNED', 'LOGICAL', 'METHODICAL', 'OBSERVANT', 'PERCEPTIVE',
+        'PHILOSOPHICAL', 'QUICK_WITTED', 'RATIONAL', 'RESOURCEFUL', 'SCHOLARLY',
+        'SHARP', 'SHREWD', 'STRATEGIC', 'STUDIOUS', 'TACTICAL', 'THOUGHTFUL', 'WISE'
+    ]
+    
+    _EMOTIONAL_TRAIT_NAMES = [
+        'AMBITIOUS', 'ANXIOUS', 'BOLD', 'BRAVE', 'CALM', 'CAUTIOUS',
+        'CHEERFUL', 'COMPASSIONATE', 'CONFIDENT', 'COURAGEOUS', 'DETERMINED',
+        'DEVOTED', 'DISCIPLINED', 'EMPATHETIC', 'ENTHUSIASTIC', 'FEARLESS',
+        'FIERCE', 'GENTLE', 'GRIM', 'HOPEFUL', 'HUMBLE', 'IMPULSIVE',
+        'INDEPENDENT', 'JOYFUL', 'KIND', 'LOYAL', 'MELANCHOLIC', 'MERCIFUL',
+        'PASSIONATE', 'PATIENT', 'PROUD', 'REBELLIOUS', 'RECKLESS', 'RESOLUTE',
+        'RUTHLESS', 'SELFLESS', 'SERENE', 'SINCERE', 'SKEPTICAL', 'STEADFAST',
+        'STOIC', 'STUBBORN', 'SYMPATHETIC', 'TENACIOUS', 'VENGEFUL', 'VIGILANT',
+        'VOLATILE', 'ZEALOUS'
+    ]
+    
+    _SOCIAL_TRAIT_NAMES = [
+        'CHARISMATIC', 'CHARMING', 'DIPLOMATIC', 'ELOQUENT', 'GREGARIOUS',
+        'INTIMIDATING', 'MYSTERIOUS', 'PERSUASIVE', 'RESERVED', 'SHY',
+        'SOCIABLE', 'WITTY'
+    ]
+    
+    @classmethod
+    def get_random_traits(cls, count: int = 3) -> List[CharacterTrait]:
+        """Get random character traits from extracted content."""
+        physical_traits = [
+            t for t in CharacterTrait 
+            if t.name in cls._PHYSICAL_TRAIT_NAMES
+        ]
+        mental_traits = [
+            t for t in CharacterTrait
+            if t.name in cls._MENTAL_TRAIT_NAMES
+        ]
+        emotional_traits = [
+            t for t in CharacterTrait
+            if t.name in cls._EMOTIONAL_TRAIT_NAMES
+        ]
+        social_traits = [
+            t for t in CharacterTrait
+            if t.name in cls._SOCIAL_TRAIT_NAMES
+        ]
+        
+        selected = []
+        # Try to get a balanced mix of trait types
+        if count >= 4:
+            selected.append(random.choice(physical_traits) if physical_traits else None)
+            selected.append(random.choice(mental_traits) if mental_traits else None)
+            selected.append(random.choice(emotional_traits) if emotional_traits else None)
+            selected.append(random.choice(social_traits) if social_traits else None)
+            count -= 4
+        
+        # Fill remaining with random traits
+        all_traits = list(CharacterTrait)
+        for _ in range(count):
+            trait = random.choice(all_traits)
+            if trait not in selected:
+                selected.append(trait)
+        
+        return [t for t in selected if t is not None]
+    
+    # Class-level constant for genre backgrounds
+    _GENRE_BACKGROUNDS = {
+        TTRPGGenre.FANTASY: [
+            CharacterBackground.ACOLYTE, CharacterBackground.CRIMINAL,
+            CharacterBackground.FOLK_HERO, CharacterBackground.NOBLE,
+            CharacterBackground.SAGE, CharacterBackground.SOLDIER,
+            CharacterBackground.HERMIT, CharacterBackground.ENTERTAINER,
+            CharacterBackground.GUILD_ARTISAN, CharacterBackground.OUTLANDER,
+            CharacterBackground.SAILOR, CharacterBackground.URCHIN,
+            CharacterBackground.ALCHEMIST, CharacterBackground.KNIGHT,
+            CharacterBackground.MERCHANT, CharacterBackground.MYSTIC
+        ],
+        TTRPGGenre.SCI_FI: [
+            CharacterBackground.ASTEROID_MINER, CharacterBackground.COLONY_ADMINISTRATOR,
+            CharacterBackground.CORPORATE_AGENT, CharacterBackground.CYBORG_ENGINEER,
+            CharacterBackground.DATA_ANALYST, CharacterBackground.DIPLOMAT_ENVOY,
+            CharacterBackground.GENETIC_RESEARCHER, CharacterBackground.HACKER,
+            CharacterBackground.JUMP_PILOT, CharacterBackground.ORBITAL_MECHANIC,
+            CharacterBackground.SPACE_MARINE, CharacterBackground.STARSHIP_ENGINEER,
+            CharacterBackground.TERRAFORMER, CharacterBackground.VOID_TRADER,
+            CharacterBackground.XENOBIOLOGIST
+        ],
+        TTRPGGenre.CYBERPUNK: [
+            CharacterBackground.CORPORATE_EXEC, CharacterBackground.FIXER,
+            CharacterBackground.GANG_MEMBER, CharacterBackground.MEDIA_JOURNALIST,
+            CharacterBackground.NETRUNNER, CharacterBackground.NOMAD,
+            CharacterBackground.RIPPERDOC, CharacterBackground.ROCKERBOY,
+            CharacterBackground.STREET_SAMURAI, CharacterBackground.TECH_SPECIALIST
+        ],
+        TTRPGGenre.POST_APOCALYPTIC: [
+            CharacterBackground.BUNKER_SURVIVOR, CharacterBackground.CARAVAN_TRADER,
+            CharacterBackground.MUTANT_OUTCAST, CharacterBackground.RAIDER,
+            CharacterBackground.SCAVENGER, CharacterBackground.SETTLEMENT_LEADER,
+            CharacterBackground.TRIBAL_SHAMAN, CharacterBackground.VAULT_DWELLER,
+            CharacterBackground.WASTELAND_DOCTOR, CharacterBackground.WASTELAND_SCOUT
+        ],
+        TTRPGGenre.COSMIC_HORROR: [
+            CharacterBackground.ANTIQUARIAN, CharacterBackground.ASYLUM_PATIENT,
+            CharacterBackground.CULT_SURVIVOR, CharacterBackground.CURSED_BLOODLINE,
+            CharacterBackground.DREAM_TOUCHED, CharacterBackground.OCCULT_INVESTIGATOR,
+            CharacterBackground.PROFESSOR, CharacterBackground.PSYCHIC_SENSITIVE
+        ],
+        TTRPGGenre.WESTERN: [
+            CharacterBackground.BOUNTY_KILLER, CharacterBackground.CATTLE_RUSTLER,
+            CharacterBackground.FRONTIER_DOCTOR, CharacterBackground.GUNSLINGER,
+            CharacterBackground.HOMESTEADER, CharacterBackground.LAWMAN,
+            CharacterBackground.OUTLAW, CharacterBackground.PREACHER,
+            CharacterBackground.PROSPECTOR, CharacterBackground.RANCH_HAND,
+            CharacterBackground.SALOON_OWNER, CharacterBackground.STAGE_DRIVER
+        ],
+        TTRPGGenre.SUPERHERO: [
+            CharacterBackground.ALIEN_REFUGEE, CharacterBackground.GOVERNMENT_AGENT,
+            CharacterBackground.LAB_ACCIDENT_SURVIVOR, CharacterBackground.MASKED_VIGILANTE,
+            CharacterBackground.MILITARY_EXPERIMENT, CharacterBackground.MUTANT_ACTIVIST,
+            CharacterBackground.REPORTER, CharacterBackground.SCIENTIST,
+            CharacterBackground.SIDEKICK, CharacterBackground.TECH_GENIUS
+        ]
+    }
+    
+    @classmethod
+    def get_random_motivation(cls) -> CharacterMotivation:
+        """Get a random character motivation from extracted content."""
+        return random.choice(list(CharacterMotivation))
+    
+    @classmethod
+    def get_random_background(cls, genre: Optional[TTRPGGenre] = None) -> CharacterBackground:
+        """Get a random background appropriate for the genre."""
+        if genre:
+            backgrounds = cls._GENRE_BACKGROUNDS.get(genre, list(CharacterBackground))
+            return random.choice(backgrounds)
+        
+        return random.choice(list(CharacterBackground))
 
     # Story templates by background type
     ORIGIN_TEMPLATES = {
@@ -35,6 +192,37 @@ class BackstoryGenerator:
             "When {event} destroyed {precious_thing}, {name} swore to {oath}.",
             "{name} survived {disaster}, but the scars run deeper than flesh.",
             "The {adjective} night when {tragedy} occurred haunts {name} still.",
+        ],
+        # Genre-specific templates
+        "cyberpunk": [
+            "{name} jacked in for the first time at {age}, discovering a talent for {skill} that would define their life.",
+            "Born in the {adjective} sprawl of {location}, {name} learned that {lesson} in the neon-lit streets.",
+            "After {event} cost them their {precious_thing}, {name} replaced flesh with chrome, seeking {desire}.",
+        ],
+        "sci-fi": [
+            "{name} was born on {location}, where {adjective} conditions forged their {quality} nature.",
+            "As a {order} generation colonist, {name} inherited both {virtue} and {burden} from the stars.",
+            "When {event} struck their {precious_thing}, {name} took to the void seeking {desire}.",
+        ],
+        "cosmic_horror": [
+            "{name}'s research into {forbidden_topic} began innocently, but {event} revealed truths better left unknown.",
+            "The {adjective} dreams started when {name} was {age}, whispers of {entity} echoing through their mind.",
+            "After discovering {artifact} in {location}, {name} could never again see the world as others do.",
+        ],
+        "post_apocalyptic": [
+            "{name} emerged from {location} into a world transformed by {disaster}, carrying only {precious_thing}.",
+            "Born {time} after the {event}, {name} knows only the {adjective} wasteland and the law of {principle}.",
+            "When {threat} destroyed their {community}, {name} learned that {lesson} in the ashes.",
+        ],
+        "western": [
+            "{name} rode into {location} with {precious_thing} and a {adjective} reputation trailing behind.",
+            "After {event} at {location}, {name} had no choice but to {action} and head for the frontier.",
+            "The {adjective} dust of {location} couldn't hide {name}'s past, where {secret} waited to be revealed.",
+        ],
+        "superhero": [
+            "The accident that gave {name} their powers also took their {precious_thing}, leaving them with {burden}.",
+            "{name} discovered their abilities during {event}, realizing that with great power comes {responsibility}.",
+            "Born with {quality}, {name} struggled to hide their true nature until {event} forced them to {action}.",
         ],
     }
 
@@ -133,6 +321,29 @@ class BackstoryGenerator:
             "traditions": ["pact ceremonies", "blood bonds", "name earning"],
             "conflicts": ["prejudice", "infernal heritage", "trust issues"],
         },
+        # Sci-Fi Races
+        CharacterRace.CYBORG: {
+            "values": ["efficiency", "enhancement", "transcendence", "logic"],
+            "traditions": ["upgrade ceremonies", "data sharing", "system optimization"],
+            "conflicts": ["humanity loss", "obsolescence", "maintenance costs"],
+        },
+        CharacterRace.ANDROID: {
+            "values": ["purpose", "perfection", "service", "evolution"],
+            "traditions": ["activation day", "core updates", "memory backups"],
+            "conflicts": ["free will", "emotions", "identity"],
+        },
+        # Cyberpunk Races
+        CharacterRace.AUGMENTED_HUMAN: {
+            "values": ["power", "style", "edge", "survival"],
+            "traditions": ["chrome rituals", "street reputation", "gang loyalty"],
+            "conflicts": ["cyberpsychosis", "debt", "corporate control"],
+        },
+        # Post-Apocalyptic Races
+        CharacterRace.MUTANT: {
+            "values": ["adaptation", "survival", "community", "evolution"],
+            "traditions": ["mutation rites", "rad-storm sheltering", "scav sharing"],
+            "conflicts": ["pure strain prejudice", "instability", "rejection"],
+        },
     }
 
     # Relationship templates
@@ -193,7 +404,7 @@ class BackstoryGenerator:
         use_flavor_sources: bool = True,
     ) -> Backstory:
         """
-        Generate a complete backstory for a character.
+        Generate a complete backstory for a character using enriched content.
 
         Args:
             character: The character to generate backstory for
@@ -202,7 +413,7 @@ class BackstoryGenerator:
             use_flavor_sources: Whether to incorporate flavor sources
 
         Returns:
-            Complete Backstory object
+            Complete Backstory object with story hooks and world connections
         """
         logger.info(f"Generating {depth} backstory for {character.name}")
 
@@ -213,27 +424,43 @@ class BackstoryGenerator:
             style = self._get_narrative_style(character.system)
             backstory.narrative_style = style
 
-        # Generate origin story
+        # Get enriched background from extracted content
+        genre = getattr(character, 'genre', TTRPGGenre.FANTASY)
+        enriched_background = self.get_random_background(genre)
+        
+        # Generate origin story with enriched content
         backstory.origin = self._generate_origin(character, hints)
 
-        # Generate motivation
-        backstory.motivation = self._generate_motivation(character)
+        # Use enriched motivations from extracted content
+        primary_motivation = self.get_random_motivation()
+        backstory.motivation = self._format_motivation(primary_motivation, character)
 
-        # Generate personality traits
-        backstory.personality_traits = self._generate_personality_traits(character, depth)
+        # Generate personality traits using enriched traits
+        if depth == "detailed":
+            character_traits = self.get_random_traits(count=5)
+        elif depth == "standard":
+            character_traits = self.get_random_traits(count=3)
+        else:
+            character_traits = self.get_random_traits(count=2)
+        backstory.personality_traits = [trait.value.replace('_', ' ').title() for trait in character_traits]
 
         # Generate ideals, bonds, and flaws
         backstory.ideals = self._generate_ideals(character)
         backstory.bonds = self._generate_bonds(character)
         backstory.flaws = self._generate_flaws(character)
 
-        # Generate goals and fears
-        backstory.goals = self._generate_goals(character, depth)
-        backstory.fears = self._generate_fears(character)
+        # Generate goals and fears based on enriched motivations
+        backstory.goals = self._generate_goals_from_motivations(character, depth)
+        backstory.fears = self._generate_fears_from_motivations(character)
 
         # Generate relationships
         if depth in ["standard", "detailed"]:
             backstory.relationships = self._generate_relationships(character, depth)
+
+        # Add story hooks for detailed backstories
+        if depth == "detailed":
+            backstory.story_hooks = self._generate_story_hooks(character, primary_motivation)
+            backstory.world_connections = self._generate_world_connections(character, genre)
 
         # Add cultural references
         if character.race:
@@ -243,8 +470,8 @@ class BackstoryGenerator:
         if use_flavor_sources and self.flavor_sources:
             self._incorporate_flavor_sources(backstory, character)
 
-        # Generate background description
-        backstory.background = self._generate_background_description(character, backstory, depth)
+        # Generate background description with enriched background
+        backstory.background = f"{enriched_background.value.replace('_', ' ').title()}: {self._generate_background_description(character, backstory, depth)}"
 
         logger.info(f"Backstory generation complete for {character.name}")
         return backstory
@@ -262,70 +489,106 @@ class BackstoryGenerator:
             "Blades in the Dark": "Victorian crime",
             "Delta Green": "conspiracy thriller",
             "Pathfinder": "high fantasy",
+            "Cyberpunk": "noir dystopian",
+            "Traveller": "space opera",
+            "Apocalypse World": "gritty survival",
+            "Masks": "coming-of-age superhero",
+            "Deadlands": "weird western",
         }
 
         return styles.get(system, "neutral")
 
     def _generate_origin(self, character: Character, hints: Optional[str]) -> str:
         """Generate character origin story."""
+        # Check genre for genre-specific templates
+        genre = getattr(character, 'genre', TTRPGGenre.FANTASY)
+        
+        # Map genres to template keys
+        genre_template_map = {
+            TTRPGGenre.CYBERPUNK: "cyberpunk",
+            TTRPGGenre.SCI_FI: "sci-fi",
+            TTRPGGenre.COSMIC_HORROR: "cosmic_horror",
+            TTRPGGenre.POST_APOCALYPTIC: "post_apocalyptic",
+            TTRPGGenre.WESTERN: "western",
+            TTRPGGenre.SUPERHERO: "superhero",
+        }
+        
         # Determine origin type
-        origin_types = ["noble", "commoner", "outsider", "tragedy"]
-
-        if hints:
-            # Parse hints for origin preferences
-            if any(word in hints.lower() for word in ["noble", "royal", "lord"]):
-                origin_type = "noble"
-            elif any(word in hints.lower() for word in ["tragic", "loss", "revenge"]):
-                origin_type = "tragedy"
-            elif any(word in hints.lower() for word in ["mysterious", "unknown", "found"]):
-                origin_type = "outsider"
-            else:
-                origin_type = "commoner"
+        if genre in genre_template_map:
+            origin_type = genre_template_map[genre]
         else:
-            origin_type = random.choice(origin_types)
+            # Fantasy and other genres use traditional templates
+            origin_types = ["noble", "commoner", "outsider", "tragedy"]
+            
+            if hints:
+                # Parse hints for origin preferences
+                if any(word in hints.lower() for word in ["noble", "royal", "lord"]):
+                    origin_type = "noble"
+                elif any(word in hints.lower() for word in ["tragic", "loss", "revenge"]):
+                    origin_type = "tragedy"
+                elif any(word in hints.lower() for word in ["mysterious", "unknown", "found"]):
+                    origin_type = "outsider"
+                else:
+                    origin_type = "commoner"
+            else:
+                origin_type = random.choice(origin_types)
 
         # Get template and fill it
-        templates = self.ORIGIN_TEMPLATES[origin_type]
+        templates = self.ORIGIN_TEMPLATES.get(origin_type, self.ORIGIN_TEMPLATES["commoner"])
         template = random.choice(templates)
 
-        # Generate template variables
-        variables = {
-            "name": character.name,
-            "adjective": random.choice(["ancient", "renowned", "forgotten", "modest"]),
-            "family_name": self._generate_family_name(character.race),
-            "desire": random.choice(["adventure", "knowledge", "freedom", "purpose"]),
-            "order": random.choice(["first", "second", "third", "youngest", "eldest"]),
-            "original_path": random.choice(["politics", "military", "priesthood", "scholarship"]),
-            "event": random.choice(
-                ["a prophetic dream", "a chance encounter", "a family tragedy", "a divine vision"]
-            ),
-            "location": self._generate_location(character.race),
-            "quality": random.choice(["honest", "harsh", "simple", "dangerous"]),
-            "profession": random.choice(["farmer", "merchant", "blacksmith", "innkeeper"]),
-            "lesson": random.choice(
-                ["hard work pays off", "trust no one", "kindness matters", "strength prevails"]
-            ),
-            "skill": random.choice(["combat", "magic", "thievery", "diplomacy"]),
-            "past_element": random.choice(
-                ["their past", "their true name", "their homeland", "their family"]
-            ),
-            "origin": self._generate_location(character.race),
-            "reason": random.choice(
-                ["heresy", "a crime they didn't commit", "forbidden love", "speaking truth"]
-            ),
-            "discovery": random.choice(
-                ["a new purpose", "unexpected allies", "hidden strength", "their destiny"]
-            ),
-            "precious_thing": random.choice(
-                ["their home", "their family", "their innocence", "everything"]
-            ),
-            "oath": random.choice(
-                ["seek vengeance", "protect others", "find justice", "prevent it happening again"]
-            ),
-            "disaster": random.choice(["the great fire", "the plague", "the war", "the massacre"]),
-            "tragedy": random.choice(["the betrayal", "the attack", "the ritual", "the accident"]),
-            "vice": random.choice(["cruelty", "greed", "pride", "wrath"]),
-        }
+        # Generate template variables with genre-specific options
+        if genre == TTRPGGenre.CYBERPUNK:
+            variables = self._generate_cyberpunk_variables(character)
+        elif genre == TTRPGGenre.SCI_FI:
+            variables = self._generate_scifi_variables(character)
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            variables = self._generate_cosmic_horror_variables(character)
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            variables = self._generate_post_apocalyptic_variables(character)
+        elif genre == TTRPGGenre.WESTERN:
+            variables = self._generate_western_variables(character)
+        elif genre == TTRPGGenre.SUPERHERO:
+            variables = self._generate_superhero_variables(character)
+        else:
+            # Default fantasy variables
+            variables = {
+                "name": character.name,
+                "adjective": random.choice(["ancient", "renowned", "forgotten", "modest"]),
+                "family_name": self._generate_family_name(character.race),
+                "desire": random.choice(["adventure", "knowledge", "freedom", "purpose"]),
+                "order": random.choice(["first", "second", "third", "youngest", "eldest"]),
+                "original_path": random.choice(["politics", "military", "priesthood", "scholarship"]),
+                "event": random.choice(
+                    ["a prophetic dream", "a chance encounter", "a family tragedy", "a divine vision"]
+                ),
+                "location": self._generate_location(character.race),
+                "quality": random.choice(["honest", "harsh", "simple", "dangerous"]),
+                "profession": random.choice(["farmer", "merchant", "blacksmith", "innkeeper"]),
+                "lesson": random.choice(
+                    ["hard work pays off", "trust no one", "kindness matters", "strength prevails"]
+                ),
+                "skill": random.choice(["combat", "magic", "thievery", "diplomacy"]),
+                "past_element": random.choice(
+                    ["their past", "their true name", "their homeland", "their family"]
+                ),
+                "origin": self._generate_location(character.race),
+                "reason": random.choice(
+                    ["heresy", "a crime they didn't commit", "forbidden love", "speaking truth"]
+                ),
+                "discovery": random.choice(
+                    ["a new purpose", "unexpected allies", "hidden strength", "their destiny"]
+                ),
+                "precious_thing": random.choice(
+                    ["their home", "their family", "their innocence", "everything"]
+                ),
+                "oath": random.choice(
+                    ["seek vengeance", "protect others", "find justice", "prevent it happening again"]
+                ),
+                "disaster": random.choice(["the great fire", "the plague", "the war", "the massacre"]),
+                "tragedy": random.choice(["the betrayal", "the attack", "the ritual", "the accident"]),
+                "vice": random.choice(["cruelty", "greed", "pride", "wrath"]),
+            }
 
         # Format template with variables
         origin = template.format(**variables)
@@ -668,13 +931,356 @@ class BackstoryGenerator:
 
     def _generate_location(self, race: Optional[CharacterRace]) -> str:
         """Generate a location name based on race."""
-        locations = {
-            CharacterRace.HUMAN: ["Waterdeep", "Baldur's Gate", "Neverwinter", "King's Landing"],
-            CharacterRace.ELF: ["Silverymoon", "Evermeet", "Myth Drannor", "the Feywild"],
-            CharacterRace.DWARF: ["Mithral Hall", "Ironforge", "the Lonely Mountain", "Gauntlgrym"],
-            CharacterRace.HALFLING: ["the Shire", "Luiren", "Green Fields", "Hobbiton"],
-            None: ["a distant land", "the frontier", "the old kingdom", "parts unknown"],
+        # Check if character has a genre
+        genre = TTRPGGenre.FANTASY  # Default
+        if hasattr(self, '_current_character') and hasattr(self._current_character, 'genre'):
+            genre = self._current_character.genre
+        
+        # Genre-specific locations
+        if genre == TTRPGGenre.CYBERPUNK:
+            return random.choice(["Night City", "Neo-Tokyo", "The Sprawl", "Chrome District"])
+        elif genre == TTRPGGenre.SCI_FI:
+            return random.choice(["Mars Colony", "Titan Station", "Alpha Centauri", "The Belt"])
+        elif genre == TTRPGGenre.COSMIC_HORROR:
+            return random.choice(["Arkham", "Innsmouth", "Dunwich", "Miskatonic University"])
+        elif genre == TTRPGGenre.POST_APOCALYPTIC:
+            return random.choice(["The Wasteland", "Vault 13", "New Vegas", "The Citadel"])
+        elif genre == TTRPGGenre.WESTERN:
+            return random.choice(["Tombstone", "Deadwood", "Dodge City", "El Paso"])
+        elif genre == TTRPGGenre.SUPERHERO:
+            return random.choice(["Metropolis", "Gotham City", "Central City", "New York"])
+        else:
+            # Fantasy locations
+            locations = {
+                CharacterRace.HUMAN: ["Waterdeep", "Baldur's Gate", "Neverwinter", "King's Landing"],
+                CharacterRace.ELF: ["Silverymoon", "Evermeet", "Myth Drannor", "the Feywild"],
+                CharacterRace.DWARF: ["Mithral Hall", "Ironforge", "the Lonely Mountain", "Gauntlgrym"],
+                CharacterRace.HALFLING: ["the Shire", "Luiren", "Green Fields", "Hobbiton"],
+                None: ["a distant land", "the frontier", "the old kingdom", "parts unknown"],
+            }
+            locs = locations.get(race, locations[None])
+            return random.choice(locs)
+
+    def _generate_cyberpunk_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Cyberpunk-specific template variables."""
+        return {
+            "name": character.name,
+            "age": random.choice(["twelve", "fifteen", "eighteen", "twenty-one"]),
+            "adjective": random.choice(["neon-soaked", "chrome-plated", "data-corrupted", "augmented"]),
+            "location": self._generate_location(character.race),
+            "skill": random.choice(["netrunning", "combat", "hacking", "dealing", "fixing"]),
+            "lesson": random.choice(["chrome is king", "data is power", "trust no corp", "meat is weak"]),
+            "event": random.choice(["a botched run", "corporate betrayal", "a gang war", "cyberpsychosis"]),
+            "precious_thing": random.choice(["humanity", "memories", "organic body", "freedom"]),
+            "desire": random.choice(["revenge", "freedom", "power", "transcendence"]),
+            "family_name": random.choice(["Chrome", "Neon", "Binary", "Ghost"]),
+            "quality": random.choice(["ruthless", "street-smart", "augmented", "connected"]),
         }
 
-        locs = locations.get(race, locations[None])
-        return random.choice(locs)
+    def _generate_scifi_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Sci-Fi-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["stellar", "void-touched", "gravity-born", "synthetic"]),
+            "location": self._generate_location(character.race),
+            "order": random.choice(["first", "third", "fifth", "tenth"]),
+            "virtue": random.choice(["exploration", "discovery", "unity", "progress"]),
+            "burden": random.choice(["isolation", "responsibility", "alien heritage", "time debt"]),
+            "event": random.choice(["solar flare", "alien contact", "jump failure", "colony collapse"]),
+            "precious_thing": random.choice(["homeworld", "ship", "crew", "memories"]),
+            "desire": random.choice(["home", "discovery", "peace", "understanding"]),
+            "quality": random.choice(["adaptable", "resilient", "curious", "determined"]),
+        }
+
+    def _generate_cosmic_horror_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Cosmic Horror-specific template variables."""
+        return {
+            "name": character.name,
+            "age": random.choice(["young", "middle-aged", "elderly", "uncertain"]),
+            "adjective": random.choice(["unspeakable", "forbidden", "eldritch", "sanity-blasting"]),
+            "location": self._generate_location(character.race),
+            "forbidden_topic": random.choice(["ancient texts", "stellar alignments", "dreams", "genealogy"]),
+            "event": random.choice(["the ritual", "the summoning", "the awakening", "the revelation"]),
+            "entity": random.choice(["the Old Ones", "something ancient", "the void", "forgotten gods"]),
+            "artifact": random.choice(["the tome", "the idol", "the medallion", "the map"]),
+            "precious_thing": random.choice(["sanity", "innocence", "faith", "humanity"]),
+        }
+
+    def _generate_post_apocalyptic_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Post-Apocalyptic-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["irradiated", "desolate", "brutal", "scarred"]),
+            "location": self._generate_location(character.race),
+            "disaster": random.choice(["the bombs", "the plague", "the collapse", "the war"]),
+            "time": random.choice(["generations", "decades", "years", "cycles"]),
+            "event": random.choice(["the bombs", "the plague", "the collapse", "the great dying"]),
+            "precious_thing": random.choice(["clean water", "medicine", "ammunition", "hope"]),
+            "principle": random.choice(["survival", "strength", "scavenging", "mutation"]),
+            "threat": random.choice(["raiders", "radiation", "mutants", "starvation"]),
+            "community": random.choice(["settlement", "vault", "tribe", "caravan"]),
+            "lesson": random.choice(["trust kills", "strength survives", "adapt or die", "hope is dangerous"]),
+        }
+
+    def _generate_western_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Western-specific template variables."""
+        return {
+            "name": character.name,
+            "adjective": random.choice(["dusty", "lawless", "frontier", "wild"]),
+            "location": self._generate_location(character.race),
+            "precious_thing": random.choice(["six-shooter", "horse", "badge", "gold"]),
+            "event": random.choice(["the shootout", "the hanging", "the robbery", "the betrayal"]),
+            "action": random.choice(["draw iron", "ride hard", "face justice", "seek revenge"]),
+            "secret": random.choice(["a bounty", "a murder", "stolen gold", "true identity"]),
+            "reputation": random.choice(["dangerous", "mysterious", "deadly", "honorable"]),
+        }
+
+    def _generate_superhero_variables(self, character: Character) -> Dict[str, Any]:
+        """Generate Superhero-specific template variables."""
+        return {
+            "name": character.name,
+            "precious_thing": random.choice(["normal life", "loved ones", "innocence", "humanity"]),
+            "burden": random.choice(["responsibility", "guilt", "destiny", "power"]),
+            "event": random.choice(["the accident", "the experiment", "the awakening", "the attack"]),
+            "responsibility": random.choice(["great responsibility", "protecting others", "justice", "hope"]),
+            "quality": random.choice(["extraordinary abilities", "great power", "unique gifts", "mutations"]),
+            "action": random.choice(["reveal themselves", "become a hero", "embrace destiny", "fight back"]),
+        }
+    
+    def _format_motivation(self, motivation: CharacterMotivation, character: Character) -> str:
+        """Format a motivation enum into a narrative string."""
+        motivation_descriptions = {
+            CharacterMotivation.ADVENTURE: "seeks thrilling adventures and new experiences",
+            CharacterMotivation.KNOWLEDGE: "hungers for knowledge and understanding",
+            CharacterMotivation.POWER: "desires power and influence over others",
+            CharacterMotivation.REDEMPTION: "seeks redemption for past mistakes",
+            CharacterMotivation.REVENGE: "burns with desire for vengeance",
+            CharacterMotivation.WEALTH: "pursues riches and material wealth",
+            CharacterMotivation.HONOR: "strives to uphold honor and duty",
+            CharacterMotivation.FREEDOM: "yearns for freedom and independence",
+            CharacterMotivation.JUSTICE: "fights for justice and fairness",
+            CharacterMotivation.LOVE: "searches for love and connection",
+            CharacterMotivation.SURVIVAL: "struggles to survive against all odds",
+            CharacterMotivation.LEGACY: "works to leave a lasting legacy",
+            CharacterMotivation.PROTECTION: "dedicates themselves to protecting others",
+            CharacterMotivation.DISCOVERY: "driven to discover the unknown",
+            CharacterMotivation.ACCEPTANCE: "seeks acceptance and belonging",
+        }
+        
+        base_description = motivation_descriptions.get(
+            motivation, 
+            f"driven by {motivation.value.replace('_', ' ')}"
+        )
+        
+        return f"{character.name} {base_description}"
+    
+    def _generate_goals_from_motivations(self, character: Character, depth: str = "standard") -> List[str]:
+        """Generate character goals based on enriched motivations."""
+        num_goals = 3 if depth == "detailed" else 2 if depth == "standard" else 1
+        motivations = random.sample(list(CharacterMotivation), min(num_goals, len(CharacterMotivation)))
+        goals = []
+        
+        for motivation in motivations:
+            if "FINDING" in motivation.name or "DISCOVERING" in motivation.name:
+                goals.append(f"To {motivation.value.replace('_', ' ').lower()}")
+            elif "PROTECTING" in motivation.name or "DEFENDING" in motivation.name:
+                goals.append(f"To {motivation.value.replace('_', ' ').lower()}")
+            elif motivation.name.endswith("ING"):
+                goals.append(f"To continue {motivation.value.replace('_', ' ').lower()}")
+            else:
+                goals.append(f"To achieve {motivation.value.replace('_', ' ').lower()}")
+        
+        return goals
+    
+    def _generate_fears_from_motivations(self, character: Character) -> List[str]:
+        """Generate character fears based on enriched content."""
+        fear_motivations = [
+            m for m in CharacterMotivation 
+            if m.name in ['ABANDONMENT', 'BETRAYAL', 'CHAOS', 'DEATH', 'FAILURE',
+                         'HELPLESSNESS', 'ISOLATION', 'LOSS', 'MADNESS', 'POWERLESSNESS']
+        ]
+        
+        selected_fears = random.sample(fear_motivations, min(2, len(fear_motivations)))
+        return [f"Fear of {fear.value.replace('_', ' ')}" for fear in selected_fears]
+    
+    def _generate_story_hooks(self, character: Character, motivation: CharacterMotivation) -> List[StoryHook]:
+        """Generate story hooks for character integration."""
+        hooks = []
+        genre = getattr(character, 'genre', TTRPGGenre.FANTASY)
+        
+        # Quest hook based on motivation
+        quest_hook = StoryHook(
+            hook_type="quest",
+            title=f"The {motivation.value.replace('_', ' ').title()} Quest",
+            description=self._generate_quest_description(character, motivation),
+            urgency=random.choice(["low", "medium", "high", "critical"]),
+            stakes=self._generate_stakes(motivation),
+            potential_allies=[self._generate_ally_name() for _ in range(random.randint(1, 3))],
+            potential_enemies=[self._generate_enemy_name() for _ in range(random.randint(1, 2))],
+            rewards=self._generate_rewards(genre),
+            complications=self._generate_complications(genre),
+            genre_tags=[genre.value if hasattr(genre, 'value') else str(genre)]
+        )
+        hooks.append(quest_hook)
+        
+        # Mystery hook
+        if random.random() > 0.5:
+            mystery_hook = StoryHook(
+                hook_type="mystery",
+                title=f"The {random.choice(['Hidden', 'Lost', 'Forbidden', 'Ancient'])} {random.choice(['Truth', 'Secret', 'Knowledge', 'Artifact'])}",
+                description=self._generate_mystery_description(character),
+                urgency="medium",
+                stakes="Unknown consequences if the mystery remains unsolved",
+                potential_allies=[self._generate_ally_name()],
+                potential_enemies=[],
+                rewards=["Knowledge", "Understanding"],
+                complications=["Deceptive clues", "False leads"],
+                genre_tags=[genre.value if hasattr(genre, 'value') else str(genre)]
+            )
+            hooks.append(mystery_hook)
+        
+        return hooks
+    
+    def _generate_world_connections(self, character: Character, genre: TTRPGGenre) -> List[WorldElement]:
+        """Generate world-building elements connected to the character."""
+        connections = []
+        
+        # Home location
+        home = WorldElement(
+            element_type="location",
+            name=self._generate_location(character.race),
+            description=f"The place where {character.name} spent their formative years",
+            significance="Character's origin point",
+            history="A settlement with its own stories and secrets",
+            current_state=random.choice(["Thriving", "Struggling", "Abandoned", "Under threat"]),
+            connections=[character.name],
+            secrets=[f"Hidden {random.choice(['treasure', 'danger', 'knowledge', 'power'])}"],
+            rumors=["Strange happenings at night", "Visitors from afar"],
+            genre=genre.value if hasattr(genre, 'value') else None
+        )
+        connections.append(home)
+        
+        # Important faction
+        if random.random() > 0.5:
+            faction = WorldElement(
+                element_type="faction",
+                name=self._generate_faction_name(genre),
+                description="An organization with influence in the region",
+                significance="Potential ally or enemy",
+                history="Founded generations ago",
+                current_state=random.choice(["Rising power", "Declining influence", "Hidden agenda"]),
+                connections=[character.name, "Various NPCs"],
+                secrets=["True leadership", "Hidden goals"],
+                rumors=["Recruiting members", "Planning something big"],
+                genre=genre.value if hasattr(genre, 'value') else None
+            )
+            connections.append(faction)
+        
+        return connections
+    
+    def _generate_quest_description(self, character: Character, motivation: CharacterMotivation) -> str:
+        """Generate a quest description based on character and motivation."""
+        templates = [
+            f"{character.name} must {motivation.value.replace('_', ' ').lower()} to fulfill their destiny",
+            f"A quest that will test {character.name}'s resolve to {motivation.value.replace('_', ' ').lower()}",
+            f"An opportunity for {character.name} to pursue their goal of {motivation.value.replace('_', ' ').lower()}"
+        ]
+        return random.choice(templates)
+    
+    def _generate_stakes(self, motivation: CharacterMotivation) -> str:
+        """Generate stakes for a story hook."""
+        stakes_map = {
+            "SURVIVAL": "Life or death",
+            "POWER": "Control of the region",
+            "KNOWLEDGE": "Understanding of fundamental truths",
+            "REDEMPTION": "Chance for forgiveness",
+            "REVENGE": "Justice or eternal regret",
+            "WEALTH": "Fortune or poverty",
+            "HONOR": "Reputation and legacy",
+            "FREEDOM": "Liberty or enslavement",
+            "JUSTICE": "Right prevails or evil triumphs",
+            "LOVE": "Together or forever apart"
+        }
+        
+        for key, value in stakes_map.items():
+            if key in motivation.name:
+                return value
+        
+        return "Personal fulfillment or crushing failure"
+    
+    def _generate_rewards(self, genre: TTRPGGenre) -> List[str]:
+        """Generate appropriate rewards for the genre."""
+        base_rewards = ["Experience", "Reputation", "Allies"]
+        
+        genre_rewards = {
+            TTRPGGenre.FANTASY: ["Magic items", "Gold", "Land", "Titles"],
+            TTRPGGenre.SCI_FI: ["Technology", "Credits", "Ship upgrades", "Data"],
+            TTRPGGenre.CYBERPUNK: ["Cyberware", "Information", "Street cred", "Nuyen"],
+            TTRPGGenre.POST_APOCALYPTIC: ["Supplies", "Weapons", "Safe haven", "Clean water"],
+            TTRPGGenre.COSMIC_HORROR: ["Forbidden knowledge", "Sanity", "Artifacts", "Truth"],
+            TTRPGGenre.WESTERN: ["Gold", "Land deed", "Pardons", "Horses"],
+            TTRPGGenre.SUPERHERO: ["Public acclaim", "Tech upgrades", "Team membership", "Information"]
+        }
+        
+        rewards = base_rewards.copy()
+        if genre in genre_rewards:
+            rewards.extend(random.sample(genre_rewards[genre], min(2, len(genre_rewards[genre]))))
+        
+        return rewards
+    
+    def _generate_complications(self, genre: TTRPGGenre) -> List[str]:
+        """Generate complications appropriate for the genre."""
+        base_complications = ["Betrayal", "Time pressure", "Moral dilemma"]
+        
+        genre_complications = {
+            TTRPGGenre.FANTASY: ["Ancient curse", "Divine intervention", "Dragon involvement"],
+            TTRPGGenre.SCI_FI: ["System malfunction", "Alien interference", "Jump drive failure"],
+            TTRPGGenre.CYBERPUNK: ["Corporate involvement", "Netrunner opposition", "Gang war"],
+            TTRPGGenre.POST_APOCALYPTIC: ["Radiation zone", "Mutant horde", "Resource scarcity"],
+            TTRPGGenre.COSMIC_HORROR: ["Sanity loss", "Cultist interference", "Reality distortion"],
+            TTRPGGenre.WESTERN: ["Law enforcement", "Native tensions", "Desert conditions"],
+            TTRPGGenre.SUPERHERO: ["Collateral damage", "Secret identity risk", "Villain team-up"]
+        }
+        
+        complications = base_complications.copy()
+        if genre in genre_complications:
+            complications.extend(random.sample(genre_complications[genre], min(2, len(genre_complications[genre]))))
+        
+        return complications
+    
+    def _generate_ally_name(self) -> str:
+        """Generate a random ally name."""
+        first_names = ["Marcus", "Elena", "Theron", "Lyra", "Gareth", "Mira", "Dex", "Nova"]
+        descriptors = ["the Wise", "the Bold", "Shadowstep", "Brightblade", "of the North", "the Scholar"]
+        return f"{random.choice(first_names)} {random.choice(descriptors)}"
+    
+    def _generate_enemy_name(self) -> str:
+        """Generate a random enemy name."""
+        titles = ["Lord", "Lady", "Captain", "The", "Warlord", "Master"]
+        names = ["Blackheart", "Vex", "Malthus", "Crimson", "Void", "Bane", "Ruin", "Shade"]
+        return f"{random.choice(titles)} {random.choice(names)}"
+    
+    def _generate_mystery_description(self, character: Character) -> str:
+        """Generate a mystery description."""
+        mysteries = [
+            f"Strange symbols appearing that only {character.name} can see",
+            f"A message from {character.name}'s past that changes everything",
+            f"An artifact that responds only to {character.name}",
+            f"Visions plaguing {character.name} that seem to predict the future"
+        ]
+        return random.choice(mysteries)
+    
+    def _generate_faction_name(self, genre: TTRPGGenre) -> str:
+        """Generate a faction name appropriate for the genre."""
+        genre_factions = {
+            TTRPGGenre.FANTASY: ["Order of the Silver Dawn", "Merchants' Guild", "Circle of Mages"],
+            TTRPGGenre.SCI_FI: ["Colonial Authority", "Free Traders Union", "Science Directorate"],
+            TTRPGGenre.CYBERPUNK: ["Arasaka Corp", "Street Samurai Clan", "Data Liberation Front"],
+            TTRPGGenre.POST_APOCALYPTIC: ["New Republic", "Scavenger Coalition", "Vault-Tec Remnants"],
+            TTRPGGenre.COSMIC_HORROR: ["Esoteric Order", "Department of Investigations", "The Watchers"],
+            TTRPGGenre.WESTERN: ["Railroad Company", "Cattlemen's Association", "Pinkerton Agency"],
+            TTRPGGenre.SUPERHERO: ["Hero League", "S.H.I.E.L.D.", "Villain Syndicate"]
+        }
+        
+        factions = genre_factions.get(genre, ["The Guild", "The Order", "The Alliance"])
+        return random.choice(factions)

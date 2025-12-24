@@ -6,10 +6,9 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from config.logging_config import get_logger
-from config.settings import settings
 
 from src.security.security_manager import SecurityManager, SecurityConfig
 from src.security.auth_providers import (
@@ -18,10 +17,10 @@ from src.security.auth_providers import (
 from src.security.jwt_manager import JWTManager, JWTConfig
 from src.security.session_store import SessionStore, SessionStoreConfig
 from src.security.process_sandbox import ProcessSandbox, SandboxConfig, SandboxPolicy
-from src.security.security_monitor import SecurityMonitor, ThreatLevel
+from src.security.security_monitor import SecurityMonitor
 from src.security.models import (
-    AuthProvider, EnhancedUser, WebSession, ApiKey, TokenPair,
-    SessionStatus, SecurityRole, TokenType
+    EnhancedUser, WebSession, ApiKey, TokenPair,
+    SecurityRole, TokenType
 )
 from src.security.security_audit import SecurityEventType, SecuritySeverity
 
@@ -97,6 +96,7 @@ class EnhancedSecurityManager(SecurityManager):
         # OAuth providers
         self._oauth_providers: Dict[OAuthProvider, Any] = {}
         self._oauth_states: Dict[str, OAuthState] = {}
+        self._oauth_cleanup_task: Optional[asyncio.Task] = None
         
         # API keys
         self._api_keys: Dict[str, ApiKey] = {}
@@ -134,6 +134,48 @@ class EnhancedSecurityManager(SecurityManager):
                 
             except Exception as e:
                 logger.error(f"Failed to initialize OAuth provider {provider_name}: {e}")
+    
+    async def _oauth_state_cleanup_loop(self) -> None:
+        """Periodically cleanup expired OAuth states."""
+        while True:
+            try:
+                await asyncio.sleep(300)  # Run every 5 minutes
+                await self._cleanup_expired_oauth_states()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in OAuth cleanup loop: {e}")
+    
+    async def _cleanup_expired_oauth_states(self) -> None:
+        """Remove expired OAuth states from memory."""
+        current_time = datetime.utcnow()
+        expired_states = []
+        
+        for state_key, oauth_state in self._oauth_states.items():
+            # OAuth states expire after 10 minutes
+            if oauth_state.created_at < current_time - timedelta(minutes=10):
+                expired_states.append(state_key)
+        
+        for state_key in expired_states:
+            del self._oauth_states[state_key]
+        
+        if expired_states:
+            logger.info(
+                f"Cleaned up {len(expired_states)} expired OAuth states",
+                remaining_states=len(self._oauth_states)
+            )
+            
+            # Log security event
+            if self.config.enable_audit:
+                await self.security_auditor.log_event(
+                    SecurityEventType.SESSION_EXPIRED,
+                    severity=SecuritySeverity.INFO,
+                    user_id="system",
+                    details={
+                        "states_cleaned": len(expired_states),
+                        "remaining_states": len(self._oauth_states)
+                    }
+                )
 
     async def start(self) -> None:
         """Start enhanced security services."""
@@ -144,10 +186,21 @@ class EnhancedSecurityManager(SecurityManager):
         if self.enhanced_config.enable_monitoring:
             await self.security_monitor.start_monitoring()
         
+        # Start OAuth state cleanup task
+        self._oauth_cleanup_task = asyncio.create_task(self._oauth_state_cleanup_loop())
+        
         logger.info("Enhanced security services started")
 
     async def stop(self) -> None:
         """Stop enhanced security services."""
+        # Stop OAuth cleanup task
+        if self._oauth_cleanup_task:
+            self._oauth_cleanup_task.cancel()
+            try:
+                await self._oauth_cleanup_task
+            except asyncio.CancelledError:
+                pass
+        
         # Stop monitoring
         await self.security_monitor.stop_monitoring()
         

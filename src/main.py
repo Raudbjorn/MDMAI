@@ -2,9 +2,7 @@
 
 import asyncio
 import atexit
-import json
 import sys
-import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,7 +27,6 @@ from src.personality.personality_manager import PersonalityManager
 from src.personality.response_generator import ResponseGenerator
 from src.search.search_service import SearchService
 from src.security import (
-    AccessLevel,
     FilePathParameters,
     OperationType,
     Permission,
@@ -38,8 +35,6 @@ from src.security import (
     SecurityConfig,
     SecurityEventType,
     SecurityManager,
-    SecuritySeverity,
-    get_security_manager,
     initialize_security,
     secure_mcp_tool,
 )
@@ -58,7 +53,9 @@ mcp = FastMCP("TTRPG Assistant")
 db: Optional[ChromaDBManager] = None
 
 # Initialize PDF processing pipeline
-pdf_pipeline = PDFProcessingPipeline()
+# Disable interactive prompts in non-interactive environments (tests, CI/CD)
+is_interactive = sys.stdin.isatty() if hasattr(sys.stdin, 'isatty') else False
+pdf_pipeline = PDFProcessingPipeline(prompt_for_ollama=is_interactive)
 
 # Initialize search service
 search_service = SearchService()
@@ -83,10 +80,10 @@ security_manager: Optional[SecurityManager] = None
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.SEARCH,
+    permission=Permission.SEARCH_BASIC,
+    operation_type=OperationType.SEARCH_BASIC,
     validate_params={"query": SearchParameters},
-    resource_type=ResourceType.CONTENT,
+    resource_type=ResourceType.SOURCE,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def search(
@@ -174,8 +171,8 @@ async def search(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.CREATE,
+    permission=Permission.SOURCE_ADD,
+    operation_type=OperationType.SOURCE_ADD,
     validate_params={"pdf_path": FilePathParameters},
     resource_type=ResourceType.SOURCE,
     audit_event=SecurityEventType.CAMPAIGN_CREATED,
@@ -266,8 +263,8 @@ async def add_source(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
+    permission=Permission.SOURCE_READ,
+    operation_type=OperationType.SOURCE_READ,
     resource_type=ResourceType.SOURCE,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
@@ -342,9 +339,9 @@ async def list_sources(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SEARCH_ANALYTICS,
+    operation_type=OperationType.SEARCH_ANALYTICS,
+    resource_type=ResourceType.SEARCH,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def search_analytics() -> Dict[str, Any]:
@@ -370,9 +367,9 @@ async def search_analytics() -> Dict[str, Any]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.CACHE_CLEAR,
+    operation_type=OperationType.CAMPAIGN_WRITE,
+    resource_type=ResourceType.CACHE,
     audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
 )
 async def clear_search_cache() -> Dict[str, str]:
@@ -398,9 +395,9 @@ async def clear_search_cache() -> Dict[str, str]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.ADMIN,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SYSTEM_ADMIN,
+    operation_type=OperationType.CAMPAIGN_WRITE,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
 )
 async def update_search_indices() -> Dict[str, str]:
@@ -426,9 +423,9 @@ async def update_search_indices() -> Dict[str, str]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SYSTEM_MONITOR,
+    operation_type=OperationType.CAMPAIGN_READ,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def server_info() -> Dict[str, Any]:
@@ -468,9 +465,9 @@ async def server_info() -> Dict[str, Any]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.CREATE,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.PERSONALITY_CREATE,
+    operation_type=OperationType.CHARACTER_GENERATE,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.CAMPAIGN_CREATED,
 )
 async def create_personality_profile(
@@ -527,9 +524,9 @@ async def create_personality_profile(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SYSTEM_MONITOR,
+    operation_type=OperationType.CAMPAIGN_READ,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def list_personality_profiles(
@@ -582,9 +579,9 @@ async def list_personality_profiles(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.WRITE,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.PERSONALITY_UPDATE,
+    operation_type=OperationType.CHARACTER_UPDATE,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
 )
 async def set_active_personality(
@@ -637,9 +634,9 @@ async def set_active_personality(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONTENT,
+    permission=Permission.SYSTEM_MONITOR,
+    operation_type=OperationType.CAMPAIGN_READ,
+    resource_type=ResourceType.PERSONALITY,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def apply_personality(
@@ -698,9 +695,9 @@ async def apply_personality(
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.READ,
-    operation_type=OperationType.READ,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SYSTEM_MONITOR,
+    operation_type=OperationType.CAMPAIGN_READ,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.DATA_ACCESS,
 )
 async def security_status() -> Dict[str, Any]:
@@ -723,7 +720,7 @@ async def security_status() -> Dict[str, Any]:
         
         # Get current rate limit status for common operations
         rate_limits = {}
-        for op_type in [OperationType.SEARCH, OperationType.CREATE, OperationType.UPDATE]:
+        for op_type in [OperationType.SEARCH_BASIC, OperationType.SOURCE_ADD, OperationType.CHARACTER_UPDATE]:
             status = security_manager.rate_limiter.check_rate_limit("default", op_type, consume=False)
             rate_limits[op_type.value] = {
                 "allowed": status.allowed,
@@ -769,9 +766,9 @@ async def security_status() -> Dict[str, Any]:
 
 @mcp.tool()
 @secure_mcp_tool(
-    permission=Permission.ADMIN,
-    operation_type=OperationType.UPDATE,
-    resource_type=ResourceType.CONFIG,
+    permission=Permission.SYSTEM_ADMIN,
+    operation_type=OperationType.CAMPAIGN_WRITE,
+    resource_type=ResourceType.SYSTEM,
     audit_event=SecurityEventType.SECURITY_CONFIG_CHANGED,
 )
 async def security_maintenance() -> Dict[str, Any]:
@@ -880,7 +877,6 @@ def main():
         register_performance_tools(mcp)
 
         # Register parallel processing tools
-        initialize_parallel_tools()
         register_parallel_tools(mcp)
 
         # Initialize campaign management system

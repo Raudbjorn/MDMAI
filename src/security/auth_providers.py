@@ -1,14 +1,12 @@
 """OAuth2 authentication providers for web authentication."""
 
-import asyncio
 import hashlib
-import json
 import secrets
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlencode, parse_qs, urlparse
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 import aiohttp
 from pydantic import BaseModel, Field, HttpUrl, validator

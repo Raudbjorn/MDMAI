@@ -7,7 +7,6 @@ from structlog import get_logger
 
 from .models import (
     MCPError,
-    MCPErrorCode,
     MCPNotification,
     MCPRequest,
     MCPResponse,

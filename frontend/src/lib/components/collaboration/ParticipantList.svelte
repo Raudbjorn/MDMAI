@@ -150,7 +150,8 @@
 						{#if isHost}
 							<button
 								class="p-1 hover:bg-gray-200 rounded"
-								title="Change role"
+								title="Change role for {participant.username}"
+								aria-label="Change role for {participant.username}"
 								onclick={() => {
 									selectedParticipant = participant;
 									showPermissionsDialog = true;
@@ -164,7 +165,8 @@
 							
 							<button
 								class="p-1 hover:bg-red-100 rounded text-red-600"
-								title="Remove from room"
+								title="Remove {participant.username} from room"
+								aria-label="Remove {participant.username} from room"
 								onclick={() => kickParticipant(participant)}
 							>
 								<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -196,8 +198,9 @@
 				<div class="font-medium">{selectedParticipant.username}</div>
 				
 				<div class="space-y-2">
-					<label class="block text-sm font-medium mb-2">Role</label>
+					<label for="participant-role" class="block text-sm font-medium mb-2">Role</label>
 					<select 
+						id="participant-role"
 						class="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
 						value={selectedParticipant.role}
 						onchange={(e) => changeRole(selectedParticipant!, e.currentTarget.value as ParticipantRole)}
@@ -211,8 +214,8 @@
 					</select>
 				</div>
 				
-				<div class="space-y-2">
-					<label class="block text-sm font-medium mb-2">Permissions</label>
+				<fieldset class="space-y-2">
+					<legend class="block text-sm font-medium mb-2">Permissions</legend>
 					
 					<label class="flex items-center gap-2">
 						<input type="checkbox" />
@@ -233,7 +236,7 @@
 						<input type="checkbox" />
 						<span class="text-sm">Can manage session</span>
 					</label>
-				</div>
+				</fieldset>
 				
 				<div class="flex justify-end gap-2">
 					<Button 

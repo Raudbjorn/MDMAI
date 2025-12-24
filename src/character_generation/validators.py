@@ -2,9 +2,9 @@
 
 import logging
 from dataclasses import fields
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from .models import NPC, Character, CharacterClass, CharacterRace, CharacterStats, NPCRole
+from .models import NPC, Character, CharacterClass, CharacterRace, CharacterStats
 
 logger = logging.getLogger(__name__)
 
@@ -294,20 +294,30 @@ class CharacterValidator:
             logger.warning(f"Unknown system: {system}, using Generic")
 
         # Validate class if provided
-        if character_class is not None and character_class.strip():
-            try:
-                CharacterClass(character_class.strip().lower())
-            except ValueError:
-                if character_class.strip().lower() != "custom":
-                    logger.info(f"Unknown class: {character_class}, treating as custom")
+        if character_class is not None:
+            # Handle both string and Enum types
+            if isinstance(character_class, str):
+                if character_class.strip():
+                    try:
+                        CharacterClass(character_class.strip().lower())
+                    except ValueError:
+                        if character_class.strip().lower() != "custom":
+                            logger.info(f"Unknown class: {character_class}, treating as custom")
+            elif not isinstance(character_class, CharacterClass):
+                errors.append(f"Invalid character_class type: {type(character_class)}")
 
         # Validate race if provided
-        if race is not None and race.strip():
-            try:
-                # Use underscore to match enum values
-                CharacterRace(race.strip().lower().replace(" ", "_").replace("-", "_"))
-            except ValueError:
-                if race.strip().lower() != "custom":
-                    logger.info(f"Unknown race: {race}, treating as custom")
+        if race is not None:
+            # Handle both string and Enum types
+            if isinstance(race, str):
+                if race.strip():
+                    try:
+                        # Use underscore to match enum values
+                        CharacterRace(race.strip().lower().replace(" ", "_").replace("-", "_"))
+                    except ValueError:
+                        if race.strip().lower() != "custom":
+                            logger.info(f"Unknown race: {race}, treating as custom")
+            elif not isinstance(race, CharacterRace):
+                errors.append(f"Invalid race type: {type(race)}")
 
         return errors

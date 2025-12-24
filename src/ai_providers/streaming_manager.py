@@ -9,7 +9,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from structlog import get_logger
 
-from .models import AIRequest, AIResponse, ProviderType, StreamingChunk
+from .models import AIResponse, ProviderType, StreamingChunk
 
 logger = get_logger(__name__)
 

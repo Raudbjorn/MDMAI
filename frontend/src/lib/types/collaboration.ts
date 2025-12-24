@@ -70,6 +70,26 @@ export interface SharedState {
 	dice_rolls: DiceRoll[];
 	last_update: string;
 	version: number; // for conflict resolution
+	map?: MapState; // Optional collaborative map state
+	[key: string]: any; // Allow for dynamic properties
+}
+
+export interface MapState {
+	tokens: Record<string, MapToken>;
+	drawings: any[];
+	fogOfWar?: any;
+	background?: string;
+	gridSize?: number;
+	[key: string]: any;
+}
+
+export interface MapToken {
+	id: string;
+	x: number;
+	y: number;
+	owner_id?: string;
+	locked?: boolean;
+	[key: string]: any;
 }
 
 export interface InitiativeEntry {
@@ -142,7 +162,9 @@ export type CollaborationMessageType =
 	| 'sync_request'
 	| 'sync_response'
 	| 'authenticate'
-	| 'heartbeat';
+	| 'heartbeat'
+	| 'typing_indicator'
+	| 'selection_change';
 
 export interface StateUpdate {
 	path: string[]; // Path to the updated property
@@ -165,7 +187,7 @@ export interface ChatMessage {
 	sender_id: string;
 	sender_name: string;
 	content: string;
-	type: 'text' | 'roll' | 'system';
+	type: 'text' | 'roll' | 'system' | 'whisper';
 	timestamp: string;
 	edited?: boolean;
 	edited_at?: string;

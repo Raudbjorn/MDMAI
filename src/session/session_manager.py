@@ -13,7 +13,6 @@ from .models import (
     CombatRound,
     InitiativeEntry,
     Monster,
-    MonsterStatus,
     Session,
     SessionNote,
     SessionNoteCategory,

@@ -1,6 +1,5 @@
 """File size handling and user confirmation utilities."""
 
-import asyncio
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple

@@ -1,0 +1,71 @@
+# Build outputs
+build/
+dist/
+out/
+target/
+.svelte-kit/
+.vite/
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Generated files
+*.min.js
+*.min.css
+*.bundle.js
+*.bundle.css
+*.d.ts
+.tsbuildinfo
+
+# Python artifacts  
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Documentation build
+docs/_build/
+*.pdf
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Git files
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Lock files (preserve original formatting)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+Cargo.lock
+uv.lock
+poetry.lock
+
+# Configuration files that should preserve their formatting
+*.toml

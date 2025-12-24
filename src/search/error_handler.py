@@ -4,7 +4,7 @@ import asyncio
 import time
 import traceback
 from functools import wraps
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional
 
 from config.logging_config import get_logger
 
