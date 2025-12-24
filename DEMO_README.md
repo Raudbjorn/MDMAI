@@ -40,11 +40,14 @@ Open your browser and go to: http://localhost:8000
   "mcpServers": {
     "ttrpg-demo": {
       "command": "python",
-      "args": ["/path/to/MDMAI/src/mcp_server.py"]
+      "args": ["src/mcp_server.py"],
+      "cwd": "/absolute/path/to/MDMAI"
     }
   }
 }
 ```
+
+Replace `/absolute/path/to/MDMAI` with your actual project path. You can find it by running `pwd` in the MDMAI directory.
 
 ## Testing the Tools
 

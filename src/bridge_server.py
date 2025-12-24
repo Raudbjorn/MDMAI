@@ -82,7 +82,7 @@ class MCPBridge:
     async def send_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Send request to MCP server and wait for response"""
         if not self.process or self.process.poll() is not None:
-            raise Exception("MCP server not running")
+            raise RuntimeError("MCP server not running")
         
         # Add ID if not present
         if "id" not in request:
@@ -107,7 +107,7 @@ class MCPBridge:
             return response
         except asyncio.TimeoutError:
             del self.responses[request_id]
-            raise Exception("Request timeout")
+            raise TimeoutError("MCP request timeout after 30 seconds")
             
     async def _read_output(self):
         """Read output from MCP server"""
@@ -152,9 +152,9 @@ class MCPBridge:
         }
         
         response = await self.send_request(request)
-        
+
         if "error" in response:
-            raise Exception(f"Tool error: {response['error']}")
+            raise RuntimeError(f"MCP tool error: {response['error']}")
             
         return response.get("result", {}).get("content", [])
         
@@ -172,15 +172,26 @@ class MCPBridge:
         
     async def stop(self):
         """Stop the MCP server process"""
-        if self.process:
+        if self.process and self.process.poll() is None:
             self.process.terminate()
-            await asyncio.sleep(0.5)
-            if self.process.poll() is None:
+            try:
+                # Wait for graceful termination with timeout
+                await asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(None, self.process.wait),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                # Force kill if graceful shutdown fails
                 self.process.kill()
+                await asyncio.get_event_loop().run_in_executor(None, self.process.wait)
             self.process = None
-            
-        if self.reader_task:
+
+        if self.reader_task and not self.reader_task.done():
             self.reader_task.cancel()
+            try:
+                await self.reader_task
+            except asyncio.CancelledError:
+                pass  # Cancellation is expected
             
 # Global bridge instance
 bridge = MCPBridge()

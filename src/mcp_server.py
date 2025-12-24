@@ -37,12 +37,19 @@ async def roll_dice(expression: str) -> Dict[str, Any]:
     num_dice = int(match.group(1))
     num_sides = int(match.group(2))
     modifier = int(match.group(3) or 0)
-    
-    # Roll the dice
-    rolls = []
-    for _ in range(num_dice):
-        roll = random.randint(1, num_sides)
-        rolls.append(roll)
+
+    # Validate input to prevent DoS
+    MAX_DICE = 1000
+    MAX_SIDES = 1000
+    if num_dice > MAX_DICE:
+        return {"error": f"Cannot roll more than {MAX_DICE} dice.", "expression": expression}
+    if num_sides > MAX_SIDES:
+        return {"error": f"Dice cannot have more than {MAX_SIDES} sides.", "expression": expression}
+    if num_dice < 1 or num_sides < 1:
+        return {"error": "Number of dice and sides must be at least 1.", "expression": expression}
+
+    # Roll the dice using list comprehension
+    rolls = [random.randint(1, num_sides) for _ in range(num_dice)]
     
     total = sum(rolls) + modifier
     

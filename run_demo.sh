@@ -1,31 +1,39 @@
 #!/bin/bash
 # Simple script to run the MCP demo
+# Uses the unified build system for dependency management
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "Starting TTRPG MCP Demo..."
 echo "==============================="
 echo ""
 
-# Check if Python is installed
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python 3 is not installed"
-    exit 1
+# Check if build.sh exists and use it for setup
+if [ -f "./build.sh" ]; then
+    # Check if dependencies are already installed
+    if [ ! -d ".venv" ] && [ ! -d "venv" ]; then
+        echo "Running initial setup via build.sh..."
+        ./build.sh setup
+    fi
 fi
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
+# Activate virtual environment (check both possible names)
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+elif [ -d "venv" ]; then
+    source venv/bin/activate
+else
+    echo "No virtual environment found. Creating one..."
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
 fi
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies if needed
-echo "Checking dependencies..."
-pip install -q fastapi uvicorn fastmcp 2>/dev/null || {
-    echo "Installing required packages..."
-    pip install fastapi uvicorn fastmcp
-}
+# Ensure demo-specific dependencies are installed
+pip install -q fastapi uvicorn fastmcp 2>/dev/null || pip install fastapi uvicorn fastmcp
 
 # Start the bridge server (which starts the MCP server)
 echo ""
