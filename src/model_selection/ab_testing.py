@@ -1,6 +1,7 @@
 """A/B testing framework for AI model comparison and optimization."""
 
 import asyncio
+import hashlib
 import json
 import math
 import random
@@ -316,9 +317,9 @@ class ABTestingFramework:
     
     def _select_variant_for_user(self, user_id: str, experiment: ExperimentConfig) -> ExperimentVariant:
         """Select a variant for a user based on traffic allocation."""
-        # Use deterministic hash-based assignment for consistency
-        hash_input = f"{user_id}:{experiment.experiment_id}"
-        hash_value = hash(hash_input) % 10000 / 10000.0  # Convert to 0-1 range
+        # Use deterministic SHA-256 hash for consistent assignment across processes
+        hash_input = f"{user_id}:{experiment.experiment_id}".encode('utf-8')
+        hash_value = int(hashlib.sha256(hash_input).hexdigest(), 16) % 10000 / 10000.0  # Convert to 0-1 range
         
         # Select variant based on traffic allocation
         cumulative_allocation = 0.0

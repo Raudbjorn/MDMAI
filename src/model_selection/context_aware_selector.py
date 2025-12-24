@@ -1,6 +1,7 @@
 """Context-aware model switching logic for intelligent AI model selection."""
 
 import asyncio
+import copy
 import json
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
@@ -483,25 +484,8 @@ class ContextAwareSelector:
         user_preferences: Dict[str, Any]
     ) -> TaskCharacteristics:
         """Apply context-aware adjustments to task characteristics."""
-        # Create a copy to modify
-        adjusted = TaskCharacteristics(
-            task_type=task_characteristics.task_type,
-            complexity=task_characteristics.complexity,
-            latency_requirement=task_characteristics.latency_requirement,
-            requires_creativity=task_characteristics.requires_creativity,
-            requires_accuracy=task_characteristics.requires_accuracy,
-            requires_consistency=task_characteristics.requires_consistency,
-            context_length_needed=task_characteristics.context_length_needed,
-            typical_output_length=task_characteristics.typical_output_length,
-            needs_tool_calling=task_characteristics.needs_tool_calling,
-            needs_structured_output=task_characteristics.needs_structured_output,
-            needs_multi_step_reasoning=task_characteristics.needs_multi_step_reasoning,
-            genre_sensitivity=task_characteristics.genre_sensitivity,
-            personality_awareness=task_characteristics.personality_awareness,
-            rules_knowledge=task_characteristics.rules_knowledge,
-            cost_sensitivity=task_characteristics.cost_sensitivity,
-            quality_importance=task_characteristics.quality_importance
-        )
+        # Create a copy to modify (using copy.copy for maintainability)
+        adjusted = copy.copy(task_characteristics)
         
         context_factors = context_analysis.get("context_factors", {})
         
