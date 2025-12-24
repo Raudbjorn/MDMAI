@@ -104,8 +104,9 @@ class ChromaDBManager:
                     embedding_function=self.embedding_function,
                 )
                 logger.debug(f"Retrieved existing collection: {collection_name}")
-            except ValueError:
+            except (ValueError, Exception) as e:
                 # Create new collection if it doesn't exist
+                # ChromaDB might throw NotFoundError or other exceptions
                 collection = self.client.create_collection(
                     name=collection_name,
                     embedding_function=self.embedding_function,

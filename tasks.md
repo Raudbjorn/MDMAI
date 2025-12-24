@@ -1133,14 +1133,18 @@ These items represent potential improvements rather than critical issues and can
 - All components work together as a cohesive authentication system
 
 ### Task 25.3: Develop Provider Router with Fallback
-**Requirements:** REQ-013
-**Status:** PLANNED
-- [ ] Create intelligent provider routing system
-- [ ] Implement automatic fallback on provider failure
-- [ ] Build rate limit detection and handling
-- [ ] Add provider priority configuration
-- [ ] Create circuit breaker for failing providers
-- [ ] Implement retry logic with exponential backoff
+**Requirements:** REQ-012, REQ-013, REQ-019, NFR-004
+**Status:** READY FOR DEV
+- [ ] Design intelligent provider routing system architecture
+- [ ] Implement automatic fallback mechanism on provider failure
+- [ ] Create rate limit detection and handling strategies
+- [ ] Build provider priority configuration schema
+- [ ] Implement circuit breaker pattern for failing providers
+- [ ] Create retry logic with exponential backoff
+- [ ] Design routing decision criteria and scoring system
+- [ ] Build provider health metrics integration
+- [ ] Implement fallback chain and escalation procedures
+- [ ] Create comprehensive testing for failure scenarios
 
 ### Task 25.4: Implement Usage Tracking and Cost Management
 **Requirements:** REQ-013, REQ-020
@@ -1154,7 +1158,7 @@ These items represent potential improvements rather than critical issues and can
 
 ### Task 25.5: Create Model Selection Strategy
 **Requirements:** REQ-013
-**Status:** PLANNED
+**Status:** READY FOR DEV
 - [ ] Implement task-based model selection
 - [ ] Create model performance profiling
 - [ ] Build automatic model optimization
@@ -1191,6 +1195,24 @@ These items represent potential improvements rather than critical issues and can
 - [ ] Add security penetration testing
 - [ ] Create load testing for provider routing
 - [ ] Implement cost calculation verification tests
+
+### Task 25.9: Enhance Provider Registry System
+**Requirements:** REQ-012, REQ-019
+**Status:** PLANNED
+- [ ] Extend provider registry with priority-based selection
+- [ ] Implement dynamic provider discovery and configuration
+- [ ] Build provider capability detection system
+- [ ] Create provider metadata management
+- [ ] Implement provider version compatibility checks
+
+### Task 25.10: Implement Provider Health Monitoring
+**Requirements:** REQ-012, REQ-019, NFR-004
+**Status:** PLANNED
+- [ ] Create real-time provider health monitoring system
+- [ ] Implement response time tracking and SLA monitoring
+- [ ] Build error rate analysis and trend detection
+- [ ] Create provider availability scoring system
+- [ ] Implement automated health status reporting
 
 ## LLM Provider Authentication Timeline
 

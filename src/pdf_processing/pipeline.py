@@ -9,6 +9,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from returns.result import Result
+
 from config.logging_config import get_logger
 from config.settings import settings
 from src.core.database import get_db_manager

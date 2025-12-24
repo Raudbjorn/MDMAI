@@ -1,16 +1,17 @@
 # AI Provider Pricing Configuration for MDMAI TTRPG Assistant
 # This file contains current pricing information for all supported AI providers
-# Prices are in USD per 1,000,000 tokens unless otherwise specified
+# Prices are in USD per 1,000 tokens (standard industry format)
+# Last updated: 2025-01-15
 
 # Configuration metadata
-updated_at: "2025-01-15T00:00:00Z"
-currency: "USD"
-per_tokens: 1000000  # Pricing is per 1 million tokens
-version: "1.0"
+metadata:
+  version: "2.0"
+  updated_at: "2025-01-15T00:00:00Z"
+  currency: "USD"
+  per_tokens: 1000  # Pricing is per 1K tokens (industry standard)
 
 # Provider-specific pricing
 providers:
-  
   # Anthropic Claude Models
   anthropic:
     description: "Anthropic Claude models - excellent for TTRPG storytelling and roleplay"
@@ -18,51 +19,53 @@ providers:
       claude-3-haiku:
         display_name: "Claude 3 Haiku"
         description: "Fast, efficient model for quick responses and dice rolls"
-        input_price: 0.25   # $0.25 per 1M input tokens
-        output_price: 1.25  # $1.25 per 1M output tokens
+        input: 0.00025      # $0.25 per 1M = $0.00025 per 1K
+        output: 0.00125     # $1.25 per 1M = $0.00125 per 1K
+        cached_input: 0.000125
+        tool_calls: 0.00125
         context_window: 200000
         recommended_for: ["quick_responses", "dice_rolls", "simple_queries"]
-        
+
       claude-3-5-sonnet:
         display_name: "Claude 3.5 Sonnet"
         description: "Balanced model for main TTRPG gameplay"
-        input_price: 3.0    # $3.00 per 1M input tokens
-        output_price: 15.0  # $15.00 per 1M output tokens
+        input: 0.003        # $3.00 per 1M = $0.003 per 1K
+        output: 0.015       # $15.00 per 1M = $0.015 per 1K
+        cached_input: 0.0015
+        tool_calls: 0.015
+        image_processing: 0.003
         context_window: 200000
         recommended_for: ["main_gameplay", "storytelling", "character_interactions"]
-        
+
       claude-3-opus:
         display_name: "Claude 3 Opus"
         description: "Most capable model for complex narratives and world-building"
-        input_price: 15.0   # $15.00 per 1M input tokens
-        output_price: 75.0  # $75.00 per 1M output tokens
+        input: 0.015        # $15.00 per 1M = $0.015 per 1K
+        output: 0.075       # $75.00 per 1M = $0.075 per 1K
+        cached_input: 0.0075
+        tool_calls: 0.075
+        image_processing: 0.015
         context_window: 200000
         recommended_for: ["complex_narratives", "world_building", "campaign_planning"]
-        
-      # Legacy models - keeping for backward compatibility but marked as deprecated
+
+      # Legacy model aliases for backward compatibility
       claude-3-haiku-20240307:
-        display_name: "Claude 3 Haiku (Legacy)"
-        input_price: 0.25
-        output_price: 1.25
-        context_window: 200000
         deprecated: true
         replacement: "claude-3-haiku"
-        
+        input: 0.00025
+        output: 0.00125
+
       claude-3-5-sonnet-20241022:
-        display_name: "Claude 3.5 Sonnet (Legacy)"
-        input_price: 3.0
-        output_price: 15.0
-        context_window: 200000
         deprecated: true
         replacement: "claude-3-5-sonnet"
-        
+        input: 0.003
+        output: 0.015
+
       claude-3-opus-20240229:
-        display_name: "Claude 3 Opus (Legacy)"
-        input_price: 15.0
-        output_price: 75.0
-        context_window: 200000
         deprecated: true
         replacement: "claude-3-opus"
+        input: 0.015
+        output: 0.075
 
   # OpenAI GPT Models
   openai:
@@ -71,43 +74,65 @@ providers:
       gpt-4o-mini:
         display_name: "GPT-4o Mini"
         description: "Cost-effective model for basic TTRPG tasks"
-        input_price: 0.15   # $0.15 per 1M input tokens
-        output_price: 0.60  # $0.60 per 1M output tokens
+        input: 0.00015      # $0.15 per 1M = $0.00015 per 1K
+        output: 0.0006      # $0.60 per 1M = $0.0006 per 1K
+        cached_input: 0.000075
+        tool_calls: 0.0006
         context_window: 128000
         recommended_for: ["economy_option", "simple_tasks", "quick_responses"]
-        
+
       gpt-4o:
         display_name: "GPT-4o"
         description: "Advanced multimodal model for rich TTRPG experiences"
-        input_price: 2.50   # $2.50 per 1M input tokens
-        output_price: 10.00 # $10.00 per 1M output tokens
+        input: 0.0025       # $2.50 per 1M = $0.0025 per 1K
+        output: 0.01        # $10.00 per 1M = $0.01 per 1K
+        cached_input: 0.00125
+        tool_calls: 0.01
+        image_processing: 0.01
+        audio_processing: 0.006
         context_window: 128000
         recommended_for: ["multimodal", "main_gameplay", "image_analysis"]
-        
+
       gpt-4-turbo:
         display_name: "GPT-4 Turbo"
         description: "High-performance model for complex TTRPG scenarios"
-        input_price: 10.00  # $10.00 per 1M input tokens
-        output_price: 30.00 # $30.00 per 1M output tokens
+        input: 0.01         # $10.00 per 1M = $0.01 per 1K
+        output: 0.03        # $30.00 per 1M = $0.03 per 1K
+        cached_input: 0.005
+        tool_calls: 0.03
+        image_processing: 0.01
+        audio_processing: 0.006
         context_window: 128000
         recommended_for: ["complex_scenarios", "detailed_planning", "premium_features"]
-        
-      # Legacy models - keeping for backward compatibility but marked as deprecated
+
+      gpt-4:
+        display_name: "GPT-4"
+        input: 0.03
+        output: 0.06
+        cached_input: 0.015
+        tool_calls: 0.06
+        context_window: 8192
+
+      gpt-3.5-turbo:
+        display_name: "GPT-3.5 Turbo"
+        input: 0.0005
+        output: 0.0015
+        cached_input: 0.00025
+        tool_calls: 0.0015
+        context_window: 16385
+
+      # Legacy model aliases
       gpt-4-turbo-2024-04-09:
-        display_name: "GPT-4 Turbo (Legacy)"
-        input_price: 10.00
-        output_price: 30.00
-        context_window: 128000
         deprecated: true
         replacement: "gpt-4-turbo"
-        
+        input: 0.01
+        output: 0.03
+
       gpt-4-vision-preview:
-        display_name: "GPT-4 Vision (Legacy)"
-        input_price: 10.00
-        output_price: 30.00
-        context_window: 128000
         deprecated: true
         replacement: "gpt-4o"
+        input: 0.01
+        output: 0.03
 
   # Google Gemini Models
   google:
@@ -116,37 +141,61 @@ providers:
       gemini-1.5-flash:
         display_name: "Gemini 1.5 Flash"
         description: "Fast, efficient model with large context window"
-        input_price: 0.075  # $0.075 per 1M input tokens
-        output_price: 0.30  # $0.30 per 1M output tokens
+        input: 0.000075     # $0.075 per 1M = $0.000075 per 1K
+        output: 0.0003      # $0.30 per 1M = $0.0003 per 1K
+        cached_input: 0.0000375
+        tool_calls: 0.0003
         context_window: 1048576  # 1M tokens
         recommended_for: ["large_context", "campaign_history", "fast_responses"]
-        
+
       gemini-1.5-pro:
         display_name: "Gemini 1.5 Pro"
         description: "Advanced model with massive context window"
-        input_price: 1.25   # $1.25 per 1M input tokens
-        output_price: 5.00  # $5.00 per 1M output tokens
+        input: 0.00125      # $1.25 per 1M = $0.00125 per 1K
+        output: 0.005       # $5.00 per 1M = $0.005 per 1K
+        cached_input: 0.000625
+        tool_calls: 0.005
+        image_processing: 0.0025
         context_window: 2097152  # 2M tokens
         recommended_for: ["massive_context", "campaign_management", "world_building"]
-        
-      # Legacy models - keeping for backward compatibility but marked as deprecated
-      gemini-pro:
-        display_name: "Gemini Pro (Legacy)"
-        input_price: 0.50
-        output_price: 1.50
-        context_window: 32768
-        deprecated: true
-        replacement: "gemini-1.5-pro"
-        
-      gemini-pro-vision:
-        display_name: "Gemini Pro Vision (Legacy)"
-        input_price: 0.25
-        output_price: 0.50
-        context_window: 32768
-        deprecated: true
-        replacement: "gemini-1.5-pro"
 
-# Cost optimization recommendations
+      # Legacy model aliases
+      gemini-pro:
+        deprecated: true
+        replacement: "gemini-1.5-pro"
+        input: 0.0005
+        output: 0.0015
+
+      gemini-pro-vision:
+        deprecated: true
+        replacement: "gemini-1.5-pro"
+        input: 0.00025
+        output: 0.0005
+
+# Volume discount tiers (threshold in USD monthly spend -> discount factor)
+volume_discounts:
+  1000: 0.95    # 5% discount for $1000+ monthly
+  5000: 0.90    # 10% discount for $5000+ monthly
+  25000: 0.85   # 15% discount for $25000+ monthly
+
+# Token estimation configuration for multimodal content
+token_estimation:
+  image:
+    openai:
+      low_detail: 85
+      high_detail_base: 170
+      high_detail_per_tile: 85
+    anthropic:
+      default: 250
+    google:
+      default: 258
+    fallback: 200
+
+  audio:
+    tokens_per_second: 50
+    default_fallback: 1000
+
+# Cost optimization recommendations for TTRPG use cases
 optimization:
   ttrpg_use_cases:
     quick_responses:
@@ -160,7 +209,7 @@ optimization:
         - provider: "openai"
           model: "gpt-4o-mini"
           reason: "OpenAI's economy option"
-          
+
     main_gameplay:
       recommended_models:
         - provider: "anthropic"
@@ -172,7 +221,7 @@ optimization:
         - provider: "google"
           model: "gemini-1.5-pro"
           reason: "Massive context window for long campaigns"
-          
+
     complex_scenarios:
       recommended_models:
         - provider: "anthropic"
@@ -185,70 +234,76 @@ optimization:
           model: "gemini-1.5-pro"
           reason: "Large context for complex world state"
 
-# Spending guidelines for TTRPG usage
+# Spending guidelines for TTRPG usage (single source of truth)
 spending_guidelines:
   casual_player:
-    daily_budget: 1.00    # $1 per day
-    weekly_budget: 5.00   # $5 per week
-    monthly_budget: 15.00 # $15 per month
-    recommended_provider: "google"  # Most cost-effective
-    
+    daily_budget: 1.00
+    weekly_budget: 5.00
+    monthly_budget: 15.00
+    recommended_provider: "google"
+
   regular_player:
-    daily_budget: 3.00    # $3 per day
-    weekly_budget: 15.00  # $15 per week
-    monthly_budget: 50.00 # $50 per month
-    recommended_provider: "anthropic"  # Best balance
-    
+    daily_budget: 3.00
+    weekly_budget: 15.00
+    monthly_budget: 50.00
+    recommended_provider: "anthropic"
+
   power_user:
-    daily_budget: 10.00   # $10 per day
-    weekly_budget: 50.00  # $50 per week
-    monthly_budget: 150.00 # $150 per month
-    recommended_provider: "mixed"  # Use best model for each task
-    
+    daily_budget: 10.00
+    weekly_budget: 50.00
+    monthly_budget: 150.00
+    recommended_provider: "mixed"
+
   dm_heavy_usage:
-    daily_budget: 15.00   # $15 per day
-    weekly_budget: 75.00  # $75 per week
-    monthly_budget: 250.00 # $250 per month
-    recommended_provider: "mixed"  # Premium models for campaign management
+    daily_budget: 15.00
+    weekly_budget: 75.00
+    monthly_budget: 250.00
+    recommended_provider: "mixed"
 
 # Alert thresholds for cost monitoring
 cost_alerts:
-  warning_threshold: 0.80  # Alert at 80% of budget
-  critical_threshold: 0.95 # Critical alert at 95% of budget
-  
-  # Note: Budget limits are defined in spending_guidelines section above
-  # This avoids duplication and ensures single source of truth
+  warning_threshold: 0.80   # Alert at 80% of budget
+  critical_threshold: 0.95  # Critical alert at 95% of budget
+  # Budget limits reference spending_guidelines above (single source of truth)
 
 # Rate limiting guidelines (requests per minute)
 rate_limits:
   anthropic:
-    tier_1: 50   # Basic tier
-    tier_2: 100  # Premium tier
-    tier_3: 200  # Enterprise tier
-    
+    tier_1: 50
+    tier_2: 100
+    tier_3: 200
+
   openai:
-    tier_1: 500  # Basic tier has higher limits
+    tier_1: 500
     tier_2: 1000
     tier_3: 2000
-    
+
   google:
-    tier_1: 60   # Conservative limits
+    tier_1: 60
     tier_2: 120
     tier_3: 300
 
+# Exchange rates (base currency: USD)
+exchange_rates:
+  USD: 1.0
+  EUR: 0.85
+  GBP: 0.73
+  JPY: 110.0
+  CNY: 6.5
+
 # Update schedule
 update_schedule:
-  frequency: "monthly"  # Update pricing monthly
+  frequency: "monthly"
   next_update: "2025-02-15T00:00:00Z"
   source: "Official provider pricing pages"
-  
+
 # Pricing change notifications
 notifications:
-  price_increase_warning_days: 30  # Warn users 30 days before increases
-  deprecated_model_warning_days: 60  # Warn about deprecated models
-  
+  price_increase_warning_days: 30
+  deprecated_model_warning_days: 60
+
 # Data retention
 data_retention:
-  usage_records_days: 90   # Keep usage data for 90 days
-  cost_analysis_days: 365  # Keep cost analysis for 1 year
-  pricing_history_days: 1095  # Keep pricing history for 3 years
+  usage_records_days: 90
+  cost_analysis_days: 365
+  pricing_history_days: 1095
