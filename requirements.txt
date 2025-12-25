@@ -48,6 +48,14 @@ openai==1.35.0  # Updated to latest stable
 google-generativeai==0.5.0  # Updated to latest stable
 
 # ============================================
+# Voice Synthesis
+# ============================================
+elevenlabs>=1.0.0  # ElevenLabs TTS SDK
+fish-audio-sdk>=0.1.0  # Fish Audio TTS SDK
+# TTS>=0.22.0  # Coqui TTS (optional, large dependency)
+# piper-tts>=1.0.0  # Piper TTS (optional)
+
+# ============================================
 # Search & Information Retrieval
 # ============================================
 rank-bm25==0.2.2  # BM25 ranking for keyword search

@@ -1,0 +1,171 @@
+# Voice Synthesis Configuration for MDMAI TTRPG Assistant
+#
+# This configuration defines voice synthesis providers, caching behavior,
+# and pre-generation settings. Providers are tried in priority order,
+# with local providers preferred by default for cost savings.
+
+metadata:
+  version: "1.0"
+  updated_at: "2025-01-01T00:00:00Z"
+  description: "Voice synthesis configuration for DM and NPC voices"
+
+# Provider configuration
+# Providers are ordered by priority (lower number = higher priority)
+providers:
+  # Local providers (preferred for cost)
+  ollama_tts:
+    enabled: true
+    priority: 1
+    description: "Local Orpheus TTS via Ollama - free, private"
+    model: "orpheus"
+    base_url: "http://localhost:8880"  # Orpheus-FastAPI endpoint
+    supported_formats:
+      - mp3
+      - wav
+    default_sample_rate: 24000
+    max_text_length: 5000
+    timeout: 30.0
+    metadata:
+      voices:
+        - tara
+        - leah
+        - jess
+        - leo
+        - dan
+        - mia
+        - zac
+        - zoe
+
+  # Cloud providers (fallback for higher quality)
+  elevenlabs:
+    enabled: true
+    priority: 4
+    description: "ElevenLabs cloud TTS - high quality, streaming"
+    api_key_env: "ELEVENLABS_API_KEY"
+    model: "eleven_multilingual_v2"
+    streaming_enabled: true
+    cost_per_character: 0.00003  # ~$30 per 1M characters
+    supported_formats:
+      - mp3
+      - wav
+      - ogg
+    default_sample_rate: 44100
+    max_text_length: 5000
+    rate_limit_rpm: 100
+    timeout: 30.0
+
+  fish_audio:
+    enabled: true
+    priority: 5
+    description: "Fish Audio cloud TTS - emotion controls"
+    api_key_env: "FISH_AUDIO_API_KEY"
+    streaming_enabled: true
+    emotion_support: true
+    cost_per_second: 0.01  # $0.01 per second of audio
+    supported_formats:
+      - mp3
+      - wav
+    default_sample_rate: 22050
+    max_text_length: 5000
+    timeout: 30.0
+
+# Default voice profiles
+# These are created automatically on first run
+default_profiles:
+  dm_narration:
+    name: "DM Narrator"
+    description: "Default voice for DM narration and scene descriptions"
+    gender: "neutral"
+    age: "adult"
+    pitch: 0.5
+    pitch_variance: 0.4
+    speed: 0.45  # Slightly slower for clarity
+    energy: 0.5
+    warmth: 0.55
+    default_emotion: "neutral"
+
+  epic_narrator:
+    name: "Epic Narrator"
+    description: "Dramatic voice for epic fantasy narration"
+    gender: "male"
+    age: "mature"
+    pitch: 0.35
+    pitch_variance: 0.5
+    speed: 0.4
+    energy: 0.65
+    warmth: 0.5
+    default_emotion: "authoritative"
+
+  mysterious_narrator:
+    name: "Mysterious Narrator"
+    description: "Enigmatic voice for mystery and horror"
+    gender: "neutral"
+    age: "adult"
+    pitch: 0.45
+    pitch_variance: 0.25
+    speed: 0.4
+    energy: 0.4
+    breathiness: 0.2
+    warmth: 0.35
+    default_emotion: "mysterious"
+
+  friendly_narrator:
+    name: "Friendly Narrator"
+    description: "Warm voice for lighthearted sessions"
+    gender: "neutral"
+    age: "adult"
+    pitch: 0.55
+    pitch_variance: 0.45
+    speed: 0.5
+    energy: 0.6
+    warmth: 0.7
+    default_emotion: "happy"
+
+# Cache configuration
+cache:
+  enabled: true
+  directory: "data/voice_cache"
+  max_size_mb: 5000  # 5GB max cache size
+  max_age_days: 30   # Auto-cleanup after 30 days
+  cleanup_interval_hours: 24  # Run cleanup daily
+
+# Pre-generation settings
+# For session preparation workflow
+pre_generation:
+  enabled: true
+  max_queue_size: 1000
+  worker_count: 1  # Number of concurrent generation workers
+  batch_size: 10   # Items to process per batch
+  priority_levels:
+    realtime: 0    # Immediate processing
+    high: 1        # Active session content
+    normal: 2      # Session preparation
+    low: 3         # Background/optional
+
+# Quality settings
+quality:
+  default_sample_rate: 22050
+  default_format: "mp3"
+  compression_quality: 0.8  # For lossy formats
+
+# Failover configuration
+failover:
+  enabled: true
+  max_retries: 3
+  retry_delay_seconds: 1
+  prefer_local: true  # Always try local providers first
+
+# Cost tracking and limits
+cost_tracking:
+  enabled: true
+  daily_budget_usd: 5.00      # Daily spending limit
+  alert_threshold: 0.80       # Alert at 80% of budget
+  track_per_session: true     # Track costs per session
+  track_per_campaign: true    # Track costs per campaign
+
+# Logging
+logging:
+  log_synthesis_requests: true
+  log_cache_hits: false
+  log_provider_health: true
+  metrics_enabled: true

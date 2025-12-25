@@ -8,7 +8,9 @@ export const ProviderType = {
 	ANTHROPIC: 'anthropic',
 	OPENAI: 'openai',
 	GOOGLE: 'google',
-	OLLAMA: 'ollama'
+	ELEVENLABS: 'elevenlabs',
+	FISH_AUDIO: 'fish_audio',
+	OLLAMA_TTS: 'ollama_tts'
 } as const;
 
 export type ProviderType = typeof ProviderType[keyof typeof ProviderType];
@@ -58,6 +60,11 @@ export interface ProviderConfig {
 	enabled: boolean;
 	priority: number;
 	metadata?: Record<string, any>;
+
+	// Voice specific
+	voice_id?: string;
+	// base_url already exists in interface
+	cost_limit_usd?: number;
 }
 
 export interface ModelSpec {
@@ -151,7 +158,7 @@ export interface APIRequest<T = unknown> {
 }
 
 // Use discriminated unions for better type safety
-export type APIResponse<T = unknown> = 
+export type APIResponse<T = unknown> =
 	| { ok: true; data: T; timestamp?: Date }
 	| { ok: false; error: string; message?: string; timestamp?: Date };
 
@@ -219,7 +226,7 @@ export interface StatusEntity {
 }
 
 // Enhanced Result type for comprehensive error handling
-export type Result<T, E = string> = 
+export type Result<T, E = string> =
 	| { ok: true; value: T }
 	| { ok: false; error: E; context?: Record<string, unknown> };
 
@@ -233,13 +240,13 @@ export type RequiredFields<T, K extends keyof T> = T & Required<Pick<T, K>>;
 export type OptionalFields<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
 // Type guards for runtime type checking
-export const isProviderType = (value: string): value is ProviderType => 
+export const isProviderType = (value: string): value is ProviderType =>
 	Object.values(ProviderType).includes(value as ProviderType);
 
-export const isProviderStatus = (value: string): value is ProviderStatus => 
+export const isProviderStatus = (value: string): value is ProviderStatus =>
 	Object.values(ProviderStatus).includes(value as ProviderStatus);
 
-export const isSuccessResponse = <T>(response: APIResponse<T>): response is { ok: true; data: T; timestamp?: Date } => 
+export const isSuccessResponse = <T>(response: APIResponse<T>): response is { ok: true; data: T; timestamp?: Date } =>
 	response.ok === true;
 
 // Helper type for debounced functions (addresses Issue 6)

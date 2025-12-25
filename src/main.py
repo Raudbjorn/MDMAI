@@ -42,6 +42,14 @@ from src.session import SessionManager, initialize_session_tools, register_sessi
 from src.source_management import initialize_source_tools, register_source_tools
 from src.utils.user_interaction import register_user_interaction_tools
 
+from src.voice_synthesis import (
+    VoiceManager,
+    VoiceProviderConfig,
+    VoiceProviderType,
+    initialize_voice_tools,
+    register_voice_tools,
+)
+
 # Set up logging
 setup_logging(level=settings.log_level, log_file=settings.log_file)
 logger = get_logger(__name__)
@@ -76,6 +84,9 @@ cache_manager: Optional[GlobalCacheManager] = None
 
 # Security management components (initialized in main())
 security_manager: Optional[SecurityManager] = None
+
+# Voice management components (initialized in main())
+voice_manager: Optional[VoiceManager] = None
 
 
 @mcp.tool()
@@ -703,7 +714,7 @@ async def apply_personality(
 async def security_status() -> Dict[str, Any]:
     """
     Get security status and statistics.
-    
+
     Returns:
         Security status including active sessions, rate limits, and audit statistics
     """
@@ -713,11 +724,11 @@ async def security_status() -> Dict[str, Any]:
             "error": "Security not initialized",
             "security_enabled": False,
         }
-    
+
     try:
         # Get security report
         report = security_manager.get_security_report()
-        
+
         # Get current rate limit status for common operations
         rate_limits = {}
         for op_type in [OperationType.SEARCH_BASIC, OperationType.SOURCE_ADD, OperationType.CHARACTER_UPDATE]:
@@ -727,13 +738,13 @@ async def security_status() -> Dict[str, Any]:
                 "remaining": status.remaining,
                 "reset_in": status.reset_in,
             }
-        
+
         # Get session statistics
         session_stats = {
             "active_sessions": len(security_manager.access_control.sessions),
             "active_users": len([u for u in security_manager.access_control.users.values() if u.is_active]),
         }
-        
+
         return {
             "status": "success",
             "security_enabled": True,
@@ -774,7 +785,7 @@ async def security_status() -> Dict[str, Any]:
 async def security_maintenance() -> Dict[str, Any]:
     """
     Perform security maintenance tasks.
-    
+
     Returns:
         Results of maintenance operations
     """
@@ -783,10 +794,10 @@ async def security_maintenance() -> Dict[str, Any]:
             "status": "error",
             "error": "Security not initialized",
         }
-    
+
     try:
         results = security_manager.perform_security_maintenance()
-        
+
         return {
             "status": "success",
             "maintenance_results": results,
@@ -811,7 +822,7 @@ def main():
 
         # Initialize database manager
         db = ChromaDBManager()
-        
+
         # Initialize security management system
         # Security can be configured via settings or environment variables
         security_config = SecurityConfig(
@@ -828,7 +839,7 @@ def main():
             ],
         )
         security_manager = initialize_security(security_config)
-        
+
         logger.info(
             "Security system initialized",
             authentication=security_config.enable_authentication,
@@ -856,7 +867,7 @@ def main():
                     logger.info("Security cleanup completed")
                 except Exception as e:
                     logger.error("Error during security cleanup", error=str(e))
-            
+
             # Cleanup cache manager
             if cache_manager:
                 try:
@@ -910,6 +921,61 @@ def main():
 
         # Register user interaction tools
         register_user_interaction_tools(mcp)
+
+        # Initialize voice synthesis system
+        global voice_manager
+
+        # Configure voice providers
+        voice_configs = []
+
+        # ElevenLabs configuration
+        if settings.elevenlabs_api_key:
+            voice_configs.append(VoiceProviderConfig(
+                provider_type=VoiceProviderType.ELEVENLABS,
+                api_key=settings.elevenlabs_api_key,
+                priority=10 if settings.voice_provider.lower() == "elevenlabs" else 20
+            ))
+
+        # Fish Audio configuration
+        if settings.fish_audio_api_key:
+            voice_configs.append(VoiceProviderConfig(
+                provider_type=VoiceProviderType.FISH_AUDIO,
+                api_key=settings.fish_audio_api_key,
+                priority=10 if settings.voice_provider.lower() == "fish_audio" else 20
+            ))
+
+        # Ollama TTS configuration
+        voice_configs.append(VoiceProviderConfig(
+            provider_type=VoiceProviderType.OLLAMA_TTS,
+            base_url=settings.ollama_tts_url,
+            priority=10 if settings.voice_provider.lower() == "ollama_tts" else 30
+        ))
+
+        # Initialize manager
+        voice_manager = VoiceManager(
+            provider_configs=voice_configs,
+            cache_dir=settings.cache_dir / "audio",
+            prefer_local=True
+        )
+
+        # Needs to be awaited, but main is sync appearing wrapper around async logic?
+        # Actually main() calls mcp.run() which handles async.
+        # FastMCP doesn't have a clear startup hook for async initialization in this structure.
+        # We'll initialize lazily in the tools or need a startup event.
+        # Looking at existing code, database initialization happens effectively synchronously relative to tools or passed in.
+        # But VoiceManager.initialize() is async.
+        # We will wrap it in a startup event if FastMCP supports it, or initialize in the first tool call.
+        # Existing code uses @mcp.on_startup? No, FastMCP usually has lifespan.
+
+        # Let's check how other async managers are initialized.
+        # SearchService seems to be initialized synchronously in constructor?
+        # Database uses Chroma which might be sync or async.
+
+        # We can use startup context if available, or just initialize first time.
+        # VoiceManager handles initialized state check, so we can call it in tools.
+
+        initialize_voice_tools(voice_manager)
+        register_voice_tools(mcp)
 
         logger.info(
             "Starting TTRPG Assistant MCP Server",

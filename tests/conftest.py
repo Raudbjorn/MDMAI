@@ -232,12 +232,16 @@ async def cleanup_after_test():
     # Force garbage collection
     import gc
     gc.collect()
-    
-    # Close any remaining async tasks
-    tasks = asyncio.all_tasks()
-    for task in tasks:
-        if not task.done():
+
+    # Close any remaining async tasks (but not the current task)
+    current_task = asyncio.current_task()
+    for task in asyncio.all_tasks():
+        if task is not current_task and not task.done():
             task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=0.1)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
 
 
 # Utility fixtures

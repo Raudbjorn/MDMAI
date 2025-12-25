@@ -308,3 +308,4 @@ extraction_logs/
 *.extraction.log
 ttrpg_content.json
 enriched_content.json
+test_output/
