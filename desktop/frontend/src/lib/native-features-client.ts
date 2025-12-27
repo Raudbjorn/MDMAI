@@ -8,11 +8,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 export interface NativeFeatures {
-  systemTray: boolean;
-  fileDialogs: boolean;
+  system_tray: boolean;
+  file_dialogs: boolean;
   notifications: boolean;
-  dragDrop: boolean;
-  fileAssociations: boolean;
+  drag_drop: boolean;
+  file_associations: boolean;
 }
 
 export class NativeFeaturesClient {
@@ -22,11 +22,11 @@ export class NativeFeaturesClient {
     } catch (error) {
       console.error('Failed to initialize native features:', error);
       return {
-        systemTray: false,
-        fileDialogs: false,
+        system_tray: false,
+        file_dialogs: false,
         notifications: false,
-        dragDrop: false,
-        fileAssociations: false,
+        drag_drop: false,
+        file_associations: false,
       };
     }
   }
@@ -84,11 +84,11 @@ export const initializeNativeFeatures = async (): Promise<NativeFeatures> => {
   const client = new NativeFeaturesClient();
   const features = await client.initializeNativeFeatures();
   
-  if (features.dragDrop) {
+  if (features.drag_drop) {
     await client.setupDragDrop();
   }
-  
-  if (features.systemTray) {
+
+  if (features.system_tray) {
     await client.setupSystemTray();
   }
   

@@ -589,7 +589,48 @@ impl NativeFeaturesState {
     }
 }
 
+/// Response for native features initialization
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NativeFeaturesResponse {
+    pub system_tray: bool,
+    pub file_dialogs: bool,
+    pub notifications: bool,
+    pub drag_drop: bool,
+    pub file_associations: bool,
+}
+
 // Tauri commands for native features
+#[tauri::command]
+pub async fn initialize_native_features(
+    state: tauri::State<'_, NativeFeaturesState>,
+    app: AppHandle,
+) -> Result<NativeFeaturesResponse, String> {
+    // Initialize native features
+    match state.initialize(&app).await {
+        Ok(()) => {
+            info!("Native features initialized via command");
+            Ok(NativeFeaturesResponse {
+                system_tray: true,
+                file_dialogs: true,
+                notifications: true,
+                drag_drop: true,
+                file_associations: true,
+            })
+        }
+        Err(e) => {
+            error!("Failed to initialize native features: {}", e);
+            // Return partial success - some features may still work
+            Ok(NativeFeaturesResponse {
+                system_tray: false,
+                file_dialogs: true,
+                notifications: true,
+                drag_drop: true,
+                file_associations: false,
+            })
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn show_native_file_dialog(
     app: AppHandle,

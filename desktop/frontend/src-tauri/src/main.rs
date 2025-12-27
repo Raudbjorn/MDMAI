@@ -85,6 +85,7 @@ fn main() {
             process_manager::update_process_config,
             process_manager::reset_process_restart_count,
             process_manager::clear_process_events,
+            native_features::initialize_native_features,
             native_features::show_native_file_dialog,
             native_features::show_save_dialog,
             native_features::send_native_notification,
@@ -154,7 +155,7 @@ fn main() {
             performance_commands::run_performance_benchmarks,
             performance_commands::get_resource_stats,
             performance_commands::optimize_memory,
-            performance_commands::get_cache_stats,
+            performance_commands::get_memory_cache_stats,
             performance_commands::clear_memory_caches,
             performance_commands::get_memory_pool_stats,
             performance_commands::get_ipc_optimizer_stats,
@@ -215,11 +216,42 @@ fn main() {
                 
                 // Complete startup tracking
                 performance_manager.0.complete_startup(startup_context).await;
-                
+
                 let total_startup_time = startup_time.elapsed();
                 log::info!("TTRPG Assistant startup completed in {:?}", total_startup_time);
             });
-            
+
+            // Auto-start MCP backend
+            let mcp_state: tauri::State<Arc<Mutex<Option<mcp_bridge::MCPBridge>>>> = app.state();
+            let process_state: tauri::State<ProcessManagerState> = app.state();
+            let app_handle_for_mcp = app.handle().clone();
+            let mcp_state_clone = mcp_state.inner().clone();
+            let process_manager = process_state.0.clone();
+
+            tauri::async_runtime::spawn(async move {
+                eprintln!("[MAIN] Auto-starting MCP backend...");
+                log::info!("Auto-starting MCP backend");
+
+                let mut bridge_opt = mcp_state_clone.lock().await;
+                if bridge_opt.is_none() {
+                    eprintln!("[MAIN] Creating new MCP bridge in auto-start");
+                    let bridge = mcp_bridge::MCPBridge::new(process_manager);
+                    match bridge.start(&app_handle_for_mcp).await {
+                        Ok(_) => {
+                            eprintln!("[MAIN] MCP backend started successfully");
+                            log::info!("MCP backend started successfully");
+                            *bridge_opt = Some(bridge);
+                        }
+                        Err(e) => {
+                            eprintln!("[MAIN] Failed to start MCP backend: {}", e);
+                            log::error!("Failed to start MCP backend: {}", e);
+                        }
+                    }
+                } else {
+                    eprintln!("[MAIN] MCP bridge already exists");
+                }
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| {
