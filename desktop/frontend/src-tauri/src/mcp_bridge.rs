@@ -334,6 +334,31 @@ impl MCPBridge {
         }
     }
 
+    /// Send a JSON-RPC notification (no ID, no response expected)
+    async fn notify(&self, method: &str) -> Result<(), String> {
+        if !*self.is_running.read().await {
+            return Err("MCP server not running".to_string());
+        }
+
+        // Create JSON-RPC notification (no ID field)
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method
+        });
+
+        let notification_str = serde_json::to_string(&notification)
+            .map_err(|e| format!("Failed to serialize notification: {}", e))?;
+
+        if let Some(stdin_tx) = self.stdin_tx.lock().await.as_ref() {
+            stdin_tx.send(format!("{}\n", notification_str)).await
+                .map_err(|e| format!("Failed to send notification: {}", e))?;
+        } else {
+            return Err("Stdin channel not available".to_string());
+        }
+
+        Ok(())
+    }
+
     async fn initialize(&self) -> Result<(), String> {
         debug!("Initializing MCP connection");
 
@@ -348,8 +373,13 @@ impl MCPBridge {
         });
 
         let result = self.call("initialize", init_params).await?;
+        info!("MCP server initialized: {:?}", result);
 
-        info!("MCP server initialized successfully: {:?}", result);
+        // Send notifications/initialized notification (required by MCP protocol)
+        // This must be sent before any other requests
+        self.notify("notifications/initialized").await?;
+        info!("MCP initialized notification sent");
+
         Ok(())
     }
 
