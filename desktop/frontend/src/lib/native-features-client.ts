@@ -53,12 +53,10 @@ export class NativeFeaturesClient {
     }
   }
 
-  async setupDragDrop(): Promise<void> {
+  async setupDragDropListener(): Promise<void> {
     try {
-      await invoke('setup_drag_drop');
-      
-      // Listen for drag and drop events
-      await listen('drag-drop-files', (event) => {
+      // Listen for drag and drop events from the backend
+      await listen('drag-drop', (event) => {
         console.log('Files dropped:', event.payload);
         // Dispatch custom event for components to handle
         window.dispatchEvent(new CustomEvent('native-files-dropped', {
@@ -66,15 +64,7 @@ export class NativeFeaturesClient {
         }));
       });
     } catch (error) {
-      console.error('Failed to setup drag and drop:', error);
-    }
-  }
-
-  async setupSystemTray(): Promise<void> {
-    try {
-      await invoke('setup_system_tray');
-    } catch (error) {
-      console.error('Failed to setup system tray:', error);
+      console.error('Failed to setup drag and drop listener:', error);
     }
   }
 }
@@ -83,15 +73,14 @@ export class NativeFeaturesClient {
 export const initializeNativeFeatures = async (): Promise<NativeFeatures> => {
   const client = new NativeFeaturesClient();
   const features = await client.initializeNativeFeatures();
-  
+
+  // Set up drag-drop event listener if feature is available
   if (features.drag_drop) {
-    await client.setupDragDrop();
+    await client.setupDragDropListener();
   }
 
-  if (features.system_tray) {
-    await client.setupSystemTray();
-  }
-  
+  // System tray is initialized in the backend, no additional setup needed
+
   return features;
 };
 
