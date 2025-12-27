@@ -466,7 +466,27 @@ pub async fn mcp_call(
             "name": method,
             "arguments": params
         });
-        bridge.call("tools/call", tools_call_params).await
+        let response = bridge.call("tools/call", tools_call_params).await?;
+
+        // Extract the actual result from MCP response structure
+        // MCP returns: { content: [...], structuredContent: { result: {...} }, isError: bool }
+        if let Some(structured) = response.get("structuredContent") {
+            if let Some(result) = structured.get("result") {
+                return Ok(result.clone());
+            }
+        }
+        // Fallback to content[0].text parsed as JSON
+        if let Some(content) = response.get("content").and_then(|c| c.as_array()) {
+            if let Some(first) = content.first() {
+                if let Some(text) = first.get("text").and_then(|t| t.as_str()) {
+                    if let Ok(parsed) = serde_json::from_str::<Value>(text) {
+                        return Ok(parsed);
+                    }
+                }
+            }
+        }
+        // Return raw response if extraction fails
+        Ok(response)
     } else {
         Err("MCP backend not started".to_string())
     }
