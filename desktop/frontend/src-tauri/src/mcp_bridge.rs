@@ -459,9 +459,14 @@ pub async fn mcp_call(
     params: Value,
 ) -> Result<Value, String> {
     let bridge_opt = state.lock().await;
-    
+
     if let Some(bridge) = bridge_opt.as_ref() {
-        bridge.call(&method, params).await
+        // Wrap as MCP tools/call format: { name: "tool_name", arguments: {...} }
+        let tools_call_params = serde_json::json!({
+            "name": method,
+            "arguments": params
+        });
+        bridge.call("tools/call", tools_call_params).await
     } else {
         Err("MCP backend not started".to_string())
     }
