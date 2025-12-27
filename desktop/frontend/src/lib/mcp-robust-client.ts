@@ -124,6 +124,8 @@ export class RobustMCPClient {
 
     /**
      * Connect to the MCP server
+     * Note: The MCP backend is auto-started by the Rust main.rs on app startup.
+     * This method just verifies the connection is ready.
      */
     async connect(): Promise<Result<void>> {
         // Check for Tauri context first
@@ -137,21 +139,33 @@ export class RobustMCPClient {
         try {
             this.status.set('connecting');
 
-            // Start the MCP backend
+            // MCP backend is auto-started by Rust, just verify connection
+            // Wait a moment for backend to be ready, then check health
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Check if backend is healthy
             const invoke = await getInvoke();
-            await invoke('start_mcp_backend');
+            const isHealthy = await invoke<boolean>('check_mcp_health');
 
-            // Verify connection with tools/list (proper MCP method after initialize)
-            const result = await this.callWithRetry('tools/list', {});
+            if (isHealthy) {
+                this.initialized = true;
+                this.status.set('connected');
+                return { ok: true, data: undefined };
+            }
 
-            if (result.ok) {
+            // Backend not ready yet, retry after delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const retryHealthy = await invoke<boolean>('check_mcp_health');
+
+            if (retryHealthy) {
                 this.initialized = true;
                 this.status.set('connected');
                 return { ok: true, data: undefined };
             }
 
             this.status.set('error');
-            return result as Result<void, string>;
+            this.lastError.set('MCP backend not responding');
+            return { ok: false, error: 'MCP backend not responding' };
 
         } catch (e) {
             const error = this.formatError(e);
