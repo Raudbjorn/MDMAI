@@ -475,6 +475,57 @@ async def server_info() -> Dict[str, Any]:
 
 
 @mcp.tool()
+async def roll_dice(notation: str) -> Dict[str, Any]:
+    """
+    Roll dice using standard RPG notation (e.g., '3d6+2', '1d20', '2d10+5').
+
+    Args:
+        notation: Dice expression like '3d6+2' or '1d20'
+
+    Returns:
+        Dictionary with total, individual rolls, and breakdown
+    """
+    import random
+    import re
+
+    pattern = r"(\d+)d(\d+)([+-]\d+)?"
+    match = re.match(pattern, notation.strip())
+
+    if not match:
+        return {
+            "error": "Invalid dice notation. Use format like '3d6+2' or '1d20'",
+            "notation": notation,
+        }
+
+    num_dice = int(match.group(1))
+    num_sides = int(match.group(2))
+    modifier = int(match.group(3) or 0)
+
+    # Validate to prevent DoS
+    if num_dice > 1000 or num_sides > 1000:
+        return {"error": "Maximum 1000 dice or 1000 sides", "notation": notation}
+    if num_dice < 1 or num_sides < 1:
+        return {"error": "Dice count and sides must be at least 1", "notation": notation}
+
+    rolls = [random.randint(1, num_sides) for _ in range(num_dice)]
+    total = sum(rolls) + modifier
+
+    breakdown_parts = [str(r) for r in rolls]
+    if modifier != 0:
+        breakdown_parts.append(f"{modifier:+d}")
+    breakdown = " + ".join(breakdown_parts).replace("+ -", "- ")
+
+    return {
+        "notation": notation,
+        "total": total,
+        "rolls": rolls,
+        "modifier": modifier,
+        "breakdown": f"{breakdown} = {total}",
+        "dice": {"count": num_dice, "sides": num_sides},
+    }
+
+
+@mcp.tool()
 @secure_mcp_tool(
     permission=Permission.PERSONALITY_CREATE,
     operation_type=OperationType.CHARACTER_GENERATE,
