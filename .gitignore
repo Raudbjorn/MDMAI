@@ -241,8 +241,10 @@ desktop/frontend/src-tauri/target/
 # Note: Cargo.lock is committed for binary applications to ensure reproducible builds
 
 # Generated binaries for development (in source directories)
-desktop/frontend/src-tauri/binaries/mcp-server-*
-**/binaries/mcp-server-*
+# The mcp-server wrapper scripts ARE tracked (they're shell scripts, not binaries)
+!desktop/frontend/src-tauri/binaries/mcp-server-x86_64-unknown-linux-gnu
+desktop/frontend/src-tauri/binaries/mcp-server
+**/target/**/mcp-server*
 
 # Rust build artifacts
 target/

@@ -3,9 +3,31 @@
  * Based on best practices from SvelteKit desktop guide
  */
 
-import { invoke } from '@tauri-apps/api/core';
 import { writable, type Writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
+
+// Lazy import of invoke to avoid errors outside Tauri context
+let invokeFunction: typeof import('@tauri-apps/api/core').invoke | null = null;
+
+// Tauri v2 detection - check for __TAURI_INTERNALS__ or __TAURI__
+function isTauriEnvironment(): boolean {
+    if (!browser) return false;
+    return !!(
+        (window as any).__TAURI_INTERNALS__ ||
+        (window as any).__TAURI__ ||
+        (window as any).__TAURI_METADATA__
+    );
+}
+
+async function getInvoke() {
+    if (invokeFunction) return invokeFunction;
+    if (!isTauriEnvironment()) {
+        throw new Error('Not running in Tauri context');
+    }
+    const { invoke } = await import('@tauri-apps/api/core');
+    invokeFunction = invoke;
+    return invoke;
+}
 
 // Enhanced Result type for error handling (error-as-values pattern)
 export interface Result<T, E = string> {
@@ -94,27 +116,43 @@ export class RobustMCPClient {
     }
     
     /**
+     * Check if we're running in Tauri context
+     */
+    isTauriContext(): boolean {
+        return isTauriEnvironment();
+    }
+
+    /**
      * Connect to the MCP server
      */
     async connect(): Promise<Result<void>> {
+        // Check for Tauri context first
+        if (!this.isTauriContext()) {
+            const error = 'Not running in Tauri desktop app';
+            this.status.set('error');
+            this.lastError.set(error);
+            return { ok: false, error };
+        }
+
         try {
             this.status.set('connecting');
-            
+
             // Start the MCP backend
+            const invoke = await getInvoke();
             await invoke('start_mcp_backend');
-            
-            // Verify connection
-            const result = await this.callWithRetry('server_info', {});
-            
+
+            // Verify connection with tools/list (proper MCP method after initialize)
+            const result = await this.callWithRetry('tools/list', {});
+
             if (result.ok) {
                 this.initialized = true;
                 this.status.set('connected');
                 return { ok: true, data: undefined };
             }
-            
+
             this.status.set('error');
             return result as Result<void, string>;
-            
+
         } catch (e) {
             const error = this.formatError(e);
             this.status.set('error');
@@ -122,12 +160,15 @@ export class RobustMCPClient {
             return { ok: false, error };
         }
     }
-    
+
     /**
      * Disconnect from the MCP server
      */
     async disconnect(): Promise<void> {
+        if (!this.isTauriContext()) return;
+
         try {
+            const invoke = await getInvoke();
             await invoke('stop_mcp_backend');
             this.initialized = false;
             this.status.set('disconnected');
@@ -200,10 +241,18 @@ export class RobustMCPClient {
         timeout?: number
     ): Promise<Result<T>> {
         const actualMaxAttempts = maxAttempts ?? this.retryConfig.maxAttempts;
-        
+
+        // Check for Tauri context
+        if (!this.isTauriContext()) {
+            return createFailure('Not running in Tauri desktop app');
+        }
+
         try {
             this.isLoading.set(true);
-            
+
+            // Get invoke function lazily
+            const invoke = await getInvoke();
+
             // Create timeout promise if specified
             let callPromise: Promise<T> = invoke<T>('mcp_call', { method, params });
             

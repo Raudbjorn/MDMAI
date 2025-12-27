@@ -17,21 +17,21 @@ const config = {
         }),
 
         // CSP configuration for desktop security
+        // Note: CSP is less relevant for Tauri desktop apps since content is local
+        // Keeping minimal CSP for defense-in-depth
         csp: {
-            mode: 'hash',  // Use hash-based CSP for inline scripts
+            mode: 'auto',
             directives: {
-                'default-src': ['self', 'tauri:'],
-                'script-src': ['self', 'tauri:'],  // Removed unsafe-inline
-                'style-src': ['self'],  // Removed unsafe-inline, hashes will be added automatically
-                'connect-src': ['self', 'tauri:', 'ipc:', 'asset:'],  // Removed broad https/ws/wss
+                'default-src': ['self', 'tauri:', 'asset:'],
+                'script-src': ['self', 'tauri:', 'asset:', 'unsafe-inline'],
+                'style-src': ['self', 'unsafe-inline'],
+                'connect-src': ['self', 'tauri:', 'ipc:', 'asset:', 'http://localhost:*', 'ws://localhost:*'],
                 'img-src': ['self', 'data:', 'blob:', 'tauri:', 'asset:'],
                 'font-src': ['self', 'data:'],
                 'media-src': ['self', 'tauri:', 'asset:'],
                 'frame-src': ['none'],
                 'object-src': ['none'],
-                'base-uri': ['self'],
-                'form-action': ['none'],  // Prevent form submissions
-                'upgrade-insecure-requests': true  // Force HTTPS where possible
+                'base-uri': ['self']
             }
         },
 

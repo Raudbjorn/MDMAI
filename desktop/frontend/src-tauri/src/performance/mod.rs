@@ -25,8 +25,10 @@ pub use memory_manager::{MemoryManager, MemoryPool, CacheManager};
 pub use ipc_optimizer::{IpcOptimizer, CommandBatcher, ResponseCache};
 pub use lazy_loader::{LazyLoader, LazyComponent};
 pub use benchmarking::{BenchmarkSuite, PerformanceTest, BenchmarkResult};
-pub use metrics::{MetricsCollector, PerformanceMetrics, ResourceMetrics};
-pub use resource_monitor::{ResourceMonitor, ResourceAlert, ResourceThresholds};
+pub use metrics::{MetricsCollector, PerformanceMetrics};
+// Note: metrics::ResourceMetrics is different from resource_monitor::ResourceMetrics
+// Use fully qualified paths when needed to avoid confusion
+pub use resource_monitor::{ResourceMonitor, ResourceAlert, ResourceThresholds, ResourceMetrics};
 
 /// Performance configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,16 +185,16 @@ impl Default for PerformanceConfig {
 
 /// Performance optimization manager
 pub struct PerformanceManager {
-    config: Arc<RwLock<PerformanceConfig>>,
-    startup_optimizer: Arc<StartupOptimizer>,
-    memory_manager: Arc<MemoryManager>,
-    ipc_optimizer: Arc<IpcOptimizer>,
-    lazy_loader: Arc<LazyLoader>,
-    metrics_collector: Arc<MetricsCollector>,
-    resource_monitor: Arc<ResourceMonitor>,
-    benchmark_suite: Arc<BenchmarkSuite>,
-    startup_time: Arc<RwLock<Option<Duration>>>,
-    initialization_tasks: Arc<RwLock<HashMap<String, Instant>>>,
+    pub config: Arc<RwLock<PerformanceConfig>>,
+    pub startup_optimizer: Arc<StartupOptimizer>,
+    pub memory_manager: Arc<MemoryManager>,
+    pub ipc_optimizer: Arc<IpcOptimizer>,
+    pub lazy_loader: Arc<LazyLoader>,
+    pub metrics_collector: Arc<MetricsCollector>,
+    pub resource_monitor: Arc<ResourceMonitor>,
+    pub benchmark_suite: Arc<BenchmarkSuite>,
+    pub startup_time: Arc<RwLock<Option<Duration>>>,
+    pub initialization_tasks: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl PerformanceManager {
@@ -217,6 +219,9 @@ impl PerformanceManager {
     pub async fn initialize(&self) -> Result<(), String> {
         let start = Instant::now();
         info!("Initializing Performance Manager");
+
+        // Register default benchmark tests
+        self.benchmark_suite.register_default_tests().await;
 
         // Start resource monitoring
         self.resource_monitor.start_monitoring().await;

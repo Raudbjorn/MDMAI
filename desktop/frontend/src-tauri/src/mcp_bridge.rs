@@ -61,10 +61,12 @@ impl MCPBridge {
     pub async fn start(&self, app_handle: &tauri::AppHandle) -> Result<(), String> {
         // Check if already running
         if *self.is_running.read().await {
+            info!("MCP server already running, skipping start");
             return Ok(());
         }
 
         info!("Starting MCP server sidecar process");
+        eprintln!("[MCP_BRIDGE] Starting MCP server sidecar process");
         
         // Store app handle for event emission
         *self.app_handle.lock().await = Some(app_handle.clone());
@@ -80,12 +82,24 @@ impl MCPBridge {
         *self.stdin_tx.lock().await = Some(stdin_tx);
 
         // Start Python MCP server using Tauri sidecar
-        let (mut rx, child) = app_handle.shell()
+        eprintln!("[MCP_BRIDGE] Creating sidecar command...");
+        let sidecar_cmd = app_handle.shell()
             .sidecar("mcp-server")
-            .map_err(|e| format!("Failed to create mcp-server sidecar command: {}", e))?
-            .env("MCP_STDIO_MODE", "true")
+            .map_err(|e| {
+                eprintln!("[MCP_BRIDGE] Failed to create sidecar command: {}", e);
+                format!("Failed to create mcp-server sidecar command: {}", e)
+            })?
+            .env("MCP_STDIO_MODE", "true");
+
+        eprintln!("[MCP_BRIDGE] Spawning sidecar process...");
+        let (mut rx, child) = sidecar_cmd
             .spawn()
-            .map_err(|e| format!("Failed to start MCP server: {}", e))?;
+            .map_err(|e| {
+                eprintln!("[MCP_BRIDGE] Failed to spawn sidecar: {}", e);
+                format!("Failed to start MCP server: {}", e)
+            })?;
+
+        eprintln!("[MCP_BRIDGE] Sidecar spawned with PID: {}", child.pid());
 
         let child_pid = child.pid();
         
@@ -140,13 +154,13 @@ impl MCPBridge {
                     }
                     CommandEvent::Stderr(line) => {
                         let line_str = String::from_utf8_lossy(&line);
-                        warn!("MCP stderr: {}", line_str);
+                        debug!("MCP stderr: {}", line_str);
                     }
                     CommandEvent::Error(e) => {
                         error!("MCP process error: {}", e);
                     }
                     CommandEvent::Terminated(payload) => {
-                        error!("MCP process terminated with code: {:?}", payload.code);
+                        error!("MCP process terminated with code: {:?}, signal: {:?}", payload.code, payload.signal);
                         *is_running.write().await = false;
                         
                         // Notify process manager
@@ -169,9 +183,32 @@ impl MCPBridge {
             }
         });
 
-        // Initialize connection
-        self.initialize().await?;
-        
+        // Wait for MCP server to initialize (it takes ~8 seconds to load models)
+        // This delay ensures the server is ready to receive JSON-RPC requests
+        info!("Waiting for MCP server to initialize...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+        // Initialize connection with retries
+        let mut init_attempts = 0;
+        let max_init_attempts = 3;
+        loop {
+            init_attempts += 1;
+            match self.initialize().await {
+                Ok(()) => {
+                    info!("MCP connection initialized successfully");
+                    break;
+                }
+                Err(e) if init_attempts < max_init_attempts => {
+                    warn!("Initialize attempt {} failed: {}, retrying...", init_attempts, e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                }
+                Err(e) => {
+                    error!("Failed to initialize MCP connection after {} attempts: {}", init_attempts, e);
+                    return Err(e);
+                }
+            }
+        }
+
         // Reset restart count on successful start
         self.process_manager.reset_restart_count().await;
 
@@ -299,21 +336,30 @@ impl MCPBridge {
 
     async fn initialize(&self) -> Result<(), String> {
         debug!("Initializing MCP connection");
-        
-        // Call server_info to verify connection
-        let result = self.call("server_info", Value::Null).await?;
-        
+
+        // Call MCP initialize with required protocol parameters
+        let init_params = serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "TTRPG Assistant Desktop",
+                "version": "1.0.0"
+            }
+        });
+
+        let result = self.call("initialize", init_params).await?;
+
         info!("MCP server initialized successfully: {:?}", result);
         Ok(())
     }
-    
+
     pub async fn is_healthy(&self) -> bool {
         if !*self.is_running.read().await {
             return false;
         }
-        
-        // Perform actual health check by calling a simple method
-        match self.call("server_info", Value::Null).await {
+
+        // Perform health check using tools/list which is always available
+        match self.call("tools/list", Value::Null).await {
             Ok(_) => {
                 self.process_manager.on_health_check_result(true, None).await;
                 true
@@ -333,10 +379,12 @@ pub async fn start_mcp_backend(
     process_state: tauri::State<'_, crate::process_manager::ProcessManagerState>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    eprintln!("[MCP_BRIDGE] start_mcp_backend command invoked");
     let mut bridge_opt = state.lock().await;
-    
+
     if bridge_opt.is_none() {
         info!("Creating new MCP bridge");
+        eprintln!("[MCP_BRIDGE] Creating new MCP bridge");
         let bridge = MCPBridge::new(process_state.0.clone());
         bridge.start(&app_handle).await?;
         *bridge_opt = Some(bridge);
