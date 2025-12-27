@@ -14,8 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Python packaging output directories (root-level only)
+# Note: Using /lib/ to avoid matching SvelteKit's src/lib directories
+/lib/
+/lib64/
 parts/
 sdist/
 var/
