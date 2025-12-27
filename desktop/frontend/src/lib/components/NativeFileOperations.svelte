@@ -14,15 +14,19 @@
   
   async function openFileDialog() {
     try {
-      const files = await invoke<string[] | null>('show_open_dialog', {
-        filters: [
-          { name: 'PDF Documents', extensions: ['pdf'] },
-          { name: 'Text Files', extensions: ['txt', 'md'] },
-          { name: 'All Files', extensions: ['*'] }
-        ],
-        multiple: true
+      const files = await invoke<string[]>('show_native_file_dialog', {
+        options: {
+          title: 'Open Files',
+          filters: [
+            { name: 'PDF Documents', extensions: ['pdf'] },
+            { name: 'Text Files', extensions: ['txt', 'md'] },
+            { name: 'All Files', extensions: ['*'] }
+          ],
+          directory: false,
+          multiple: true
+        }
       });
-      
+
       if (files && files.length > 0) {
         dispatch('files-selected', { files, type: 'file-dialog' });
       }
@@ -34,14 +38,15 @@
   async function saveFileDialog() {
     try {
       const path = await invoke<string | null>('show_save_dialog', {
+        title: 'Save File',
+        defaultFilename: 'export.json',
         filters: [
           { name: 'JSON Files', extensions: ['json'] },
           { name: 'Text Files', extensions: ['txt'] },
           { name: 'All Files', extensions: ['*'] }
-        ],
-        defaultPath: 'export.json'
+        ]
       });
-      
+
       if (path) {
         dispatch('file-saved', { path });
       }
@@ -49,13 +54,20 @@
       console.error('Failed to open save dialog:', error);
     }
   }
-  
+
   async function selectDirectoryDialog() {
     try {
-      const path = await invoke<string | null>('show_directory_dialog');
-      
-      if (path) {
-        dispatch('directory-selected', { path });
+      const paths = await invoke<string[]>('show_native_file_dialog', {
+        options: {
+          title: 'Select Directory',
+          filters: [],
+          directory: true,
+          multiple: false
+        }
+      });
+
+      if (paths && paths.length > 0) {
+        dispatch('directory-selected', { path: paths[0] });
       }
     } catch (error) {
       console.error('Failed to open directory dialog:', error);

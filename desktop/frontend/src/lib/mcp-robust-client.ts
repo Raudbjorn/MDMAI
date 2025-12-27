@@ -125,7 +125,7 @@ export class RobustMCPClient {
     /**
      * Connect to the MCP server
      * Note: The MCP backend is auto-started by the Rust main.rs on app startup.
-     * This method just verifies the connection is ready.
+     * This method polls for health with retries since MCP takes ~10-16 seconds to initialize.
      */
     async connect(): Promise<Result<void>> {
         // Check for Tauri context first
@@ -138,34 +138,32 @@ export class RobustMCPClient {
 
         try {
             this.status.set('connecting');
-
-            // MCP backend is auto-started by Rust, just verify connection
-            // Wait a moment for backend to be ready, then check health
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Check if backend is healthy
             const invoke = await getInvoke();
-            const isHealthy = await invoke<boolean>('check_mcp_health');
 
-            if (isHealthy) {
-                this.initialized = true;
-                this.status.set('connected');
-                return { ok: true, data: undefined };
-            }
+            // MCP backend takes ~10-16 seconds to initialize (10s model loading + 3 init retries)
+            // Poll for health with increasing delays: 2s, 3s, 4s, 5s, 6s = 20s total coverage
+            const pollDelays = [2000, 3000, 4000, 5000, 6000];
 
-            // Backend not ready yet, retry after delay
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            const retryHealthy = await invoke<boolean>('check_mcp_health');
+            for (let i = 0; i < pollDelays.length; i++) {
+                await new Promise(resolve => setTimeout(resolve, pollDelays[i]));
 
-            if (retryHealthy) {
-                this.initialized = true;
-                this.status.set('connected');
-                return { ok: true, data: undefined };
+                try {
+                    const isHealthy = await invoke<boolean>('check_mcp_health');
+                    if (isHealthy) {
+                        this.initialized = true;
+                        this.status.set('connected');
+                        console.log(`[MCP] Connected after ${i + 1} health check attempts`);
+                        return { ok: true, data: undefined };
+                    }
+                } catch (e) {
+                    // Health check threw - backend may not be ready yet
+                    console.log(`[MCP] Health check attempt ${i + 1} failed:`, e);
+                }
             }
 
             this.status.set('error');
-            this.lastError.set('MCP backend not responding');
-            return { ok: false, error: 'MCP backend not responding' };
+            this.lastError.set('MCP backend not responding after 20s');
+            return { ok: false, error: 'MCP backend not responding after 20s' };
 
         } catch (e) {
             const error = this.formatError(e);
