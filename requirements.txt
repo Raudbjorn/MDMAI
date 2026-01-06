@@ -56,7 +56,7 @@ rank-bm25==0.2.2  # BM25 ranking for keyword search
 # HTTP & Async (Modernized)
 # ============================================
 httpx==0.26.0  # Modern async HTTP client (replaces requests)
-aiohttp==3.12.16  # Alternative async HTTP (updated for security)
+aiohttp==3.13.3  # Alternative async HTTP (updated for security)
 tenacity==8.2.0  # Retry logic with exponential backoff
 aiofiles==23.2.0  # Async file operations
 websockets==12.0  # WebSocket support
